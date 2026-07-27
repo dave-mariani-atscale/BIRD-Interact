@@ -38,6 +38,8 @@ services:
   bird_interact_eval:
     image: docker.io/shawnxxh/bird-interact-eval:latest
     container_name: bird_interact_eval
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     volumes:
       - ../:/app/
     depends_on:

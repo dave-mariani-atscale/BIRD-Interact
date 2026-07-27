@@ -46,7 +46,7 @@ while (( "$#" )); do
     --user_model=*) USER_MODEL_NAME="${1#*=}"; shift ;;
     --user_sim_mode=*) USER_SIM_MODE="${1#*=}"; shift ;;
     --user_sim_prompt_version=*) USER_SIM_PROMPT_VERSION="${1#*=}"; shift ;;
-    --budgets=*) PATIENCE_BUDGETS="${1#*=}"; shift ;;
+    --budgets=*) BUDGETS_ARG="${1#*=}"; shift ;;
     --max_turns=*) MAX_TURNS="${1#*=}"; shift ;;
     --base_output_dir=*) BASE_OUTPUT_DIR="${1#*=}"; shift ;;
     --num_threads=*) NUM_THREADS="${1#*=}"; shift ;;
@@ -85,6 +85,16 @@ while (( "$#" )); do
     *) echo "Unknown argument: $1 / Use --help"; exit 1 ;;
   esac
 done
+
+# --- Convert comma-separated overrides into arrays ---
+# (--agent_models=/--budgets= parse into scalars above; the run loop below
+# iterates over the AGENT_MODEL_NAMES/PATIENCE_BUDGETS arrays, so split here.)
+if [ -n "$AGENT_MODELS" ]; then
+    IFS=',' read -ra AGENT_MODEL_NAMES <<< "$AGENT_MODELS"
+fi
+if [ -n "$BUDGETS_ARG" ]; then
+    IFS=',' read -ra PATIENCE_BUDGETS <<< "$BUDGETS_ARG"
+fi
 
 # --- Argument Validation ---
 if [ "$USER_SIM_MODE" != "vanilla" ] && [ "$USER_SIM_MODE" != "encoder_decoder" ]; then

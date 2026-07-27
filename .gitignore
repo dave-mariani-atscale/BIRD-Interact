@@ -2,3 +2,11 @@
 postgre_table_dumps
 postgre_table_dumps_full
 *.pyc
+env/.env
+
+# Ground-truth SQL / test cases (obtained under the BIRD team's anti-leakage
+# email process) and run outputs — never commit these, public fork or not.
+bird_interact_agent/data/
+bird_interact_agent/outputs/
+bird_interact_conv/data/
+bird_interact_conv/results/

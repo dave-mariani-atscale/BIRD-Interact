@@ -206,14 +206,21 @@ def api_request(messages, engine, client, backend, **kwargs):
                 return reasoning_content, content, token_usage
 
             elif backend == "anthropic":
-                message = client.messages.create(
-                    model=engine,
-                    messages=messages,
-                    temperature=kwargs.get("temperature", 0),
-                    max_tokens=kwargs.get("max_tokens", 512),
-                    top_p=kwargs.get("top_p", 1),
-                    stop_sequences=kwargs.get("stop", None),
-                )
+                # call_api_model() always fills temperature/top_p with its own
+                # function-signature defaults (0/1) whether or not a caller
+                # asked for them, so we can't tell "explicit" from "default"
+                # here. Newer Claude generations reject an explicit
+                # temperature/top_p entirely ("`temperature` is deprecated for
+                # this model"), so the native Anthropic backend never sends
+                # them — only max_tokens and (optionally) stop_sequences.
+                anthropic_kwargs = {
+                    "model": engine,
+                    "messages": messages,
+                    "max_tokens": kwargs.get("max_tokens", 512),
+                }
+                if kwargs.get("stop"):
+                    anthropic_kwargs["stop_sequences"] = kwargs["stop"]
+                message = client.messages.create(**anthropic_kwargs)
                 usage_data = message.usage
                 token_usage = {
                     "prompt_tokens": usage_data.input_tokens,
@@ -222,9 +229,23 @@ def api_request(messages, engine, client, backend, **kwargs):
                     "cache_creation_input_tokens": usage_data.cache_creation_input_tokens,
                     "cache_read_input_tokens": usage_data.cache_read_input_tokens,
                 }
-                content = message.content[0].text
+                # Some Claude generations (e.g. claude-sonnet-5) return
+                # extended-thinking blocks ahead of the actual answer, so the
+                # first content block isn't reliably the text response —
+                # a `thinking` block's `.text` is None. Pull the real text
+                # from the `text`-typed block(s) instead of assuming index 0.
+                text_blocks = [
+                    b.text for b in message.content if getattr(b, "type", None) == "text"
+                ]
+                content = "".join(text_blocks) if text_blocks else None
+                thinking_blocks = [
+                    getattr(b, "thinking", None)
+                    for b in message.content
+                    if getattr(b, "type", None) == "thinking"
+                ]
+                reasoning_content = "".join(t for t in thinking_blocks if t) or None
                 logging.debug(f"Token usage (Anthropic): {token_usage}")
-                return None, content, token_usage
+                return reasoning_content, content, token_usage
             elif backend == "genai":
                 # Ensure key cycle is available
                 if not gemini_key_cycle:
@@ -495,18 +516,20 @@ def call_api_model(
             api_key=model_config["openrouter"]["api_key"],
         )
         backend = "openai"
+    elif model_name.startswith("claude"):
+        # Native Anthropic backend (bypasses the OpenAI-compatible passthrough
+        # below) — routes straight to the Messages API with ANTHROPIC_API_KEY.
+        engine = model_name.replace("#thinking", "")
+        client = anthropic.Anthropic(api_key=model_config["anthropic"]["api_key"])
+        backend = "anthropic"
     elif model_name in [
         "gpt-4o-2024-11-20",
-        "claude-3-7-sonnet-20250219#thinking",
-        "claude-3-7-sonnet-20250219",
-        "claude-3-5-sonnet-20241022",
         "o3-mini-2025-01-31",
         "o1-mini",
         "o3",
         "o1-preview-2024-09-12",
         "gpt-4.1",
         "o4-mini",
-        "claude-sonnet-4-20250514",
         "gemini-2.5-flash-preview-thinking",
         "qwen3-235b-a22b",
         "llama4-maverick-instruct-basic",
