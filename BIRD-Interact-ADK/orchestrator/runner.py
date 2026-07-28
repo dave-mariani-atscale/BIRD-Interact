@@ -89,12 +89,21 @@ async def run_parallel_evaluation(
         )
 
 
-def load_tasks(data_path: str, limit: int = None) -> List[dict]:
+def load_tasks(data_path: str, limit: int = None, databases: List[str] = None) -> List[dict]:
     tasks = []
     with open(data_path) as f:
         for line in f:
             if line.strip():
                 tasks.append(json.loads(line))
+    if databases:
+        wanted = set(databases)
+        available = {t.get("selected_database") for t in tasks}
+        unknown = wanted - available
+        if unknown:
+            logger.warning("--databases requested unknown database(s) not present in %s: %s", data_path, sorted(unknown))
+        before_count = len(tasks)
+        tasks = [t for t in tasks if t.get("selected_database") in wanted]
+        logger.warning("--databases filter: %d -> %d tasks (databases: %s)", before_count, len(tasks), sorted(wanted & available))
     if limit:
         tasks = tasks[:limit]
     return tasks
@@ -172,6 +181,8 @@ def main():
     parser.add_argument("--output", default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--concurrency", type=int, default=5)
+    parser.add_argument("--databases", type=str, default=None,
+                         help="Comma-separated selected_database values to run (e.g. 'solar_panel,hulushows'). Default: all.")
     args = parser.parse_args()
 
     output = args.output or f"results/eval_{args.mode.replace('-', '_')}.json"
@@ -183,7 +194,8 @@ def main():
     else:
         from orchestrator.cinteract import run_single_task
 
-    tasks = load_tasks(args.data, args.limit)
+    databases = [d.strip() for d in args.databases.split(",") if d.strip()] if args.databases else None
+    tasks = load_tasks(args.data, args.limit, databases)
     logger.info("%s: Evaluating %d tasks with concurrency=%d", args.mode, len(tasks), args.concurrency)
 
     asyncio.run(run_parallel_evaluation(

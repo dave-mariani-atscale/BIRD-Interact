@@ -18,6 +18,13 @@ try:
     from shared._local_provider import call_llm, build_adk_model
 except ImportError:
     # Default: LiteLlm
+    import litellm
+
+    # Some models (e.g. claude-sonnet-5) reject sampling params like
+    # temperature/top_p entirely rather than accepting arbitrary values.
+    # Drop unsupported params instead of erroring, per LiteLLM's own guidance.
+    litellm.drop_params = True
+
     def call_llm(messages: list, model_name: str = None, temperature: float = 0, max_tokens: int = 1024) -> str:
         """Call LLM via LiteLlm. Retries on rate limit / transient errors."""
         import litellm
