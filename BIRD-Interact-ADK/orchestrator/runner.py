@@ -95,6 +95,27 @@ def load_tasks(data_path: str, limit: int = None, databases: List[str] = None) -
         for line in f:
             if line.strip():
                 tasks.append(json.loads(line))
+
+    if settings.environment_backend != "raw":
+        # Semantic layers are read-only — Management-category (DDL/DML) tasks
+        # are structurally inapplicable, not a harness bug to route around
+        # (see docs/semantic-layer-environment-backends.md's "Task scope").
+        # Verified: a Query phase-1 task never has a Management follow-up, so
+        # filtering on phase-1 category alone is sufficient.
+        before_count = len(tasks)
+        tasks = [t for t in tasks if t.get("category") == "Query"]
+        logger.warning("Non-raw backend '%s': excluded %d Management-category tasks (%d Query tasks remain)",
+                        settings.environment_backend, before_count - len(tasks), len(tasks))
+
+        # Only domains with a real semantic model configured are eligible —
+        # run the whole suite at once, coverage grows as domains get modeled.
+        from shared.environment_backends import get_configured_domains
+        configured = get_configured_domains(settings.environment_backend)
+        before_count = len(tasks)
+        tasks = [t for t in tasks if t.get("selected_database") in configured]
+        logger.warning("Non-raw backend '%s': %d/%d tasks have a configured semantic model (domains: %s)",
+                        settings.environment_backend, len(tasks), before_count, sorted(configured))
+
     if databases:
         wanted = set(databases)
         available = {t.get("selected_database") for t in tasks}

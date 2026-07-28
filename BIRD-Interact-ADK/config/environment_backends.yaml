@@ -1,0 +1,27 @@
+# Semantic-layer environment backends for BIRD-Interact-ADK.
+#
+# "raw" (the original Postgres tools in system_agent/tools.py) needs no entry
+# here. Named backends below (selected via ENVIRONMENT_BACKEND=<name> in .env)
+# route the agent's exploration/query tools through that semantic layer's MCP
+# server instead — see system_agent/tools_atscale.py.
+#
+# `domains` maps a BIRD-Interact `selected_database` value to the semantic
+# model that answers questions about it. Only domains listed here are eligible
+# to run under this backend — see orchestrator/runner.py's Management-category
+# and domain-coverage filtering.
+
+backends:
+  atscale:
+    mcp_url_env: ATSCALE_MCP_URL
+    mcp_token_env: ATSCALE_MCP_TOKEN
+    domains:
+      # PLACEHOLDER — no real AtScale semantic model exists for any BIRD-Interact
+      # domain yet. This maps solar_panel to the existing TPC-DS retail model
+      # purely to validate the plumbing (tool calls, grading path) end-to-end.
+      # Results against real solar_panel questions will be wrong/irrelevant —
+      # that's expected. Replace with a real per-domain model before treating
+      # any score from this backend as a meaningful evaluation.
+      solar_panel:
+        catalog: atscale_catalogs
+        schema: tpcds_Databricks
+        table: tpcds_benchmark_model

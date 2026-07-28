@@ -17,3 +17,5 @@ litellm>=1.0.0
 # Utilities
 sqlglot>=23.0.0
 rich>=13.7.0
+mcp>=1.0.0
+PyYAML>=6.0

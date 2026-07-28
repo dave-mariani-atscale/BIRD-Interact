@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     # Budget / turns
     patience: int = 3
 
+    # Environment backend: "raw" (original Postgres tools) or a named backend
+    # from config/environment_backends.yaml (e.g. "atscale"), which routes
+    # exploration/query tools through that semantic layer's MCP server instead.
+    environment_backend: str = "raw"
+    atscale_mcp_url: str = ""
+    atscale_mcp_token: str = ""
+
     @property
     def data_dir(self) -> Path:
         return PROJECT_ROOT / f"bird-interact-{self.dataset}"

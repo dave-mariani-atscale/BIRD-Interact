@@ -13,9 +13,11 @@ from shared.config import settings
 from shared.db_utils import (
     _get_or_init_pool, close_pool, execute_queries,
     reset_and_restore_database, test_case_default,
-    ex_base, remove_distinct, remove_comments, remove_round,
+    ex_base, ex_base_external_pred, parse_semantic_layer_rows,
+    remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
 )
+from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
 from shared.models import (
     ExecuteSQLRequest, ExecuteSQLResponse, InitTaskRequest,
     SchemaRequest, ColumnMeaningRequest, KnowledgeRequest,
@@ -164,6 +166,19 @@ async def execute_sql_endpoint(req: ExecuteSQLRequest):
     return await asyncio.to_thread(_execute_sql_sync, task_db, req.sql)
 
 
+def _run_query_via_semantic_layer(query: str) -> str:
+    """Execute a submitted query through the active semantic-layer backend's
+    MCP run_query tool (it's not raw-Postgres-executable — different dialect).
+    Returns the raw MCP result text, or an "Error: ..." string on failure."""
+    try:
+        client = MCPClient(MCPEndpoint(url=settings.atscale_mcp_url, bearer_token=settings.atscale_mcp_token))
+        return client.call_tool("run_query", {"query": query})
+    except (MCPClientError, MCPToolError) as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"Error: {type(e).__name__}: {e}"
+
+
 def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_phase1_sql) -> SubmitSQLResponse:
     """Blocking submit logic — runs in thread pool."""
     base_db = td["selected_database"]
@@ -209,7 +224,33 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
             passed = False
             message = "Test case execution failed."
 
-            if sol_sqls:
+            if sol_sqls and settings.environment_backend != "raw":
+                # Semantic-layer submission: the submitted query is in that
+                # layer's dialect (e.g. AtScale logical SQL), not raw Postgres
+                # SQL, so it can't run via execute_queries like the raw path
+                # below. Run it through the semantic layer's own run_query MCP
+                # tool instead, and compare result ROWS (not SQL text) against
+                # gold SQL executed normally against Postgres — mirrors
+                # mcp-eval's physical-gold row-comparison scoring. Only the
+                # "Query" category is supported here; Management-category
+                # tasks are filtered out upstream (orchestrator/runner.py) for
+                # non-raw backends since a semantic layer can't perform writes.
+                pred_sql_text = pred_sqls[0] if pred_sqls else ""
+                result_text = _run_query_via_semantic_layer(pred_sql_text)
+                if result_text.startswith("Error"):
+                    message = f"[exec_err_flg] Error executing submitted query via semantic layer: {result_text}"
+                else:
+                    pred_res = parse_semantic_layer_rows(result_text)
+                    try:
+                        result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
+                        if result == 1:
+                            passed = True
+                            message = "SQL passed test case."
+                        else:
+                            message = "Your SQL is not correct."
+                    except Exception:
+                        message = "Your SQL is not correct."
+            elif sol_sqls:
                 # Execute pred SQL (also serves as executability check)
                 pred_query_result, pred_err, pred_to, _ = execute_queries(pred_sqls, task_db, conn)
                 if pred_err:

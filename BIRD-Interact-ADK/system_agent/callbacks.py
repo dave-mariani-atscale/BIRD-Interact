@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 MAX_MODEL_TURNS = 60
 
 TOOL_COSTS = {
+    # "raw" backend
     "execute_sql": 1.0,
     "get_schema": 1.0,
     "get_all_column_meanings": 1.0,
@@ -23,6 +24,15 @@ TOOL_COSTS = {
     "get_all_external_knowledge_names": 0.5,
     "get_knowledge_definition": 0.5,
     "get_all_knowledge_definitions": 1.0,
+    # semantic-layer backends (see system_agent/tools_atscale.py) — costs
+    # mirror the "raw" action they replace, per docs/semantic-layer-
+    # environment-backends.md's mapping table
+    "list_models": 1.0,
+    "explore_columns": 1.0,
+    "focus_columns": 0.5,
+    "get_sml_skills": 1.0,
+    "run_query": 1.0,
+    # backend-agnostic
     "ask_user": 2.0,
     "submit_sql": 3.0,
 }

@@ -82,6 +82,39 @@ Important strategy tips:
 - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
 """
 
+# ── a-interact instruction (semantic-layer backend, e.g. "atscale") ──
+AINTERACT_INSTRUCTION_ATSCALE = """You are a helpful semantic-layer agent that interacts with a user and a semantic model to solve the user's question.
+
+Task description:
+Your goal is to understand the user's ambiguous question involving external knowledge retrieval and generate the correct query against the semantic model to solve it.
+You can:
+1. Interact with the user to ask clarifying questions or submit your final query.
+2. Interact with the semantic layer to discover its models, dimensions, and metrics, and to run queries.
+
+The interaction ends when you submit the correct query or the budget runs out.
+Each action costs bird-coins, so you should be efficient.
+
+Available tools and costs:
+- list_models: list the semantic model's dimensions, hierarchies, and metrics. Cost: 1
+- explore_columns: fuzzy-search columns by keyword (call repeatedly with different terms as needed). Cost: 1
+- focus_columns: get full metadata (including sample/distinct values) for known column names. Cost: 0.5
+- get_sml_skills: get the semantic layer's query-construction guidance. Cost: 1
+- run_query: run a query against the semantic model. Cost: 1
+- ask_user: ask the user a clarification question. Cost: 2
+- submit_sql: submit the final query for evaluation. Cost: 3
+
+Important strategy tips:
+- Resolve the question to exact column names with list_models, explore_columns, and focus_columns before querying — don't guess a name you haven't seen.
+- Use focus_columns' sampled_values to confirm filter literals instead of guessing or running an exploratory query for that purpose.
+- Reference models as "<schema>"."<table>" (or fully qualified "atscale_catalogs"."<schema>"."<table>") exactly as returned by list_models.
+- If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
+- Ask one clarification question at a time.
+- Be efficient with your actions to conserve budget.
+- Test with run_query before submit_sql when useful.
+- If a submission fails and budget remains, debug and try again.
+- After a successful phase-1 submission, you may receive a follow-up question for phase 2.
+"""
+
 
 def build_agent(mode: str = "c-interact") -> Agent:
     """Build the system agent for the given mode.
@@ -94,16 +127,23 @@ def build_agent(mode: str = "c-interact") -> Agent:
 
     model = _build_model(settings.system_agent_model)
     if mode == "a-interact":
-        from system_agent.tools import get_ainteract_tools
         from system_agent.callbacks import (
             before_model_callback, before_tool_callback, after_tool_callback,
         )
+        if settings.environment_backend == "raw":
+            from system_agent.tools import get_ainteract_tools
+            tools = get_ainteract_tools()
+            instruction = AINTERACT_INSTRUCTION
+        else:
+            from system_agent.tools_atscale import get_ainteract_tools_atscale
+            tools = get_ainteract_tools_atscale()
+            instruction = AINTERACT_INSTRUCTION_ATSCALE
         return Agent(
             model=model,
             name="bird_interact_agent",
             description="Text-to-SQL agent for BIRD-Interact a-interact benchmark.",
-            instruction=AINTERACT_INSTRUCTION,
-            tools=get_ainteract_tools(),
+            instruction=instruction,
+            tools=tools,
             before_model_callback=before_model_callback,
             before_tool_callback=before_tool_callback,
             after_tool_callback=after_tool_callback,

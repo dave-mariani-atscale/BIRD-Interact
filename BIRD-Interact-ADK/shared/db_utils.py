@@ -268,6 +268,49 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     return 1 if set(pred_res) == set(gt_res) else 0
 
 
+def parse_semantic_layer_rows(result_text: str) -> List[tuple]:
+    """Parse a semantic-layer MCP tool's run_query output (a JSON array of row
+    objects, e.g. `[{"col": "val"}, ...]`) into row tuples comparable with
+    Postgres results. Returns [] if no JSON array line is found/parseable."""
+    for line in result_text.splitlines():
+        line = line.strip()
+        if line.startswith("["):
+            try:
+                rows = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(rows, list):
+                return [tuple(row.values()) for row in rows if isinstance(row, dict)]
+    return []
+
+
+def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) -> int:
+    """Like ex_base, but `pred_res` is already-computed rows (e.g. from a
+    semantic layer's query tool via parse_semantic_layer_rows) rather than SQL
+    to execute locally — the predicted query can't run against raw Postgres
+    when it's in a different SQL dialect (e.g. AtScale logical SQL).
+
+    Values are compared as strings on both sides: the semantic layer returns
+    JSON-serialized values (e.g. "132.60") while Postgres returns typed values
+    (Decimal, etc.) — string comparison is a coarser but safe common ground
+    until a real per-domain semantic model exists (see
+    config/environment_backends.yaml's placeholder-mapping warning).
+    """
+    if not pred_res or not sol_sqls:
+        return 0
+    gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
+    if gt_err or gt_to:
+        return 0
+    gt_res = preprocess_results(gt_res)
+    if not gt_res:
+        return 0
+    pred_norm = [tuple(str(v) for v in row) for row in pred_res]
+    gt_norm = [tuple(str(v) for v in row) for row in gt_res]
+    if conditions and conditions.get("order", False):
+        return 1 if pred_norm == gt_norm else 0
+    return 1 if set(pred_norm) == set(gt_norm) else 0
+
+
 def test_case_default(pred_sqls, sol_sqls, db_name, conn, conditions=None):
     pred_sqls = remove_round(remove_distinct(remove_comments(pred_sqls)))
     sol_sqls = remove_round(remove_distinct(remove_comments(sol_sqls)))
