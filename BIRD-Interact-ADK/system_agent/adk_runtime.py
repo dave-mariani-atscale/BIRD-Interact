@@ -65,6 +65,16 @@ class AdkRuntime:
             self.available = False
             logger.warning("ADK runtime unavailable: %s", exc)
 
+    async def reset_agents(self) -> None:
+        """Drop all cached runners/sessions so the next _get_runner(mode) call
+        rebuilds the ADK agent from scratch — picking up whatever
+        settings.environment_backend was just set to. Without this, a runner
+        built under the old backend (and its baked-in tool set) would keep
+        being reused for the rest of the process's life."""
+        async with self._lock:
+            self._runners.clear()
+            self._session_refs.clear()
+
     async def _get_runner(self, mode: str) -> tuple[Any, str]:
         if mode in self._runners:
             return self._runners[mode]

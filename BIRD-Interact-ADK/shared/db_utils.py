@@ -99,26 +99,53 @@ def _pg_env() -> tuple:
     return args, env_vars
 
 
-def _drop_and_create_db(db_name: str, template_db: str):
-    """Drop db_name (if exists) and recreate from template_db."""
-    args, env_vars = _pg_env()
-    close_pool(db_name)
+def _terminate_backends(args: list, env_vars: dict, db_name: str) -> None:
     subprocess.run(
         ["psql", *args, "-d", "postgres", "-c",
          f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"],
         check=True, env=env_vars, timeout=60,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
+
+
+def _drop_and_create_db(db_name: str, template_db: str):
+    """Drop db_name (if exists) and recreate from template_db.
+
+    CREATE DATABASE ... TEMPLATE requires zero other connections to
+    template_db, not just to db_name — a live semantic-layer connection
+    (e.g. AtScale's BIRD_solar_panel connection) can hold a session open
+    against template_db, so terminate connections to both, with a couple of
+    retries since a pooled client may reconnect within milliseconds.
+    """
+    args, env_vars = _pg_env()
+    close_pool(db_name)
+    _terminate_backends(args, env_vars, db_name)
     subprocess.run(
         ["dropdb", "--if-exists", *args, db_name],
         check=True, env=env_vars, timeout=60,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    subprocess.run(
-        ["createdb", *args, db_name, "--template", template_db],
-        check=True, env=env_vars, timeout=60,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+
+    last_exc = None
+    for attempt in range(3):
+        _terminate_backends(args, env_vars, template_db)
+        try:
+            subprocess.run(
+                ["createdb", *args, db_name, "--template", template_db],
+                check=True, env=env_vars, timeout=60,
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            return
+        except subprocess.CalledProcessError as exc:
+            last_exc = exc
+            stderr = (exc.stderr or b"").decode(errors="replace")
+            if "being accessed by other users" not in stderr:
+                raise
+            logger.warning(
+                "createdb %s --template %s: template still in use (attempt %d/3): %s",
+                db_name, template_db, attempt + 1, stderr.strip(),
+            )
+    raise last_exc
 
 
 def reset_and_restore_database(db_name: str):

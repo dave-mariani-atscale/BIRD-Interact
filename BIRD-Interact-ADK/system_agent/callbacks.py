@@ -135,6 +135,14 @@ async def after_tool_callback(
     })
     tool_context.state["tool_trajectory"] = trajectory
 
+    task_id = tool_context.state.get("task_id", "?")
+    budget_str = f"{budget_after:.1f}/{initial:.1f}" if budget_after is not None else "?"
+    logger.info(
+        "[%s] turn %d: %s(%s) -> %s  [budget %s]",
+        task_id, len(trajectory), tool_name, _preview(args, limit=200),
+        _preview(tool_response, limit=200), budget_str,
+    )
+
     # Append budget note to agent-visible response (matches reference implementation)
     if budget_after is not None and budget_after >= 0:
         budget_note = f"\n\n[SYSTEM NOTE: Remaining budget: {budget_after:.1f}/{initial:.1f}]"

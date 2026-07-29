@@ -42,7 +42,7 @@ def _get_db_name(tool_context: Optional[ToolContext]) -> str:
 
 
 def _mcp_client() -> MCPClient:
-    return MCPClient(MCPEndpoint(url=settings.atscale_mcp_url, bearer_token=settings.atscale_mcp_token))
+    return MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url, bearer_token=settings.semantic_layer_mcp_token))
 
 
 def _domain_or_error(tool_context: Optional[ToolContext]):

@@ -86,6 +86,12 @@ async def after_tool_callback(
     })
     tool_context.state["tool_trajectory"] = trajectory
 
+    task_id = tool_context.state.get("task_id", "?")
+    logger.info(
+        "[%s] turn %d: %s(%s) -> %s",
+        task_id, len(trajectory), tool_name, _preview(args, limit=200), _preview(tool_response, limit=200),
+    )
+
     if tool_name == "submit_sql":
         tool_context.state["_submitted_this_phase"] = True
 

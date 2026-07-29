@@ -125,7 +125,7 @@ def _translate_mcp_error(exc: BaseException, url: str) -> MCPClientError:
         if status in (401, 403):
             return MCPClientError(
                 f"MCP server at {url} rejected the request with HTTP {status} "
-                f"({exc.response.reason_phrase}). Check ATSCALE_MCP_TOKEN.",
+                f"({exc.response.reason_phrase}). Check SEMANTIC_LAYER_MCP_TOKEN.",
                 status_code=status,
             )
         return MCPClientError(f"MCP server at {url} returned HTTP {status} ({exc.response.reason_phrase}).", status_code=status)
