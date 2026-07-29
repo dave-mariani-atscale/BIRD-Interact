@@ -4,12 +4,14 @@ import asyncio
 import argparse
 import json
 import logging
+import sys
 import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable, Awaitable, Dict, List
 
-import sys
+import httpx
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
@@ -195,6 +197,32 @@ async def run_oracle_task(task_data: dict) -> Dict[str, Any]:
             pass
 
 
+def _set_service_backend(backend: str) -> None:
+    """The system_agent and db_environment services are separate long-lived
+    processes (started via scripts/start_services.sh) that read
+    settings.environment_backend from their own process memory, not this
+    --backend flag. Push it to both over HTTP so no restart is needed —
+    system_agent additionally rebuilds its cached ADK agent so the new
+    backend's tool set actually takes effect."""
+    checks = [
+        ("system_agent", f"http://localhost:{settings.system_agent_port}/set_backend"),
+        ("db_environment", f"http://localhost:{settings.db_env_port}/set_backend"),
+    ]
+    for name, url in checks:
+        try:
+            resp = httpx.post(url, json={"backend": backend}, timeout=10.0, trust_env=False)
+            resp.raise_for_status()
+            confirmed = resp.json().get("environment_backend")
+        except Exception as exc:
+            raise SystemExit(
+                f"Could not set backend {backend!r} on {name} ({url}): {exc}. Is it running? "
+                f"(scripts/start_services.sh)"
+            )
+        if confirmed != backend:
+            raise SystemExit(f"{name} confirmed environment_backend={confirmed!r}, expected {backend!r}.")
+        logger.info("%s: environment_backend set to %r", name, confirmed)
+
+
 def main():
     parser = argparse.ArgumentParser(description="BIRD-Interact parallel evaluation")
     parser.add_argument("--mode", choices=["a-interact", "c-interact", "oracle"], default="a-interact")
@@ -204,7 +232,14 @@ def main():
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--databases", type=str, default=None,
                          help="Comma-separated selected_database values to run (e.g. 'solar_panel,hulushows'). Default: all.")
+    parser.add_argument("--backend", type=str, default="raw",
+                         help="Environment backend: 'raw' (original Postgres tools, default) or a named "
+                              "backend from config/environment_backends.yaml (e.g. 'atscale'). Pushed to "
+                              "the already-running system_agent/db_environment services via /set_backend "
+                              "at startup — no service restart needed.")
     args = parser.parse_args()
+
+    settings.environment_backend = args.backend
 
     output = args.output or f"results/eval_{args.mode.replace('-', '_')}.json"
 
@@ -214,6 +249,8 @@ def main():
         from orchestrator.ainteract import run_single_task
     else:
         from orchestrator.cinteract import run_single_task
+
+    _set_service_backend(args.backend)
 
     databases = [d.strip() for d in args.databases.split(",") if d.strip()] if args.databases else None
     tasks = load_tasks(args.data, args.limit, databases)

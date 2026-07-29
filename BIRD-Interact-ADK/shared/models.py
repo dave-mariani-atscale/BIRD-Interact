@@ -9,6 +9,15 @@ class InitTaskRequest(BaseModel):
     task_data: Dict[str, Any]
 
 
+class SetBackendRequest(BaseModel):
+    backend: str
+
+
+class SetBackendResponse(BaseModel):
+    status: str
+    environment_backend: str
+
+
 class ExecuteSQLRequest(BaseModel):
     sql: str
     task_id: str

@@ -19,8 +19,13 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from shared.config import settings
+from shared.models import SetBackendRequest, SetBackendResponse
 from system_agent.adk_runtime import AdkRuntime
 
+# Runs as its own uvicorn process (scripts/start_services.sh) — without this,
+# per-tool-call progress logging in callbacks.py/callbacks_cinteract.py never
+# reaches a handler and is silently dropped (root logger defaults to WARNING).
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 app = FastAPI(title="BIRD-Interact System Agent", version="1.0.0")
 runtime = AdkRuntime()
@@ -68,12 +73,25 @@ async def run_session(req: SessionRunRequest):
     )
 
 
+@app.post("/set_backend", response_model=SetBackendResponse)
+async def set_backend(req: SetBackendRequest):
+    """Switch the environment backend for this already-running process — no
+    restart needed. Rebuilds the cached ADK agent(s) so the new backend's tool
+    set actually takes effect on the next /init_session. Called by
+    orchestrator.runner at the start of each run."""
+    settings.environment_backend = req.backend
+    await runtime.reset_agents()
+    logger.info("system_agent: environment_backend set to %r", req.backend)
+    return SetBackendResponse(status="ok", environment_backend=settings.environment_backend)
+
+
 @app.get("/health")
 async def health():
     return {
         "status": "healthy",
         "service": "system_agent",
         "model": settings.system_agent_model,
+        "environment_backend": settings.environment_backend,
         "adk_available": runtime.available,
         "adk_error": runtime.error,
     }

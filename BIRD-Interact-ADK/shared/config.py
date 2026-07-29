@@ -57,9 +57,15 @@ class Settings(BaseSettings):
     # Environment backend: "raw" (original Postgres tools) or a named backend
     # from config/environment_backends.yaml (e.g. "atscale"), which routes
     # exploration/query tools through that semantic layer's MCP server instead.
+    # Set via the --backend CLI flag (scripts/start_services.sh,
+    # orchestrator.runner), NOT via .env — this field's default ("raw") only
+    # applies if a process is started without --backend. The MCP URL/token are
+    # shared across backends (AtScale, Snowflake Semantic Views, Databricks UC
+    # Metric Views, ...) — only one backend is active at a time, so one
+    # URL/token pair covers whichever backend's MCP server that is.
     environment_backend: str = "raw"
-    atscale_mcp_url: str = ""
-    atscale_mcp_token: str = ""
+    semantic_layer_mcp_url: str = ""
+    semantic_layer_mcp_token: str = ""
 
     @property
     def data_dir(self) -> Path:

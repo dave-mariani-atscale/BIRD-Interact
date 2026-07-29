@@ -22,6 +22,7 @@ from shared.models import (
     ExecuteSQLRequest, ExecuteSQLResponse, InitTaskRequest,
     SchemaRequest, ColumnMeaningRequest, KnowledgeRequest,
     SubmitSQLRequest, SubmitSQLResponse,
+    SetBackendRequest, SetBackendResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ def _run_query_via_semantic_layer(query: str) -> str:
     MCP run_query tool (it's not raw-Postgres-executable — different dialect).
     Returns the raw MCP result text, or an "Error: ..." string on failure."""
     try:
-        client = MCPClient(MCPEndpoint(url=settings.atscale_mcp_url, bearer_token=settings.atscale_mcp_token))
+        client = MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url, bearer_token=settings.semantic_layer_mcp_token))
         return client.call_tool("run_query", {"query": query})
     except (MCPClientError, MCPToolError) as e:
         return f"Error: {e}"
@@ -451,9 +452,18 @@ async def cleanup_task(req: SchemaRequest):
     return {"status": "ok", "task_id": req.task_id}
 
 
+@app.post("/set_backend", response_model=SetBackendResponse)
+async def set_backend(req: SetBackendRequest):
+    """Switch the environment backend for this already-running process — no
+    restart needed. Called by orchestrator.runner at the start of each run."""
+    settings.environment_backend = req.backend
+    logger.info("db_environment: environment_backend set to %r", req.backend)
+    return SetBackendResponse(status="ok", environment_backend=settings.environment_backend)
+
+
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "db_environment"}
+    return {"status": "healthy", "service": "db_environment", "environment_backend": settings.environment_backend}
 
 
 if __name__ == "__main__":

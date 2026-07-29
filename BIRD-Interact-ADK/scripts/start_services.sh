@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Starts the three microservices once; they stay up across multiple eval runs.
+# The environment backend ("raw", "atscale", ...) is NOT set here — it's a
+# --backend flag on `orchestrator.runner`, pushed to these already-running
+# services via their /set_backend endpoint at the start of each run. No
+# restart needed to switch backends between runs.
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
