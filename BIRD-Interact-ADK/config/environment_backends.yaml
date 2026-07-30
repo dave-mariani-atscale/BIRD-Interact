@@ -92,3 +92,7 @@ backends:
         catalog: atscale_catalogs
         schema: solar_panel
         table: Solar Panel
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_etf_catalog
+        table: bird_etf
