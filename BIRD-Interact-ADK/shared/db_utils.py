@@ -286,8 +286,9 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if any([pred_err, pred_to, gt_err, gt_to]):
         return 0
-    pred_res = preprocess_results(pred_res)
-    gt_res = preprocess_results(gt_res)
+    decimal_places = (conditions or {}).get("decimal", 2)
+    pred_res = preprocess_results(pred_res, decimal_places)
+    gt_res = preprocess_results(gt_res, decimal_places)
     if not pred_res or not gt_res:
         return 0
     if conditions and conditions.get("order", False):
@@ -322,13 +323,20 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     (Decimal, etc.) — string comparison is a coarser but safe common ground
     until a real per-domain semantic model exists (see
     config/environment_backends.yaml's placeholder-mapping warning).
+
+    Both sides must be rounded to the same precision before that string
+    comparison — a raw semantic-layer float (e.g. 0.013369130432692595) will
+    otherwise almost never string-match a gold value rounded via
+    preprocess_results, even when the underlying answer is correct.
     """
     if not pred_res or not sol_sqls:
         return 0
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
-    gt_res = preprocess_results(gt_res)
+    decimal_places = (conditions or {}).get("decimal", 2)
+    pred_res = preprocess_results(pred_res, decimal_places)
+    gt_res = preprocess_results(gt_res, decimal_places)
     if not gt_res:
         return 0
     pred_norm = [tuple(str(v) for v in row) for row in pred_res]

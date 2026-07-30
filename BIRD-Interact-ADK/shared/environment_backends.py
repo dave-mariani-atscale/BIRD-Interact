@@ -5,9 +5,9 @@ returns the backend's dict (mcp_url_env/mcp_token_env/domains); the caller
 resolves the actual URL/token via shared.config.settings.
 """
 
-import os
+import importlib
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict, List
 
 import yaml
 
@@ -43,3 +43,48 @@ def get_configured_domains(backend_name: str) -> set:
     for this backend — used to filter which tasks are eligible to run."""
     backend = get_backend_config(backend_name)
     return set(backend.get("domains", {}).keys())
+
+
+def get_backend_instruction(backend_name: str) -> str:
+    """The full a-interact system prompt for this backend (tool list, costs,
+    dialect quirks), authored in config rather than hardcoded in agent.py so a
+    new semantic-layer backend only needs a config entry, not a Python change.
+    system_agent.agent.build_agent() appends the shared RESULT_SHAPE_TIP."""
+    backend = get_backend_config(backend_name)
+    instruction = backend.get("instruction")
+    if not instruction:
+        raise ValueError(
+            f"Backend '{backend_name}' in {_CONFIG_PATH} has no 'instruction' - "
+            "every non-raw backend must define its a-interact system prompt in config."
+        )
+    return instruction
+
+
+def get_backend_tool_costs(backend_name: str) -> Dict[str, float]:
+    """This backend's tool-name -> bird-coin cost map, merged over the
+    backend-agnostic base costs (ask_user, submit_sql) that live in
+    system_agent/callbacks.py. Empty dict if the backend defines none."""
+    backend = get_backend_config(backend_name)
+    return backend.get("tool_costs", {})
+
+
+def get_backend_tools_factory(backend_name: str) -> Callable[[], List[Any]]:
+    """Resolve this backend's ADK tool-list factory from its `tools_module` /
+    `tools_factory` config (e.g. system_agent.tools_atscale.get_ainteract_tools_atscale)
+    via dynamic import - system_agent.agent.build_agent() never hardcodes which
+    backend-specific tools module to use, so adding a new semantic-layer
+    backend only means a new tools_<name>.py plus a config entry pointing at
+    it, not a change to agent.py."""
+    backend = get_backend_config(backend_name)
+    module_name = backend.get("tools_module")
+    factory_name = backend.get("tools_factory")
+    if not module_name or not factory_name:
+        raise ValueError(
+            f"Backend '{backend_name}' in {_CONFIG_PATH} is missing 'tools_module'/'tools_factory' - "
+            "every non-raw backend must declare where its ADK tool-list factory lives."
+        )
+    module = importlib.import_module(module_name)
+    factory = getattr(module, factory_name, None)
+    if factory is None:
+        raise ValueError(f"{module_name} has no attribute '{factory_name}' (backend '{backend_name}')")
+    return factory

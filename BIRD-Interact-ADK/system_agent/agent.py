@@ -46,6 +46,12 @@ Strategy:
 - After a successful Phase 1, you may receive a follow-up question for Phase 2.
 """
 
+# Shared across both a-interact instructions below so they can never drift out
+# of sync — the grading function (shared/db_utils.py ex_base/ex_base_external_pred)
+# compares result ROWS as exact tuples against a reference answer for BOTH
+# backends, so this applies identically regardless of which one is active.
+RESULT_SHAPE_TIP = "- Match the exact output shape the grading expects: return ONLY the column(s) the question actually asks for, in the order asked, with no extra descriptive or ID columns (e.g. don't add a plant name or snapshot ID column unless the question asks to see it). Your submission is graded by comparing result rows to a reference answer as exact tuples, so an unrequested extra column causes a failing mismatch even when the requested value itself is correct."
+
 # ── a-interact instruction ──
 AINTERACT_INSTRUCTION = """You are a helpful PostgreSQL agent that interacts with a user and a database to solve the user's question.
 
@@ -80,40 +86,7 @@ Important strategy tips:
 - Test SQL with execute_sql before submit_sql when useful.
 - If a submission fails and budget remains, debug and try again.
 - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
-"""
-
-# ── a-interact instruction (semantic-layer backend, e.g. "atscale") ──
-AINTERACT_INSTRUCTION_ATSCALE = """You are a helpful semantic-layer agent that interacts with a user and a semantic model to solve the user's question.
-
-Task description:
-Your goal is to understand the user's ambiguous question involving external knowledge retrieval and generate the correct query against the semantic model to solve it.
-You can:
-1. Interact with the user to ask clarifying questions or submit your final query.
-2. Interact with the semantic layer to discover its models, dimensions, and metrics, and to run queries.
-
-The interaction ends when you submit the correct query or the budget runs out.
-Each action costs bird-coins, so you should be efficient.
-
-Available tools and costs:
-- list_models: list the semantic model's dimensions, hierarchies, and metrics. Cost: 1
-- explore_columns: fuzzy-search columns by keyword (call repeatedly with different terms as needed). Cost: 1
-- focus_columns: get full metadata (including sample/distinct values) for known column names. Cost: 0.5
-- get_sml_skills: get the semantic layer's query-construction guidance. Cost: 1
-- run_query: run a query against the semantic model. Cost: 1
-- ask_user: ask the user a clarification question. Cost: 2
-- submit_sql: submit the final query for evaluation. Cost: 3
-
-Important strategy tips:
-- Resolve the question to exact column names with list_models, explore_columns, and focus_columns before querying — don't guess a name you haven't seen.
-- Use focus_columns' sampled_values to confirm filter literals instead of guessing or running an exploratory query for that purpose.
-- Reference models as "<schema>"."<table>" (or fully qualified "atscale_catalogs"."<schema>"."<table>") exactly as returned by list_models.
-- If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
-- Ask one clarification question at a time.
-- Be efficient with your actions to conserve budget.
-- Test with run_query before submit_sql when useful.
-- If a submission fails and budget remains, debug and try again.
-- After a successful phase-1 submission, you may receive a follow-up question for phase 2.
-"""
+""" + RESULT_SHAPE_TIP + "\n"
 
 
 def build_agent(mode: str = "c-interact") -> Agent:
@@ -135,9 +108,9 @@ def build_agent(mode: str = "c-interact") -> Agent:
             tools = get_ainteract_tools()
             instruction = AINTERACT_INSTRUCTION
         else:
-            from system_agent.tools_atscale import get_ainteract_tools_atscale
-            tools = get_ainteract_tools_atscale()
-            instruction = AINTERACT_INSTRUCTION_ATSCALE
+            from shared.environment_backends import get_backend_instruction, get_backend_tools_factory
+            tools = get_backend_tools_factory(settings.environment_backend)()
+            instruction = get_backend_instruction(settings.environment_backend) + RESULT_SHAPE_TIP + "\n"
         return Agent(
             model=model,
             name="bird_interact_agent",

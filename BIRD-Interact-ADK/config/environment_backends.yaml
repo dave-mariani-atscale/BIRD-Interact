@@ -1,26 +1,93 @@
 # Semantic-layer environment backends for BIRD-Interact-ADK.
 #
 # "raw" (the original Postgres tools in system_agent/tools.py) needs no entry
-# here. Named backends below (selected via ENVIRONMENT_BACKEND=<name> in .env)
-# route the agent's exploration/query tools through that semantic layer's MCP
-# server instead — see system_agent/tools_atscale.py.
+# here. Named backends below (selected via --backend <name> on
+# scripts/start_services.sh / orchestrator.runner, pushed to the running
+# services via /set_backend) route the agent's exploration/query tools
+# through that semantic layer's MCP server instead — see
+# system_agent/tools_atscale.py.
+#
+# `tools_module` / `tools_factory` name the Python module and factory
+# function that returns this backend's ADK tool list (dynamically imported by
+# system_agent.agent.build_agent() via shared.environment_backends
+# .get_backend_tools_factory) - a new semantic-layer backend (Snowflake
+# Semantic Views, Databricks UC Metric Views, ...) needs its own small
+# tools_<name>.py plus a config block pointing at it, but never a change to
+# agent.py or callbacks.py.
+#
+# NOTE: ADK 2.5.0's built-in McpToolset (auto-discovers an MCP server's own
+# tools, no hand-written wrapper needed at all) was evaluated as a fully
+# config-only alternative to tools_module/tools_factory, but is currently
+# broken against the installed mcp==2.0.0 SDK - its mcp_toolset.py imports
+# `mcp.shared.session.ProgressFnT`, a module mcp 2.0.0's restructuring
+# removed. Both packages are at latest; this is an upstream incompatibility,
+# not something fixable here. Revisit once google-adk or mcp ships a fix.
+#
+# `tool_costs` (bird-coins) are looked up by system_agent.callbacks._tool_cost
+# by tool name; ask_user/submit_sql are backend-agnostic and stay defined once
+# in callbacks.py.
 #
 # `domains` maps a BIRD-Interact `selected_database` value to the semantic
 # model that answers questions about it. Only domains listed here are eligible
 # to run under this backend — see orchestrator/runner.py's Management-category
 # and domain-coverage filtering.
+#
+# `instruction` is the full a-interact system prompt used for this backend
+# (system_agent/agent.py's build_agent() loads it via
+# shared.environment_backends.get_backend_instruction and appends the shared
+# RESULT_SHAPE_TIP). Backend-specific SQL-dialect quirks (unsupported syntax,
+# tool names/costs) belong here, in config, not hardcoded in agent.py.
 
 backends:
   atscale:
     mcp_url_env: SEMANTIC_LAYER_MCP_URL
     mcp_token_env: SEMANTIC_LAYER_MCP_TOKEN
+    tools_module: system_agent.tools_atscale
+    tools_factory: get_ainteract_tools_atscale
+    tool_costs:
+      list_models: 1.0
+      explore_columns: 1.0
+      focus_columns: 0.5
+      get_sml_skills: 1.0
+      run_query: 1.0
+    instruction: |
+      You are a helpful semantic-layer agent that interacts with a user and a semantic model to solve the user's question.
+
+      Task description:
+      Your goal is to understand the user's ambiguous question involving external knowledge retrieval and generate the correct query against the semantic model to solve it.
+      You can:
+      1. Interact with the user to ask clarifying questions or submit your final query.
+      2. Interact with the semantic layer to discover its models, dimensions, and metrics, and to run queries.
+
+      The interaction ends when you submit the correct query or the budget runs out.
+      Each action costs bird-coins, so you should be efficient.
+
+      Available tools and costs:
+      - list_models: list the semantic model's dimensions, hierarchies, and metrics. Cost: 1
+      - explore_columns: fuzzy-search columns by keyword (call repeatedly with different terms as needed). Cost: 1
+      - focus_columns: get full metadata (including sample/distinct values) for known column names. Cost: 0.5
+      - get_sml_skills: get the semantic layer's query-construction guidance. Cost: 1
+      - run_query: run a query against the semantic model. Cost: 1
+      - ask_user: ask the user a clarification question. Cost: 2
+      - submit_sql: submit the final query for evaluation. Cost: 3
+
+      Important strategy tips:
+      - Resolve the question to exact column names with list_models, explore_columns, and focus_columns before querying — don't guess a name you haven't seen.
+      - Use focus_columns' sampled_values to confirm filter literals instead of guessing or running an exploratory query for that purpose.
+      - Reference models as "<schema>"."<table>" (or fully qualified "atscale_catalogs"."<schema>"."<table>") exactly as returned by list_models.
+      - This SQL dialect does NOT support CTEs (WITH ... AS (...)) — rewrite multi-step logic as a derived table instead: SELECT ... FROM (SELECT ... FROM ...) alias WHERE/GROUP BY ...
+      - COUNT(*) is rejected by this engine — use COUNT(<column>) instead (e.g. COUNT("Plant Record") or COUNT(DISTINCT "Plants Sitelabel") at the correct grain, not COUNT(*)).
+      - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
+      - Ask one clarification question at a time.
+      - Be efficient with your actions to conserve budget.
+      - Test with run_query before submit_sql when useful.
+      - If a submission fails and budget remains, debug and try again.
+      - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
     domains:
-      # PLACEHOLDER — no real AtScale semantic model exists for any BIRD-Interact
-      # domain yet. This maps solar_panel to the existing TPC-DS retail model
-      # purely to validate the plumbing (tool calls, grading path) end-to-end.
-      # Results against real solar_panel questions will be wrong/irrelevant —
-      # that's expected. Replace with a real per-domain model before treating
-      # any score from this backend as a meaningful evaluation.
+      # solar_panel is the only domain with a real AtScale semantic model so
+      # far (bird_models repo, branch solar_panel-model). Add further domains
+      # here only once a real per-domain model has been built and deployed —
+      # do not point a domain at an unrelated model just to test plumbing.
       solar_panel:
         catalog: atscale_catalogs
         schema: solar_panel
