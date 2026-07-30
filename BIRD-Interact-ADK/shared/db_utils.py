@@ -181,6 +181,58 @@ def process_decimals_recursive(item, decimal_places: int):
     return item
 
 
+def resolve_decimal_places(conditions) -> int:
+    """Rounding precision for a comparison, from the task's `conditions.decimal`.
+
+    The dataset uses -1 for "this task states no precision requirement", NOT
+    "round to the nearest 10" — which is what passing it through to
+    round()/Decimal.scaleb() literally does. Falls back to 2, the precision this
+    harness uses when a task is silent.
+
+    Honoring `decimal` at all is an ADK choice: upstream BIRD-Interact always
+    preprocesses at 2, so scores for tasks declaring `decimal >= 0 and != 2` are
+    not directly comparable to published numbers.
+    """
+    dp = (conditions or {}).get("decimal")
+    return dp if isinstance(dp, int) and dp >= 0 else 2
+
+
+def canonical_cell(value) -> str:
+    """Render a cell for cross-source string comparison.
+
+    Postgres and a semantic layer spell the same number differently — 186709472
+    vs 186709472.0, Decimal('6.90') vs 6.9 — so str() alone reports equal values
+    as unequal. Numerics collapse to one fixed-point form.
+
+    Only reached via _compare_rows' `cell` hook, and only from the cross-source
+    path: on the raw path Python's own numeric equality already ignores
+    representation, and collapsing to strings there would newly equate str '100'
+    with int 100.
+    """
+    if isinstance(value, bool):
+        return str(value)  # bool is an int subclass — keep it out of the numeric branch
+    if isinstance(value, (int, float, Decimal)):
+        # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
+        return format(Decimal(str(value)).normalize(), "f")
+    return str(value)
+
+
+def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
+    """Score two already-preprocessed row sets — 1 if they match, else 0.
+
+    `cell` renders each value before comparing; None keeps the typed values.
+    That argument is the only difference between the raw and semantic-layer
+    comparisons, so it stays one visible knob rather than two copies of this
+    tail that drift.
+    """
+    if cell is not None:
+        pred_res = [tuple(cell(v) for v in row) for row in pred_res]
+        gt_res = [tuple(cell(v) for v in row) for row in gt_res]
+    if conditions and conditions.get("order", False):
+        return 1 if pred_res == gt_res else 0
+    return 1 if set(pred_res) == set(gt_res) else 0
+
+
 def preprocess_results(results, decimal_places: int = 2):
     if results is None:
         return []
@@ -259,14 +311,12 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if any([pred_err, pred_to, gt_err, gt_to]):
         return 0
-    decimal_places = (conditions or {}).get("decimal", 2)
+    decimal_places = resolve_decimal_places(conditions)
     pred_res = preprocess_results(pred_res, decimal_places)
     gt_res = preprocess_results(gt_res, decimal_places)
     if not pred_res or not gt_res:
         return 0
-    if conditions and conditions.get("order", False):
-        return 1 if pred_res == gt_res else 0
-    return 1 if set(pred_res) == set(gt_res) else 0
+    return _compare_rows(pred_res, gt_res, conditions)
 
 
 def parse_semantic_layer_rows(result_text: str) -> List[tuple]:
@@ -300,23 +350,20 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     Both sides must be rounded to the same precision before that string
     comparison — a raw semantic-layer float (e.g. 0.013369130432692595) will
     otherwise almost never string-match a gold value rounded via
-    preprocess_results, even when the underlying answer is correct.
+    preprocess_results, even when the underlying answer is correct. Equal
+    precision is necessary but not sufficient, hence canonical_cell.
     """
     if not pred_res or not sol_sqls:
         return 0
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
-    decimal_places = (conditions or {}).get("decimal", 2)
+    decimal_places = resolve_decimal_places(conditions)
     pred_res = preprocess_results(pred_res, decimal_places)
     gt_res = preprocess_results(gt_res, decimal_places)
     if not gt_res:
         return 0
-    pred_norm = [tuple(str(v) for v in row) for row in pred_res]
-    gt_norm = [tuple(str(v) for v in row) for row in gt_res]
-    if conditions and conditions.get("order", False):
-        return 1 if pred_norm == gt_norm else 0
-    return 1 if set(pred_norm) == set(gt_norm) else 0
+    return _compare_rows(pred_res, gt_res, conditions, cell=canonical_cell)
 
 
 def test_case_default(pred_sqls, sol_sqls, db_name, conn, conditions=None):
