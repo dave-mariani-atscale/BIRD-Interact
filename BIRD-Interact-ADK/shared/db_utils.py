@@ -99,53 +99,26 @@ def _pg_env() -> tuple:
     return args, env_vars
 
 
-def _terminate_backends(args: list, env_vars: dict, db_name: str) -> None:
+def _drop_and_create_db(db_name: str, template_db: str):
+    """Drop db_name (if exists) and recreate from template_db."""
+    args, env_vars = _pg_env()
+    close_pool(db_name)
     subprocess.run(
         ["psql", *args, "-d", "postgres", "-c",
          f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"],
         check=True, env=env_vars, timeout=60,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-
-
-def _drop_and_create_db(db_name: str, template_db: str):
-    """Drop db_name (if exists) and recreate from template_db.
-
-    CREATE DATABASE ... TEMPLATE requires zero other connections to
-    template_db, not just to db_name — a live semantic-layer connection
-    (e.g. AtScale's BIRD_solar_panel connection) can hold a session open
-    against template_db, so terminate connections to both, with a couple of
-    retries since a pooled client may reconnect within milliseconds.
-    """
-    args, env_vars = _pg_env()
-    close_pool(db_name)
-    _terminate_backends(args, env_vars, db_name)
     subprocess.run(
         ["dropdb", "--if-exists", *args, db_name],
         check=True, env=env_vars, timeout=60,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-
-    last_exc = None
-    for attempt in range(3):
-        _terminate_backends(args, env_vars, template_db)
-        try:
-            subprocess.run(
-                ["createdb", *args, db_name, "--template", template_db],
-                check=True, env=env_vars, timeout=60,
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-            )
-            return
-        except subprocess.CalledProcessError as exc:
-            last_exc = exc
-            stderr = (exc.stderr or b"").decode(errors="replace")
-            if "being accessed by other users" not in stderr:
-                raise
-            logger.warning(
-                "createdb %s --template %s: template still in use (attempt %d/3): %s",
-                db_name, template_db, attempt + 1, stderr.strip(),
-            )
-    raise last_exc
+    subprocess.run(
+        ["createdb", *args, db_name, "--template", template_db],
+        check=True, env=env_vars, timeout=60,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
 
 
 def reset_and_restore_database(db_name: str):
@@ -286,8 +259,9 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if any([pred_err, pred_to, gt_err, gt_to]):
         return 0
-    pred_res = preprocess_results(pred_res)
-    gt_res = preprocess_results(gt_res)
+    decimal_places = (conditions or {}).get("decimal", 2)
+    pred_res = preprocess_results(pred_res, decimal_places)
+    gt_res = preprocess_results(gt_res, decimal_places)
     if not pred_res or not gt_res:
         return 0
     if conditions and conditions.get("order", False):
@@ -322,13 +296,20 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     (Decimal, etc.) — string comparison is a coarser but safe common ground
     until a real per-domain semantic model exists (see
     config/environment_backends.yaml's placeholder-mapping warning).
+
+    Both sides must be rounded to the same precision before that string
+    comparison — a raw semantic-layer float (e.g. 0.013369130432692595) will
+    otherwise almost never string-match a gold value rounded via
+    preprocess_results, even when the underlying answer is correct.
     """
     if not pred_res or not sol_sqls:
         return 0
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
-    gt_res = preprocess_results(gt_res)
+    decimal_places = (conditions or {}).get("decimal", 2)
+    pred_res = preprocess_results(pred_res, decimal_places)
+    gt_res = preprocess_results(gt_res, decimal_places)
     if not gt_res:
         return 0
     pred_norm = [tuple(str(v) for v in row) for row in pred_res]

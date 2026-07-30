@@ -15,8 +15,12 @@ logger = logging.getLogger(__name__)
 
 MAX_MODEL_TURNS = 60
 
+# "raw" backend tools + the two backend-agnostic actions every backend
+# shares. Any non-raw backend's own tool costs live in that backend's
+# `tool_costs` entry in config/environment_backends.yaml (see
+# shared.environment_backends.get_backend_tool_costs) - not here, so a new
+# semantic-layer backend never requires editing this file.
 TOOL_COSTS = {
-    # "raw" backend
     "execute_sql": 1.0,
     "get_schema": 1.0,
     "get_all_column_meanings": 1.0,
@@ -24,18 +28,23 @@ TOOL_COSTS = {
     "get_all_external_knowledge_names": 0.5,
     "get_knowledge_definition": 0.5,
     "get_all_knowledge_definitions": 1.0,
-    # semantic-layer backends (see system_agent/tools_atscale.py) — costs
-    # mirror the "raw" action they replace, per docs/semantic-layer-
-    # environment-backends.md's mapping table
-    "list_models": 1.0,
-    "explore_columns": 1.0,
-    "focus_columns": 0.5,
-    "get_sml_skills": 1.0,
-    "run_query": 1.0,
     # backend-agnostic
     "ask_user": 2.0,
     "submit_sql": 3.0,
 }
+
+
+def _tool_cost(tool_name: str):
+    """Look up a tool's bird-coin cost: the backend-agnostic/raw table above,
+    falling back to the ACTIVE backend's own tool_costs from config. Resolved
+    per-call (not cached) since the backend can change at runtime via
+    /set_backend."""
+    if tool_name in TOOL_COSTS:
+        return TOOL_COSTS[tool_name]
+    if settings.environment_backend == "raw":
+        return None
+    from shared.environment_backends import get_backend_tool_costs
+    return get_backend_tool_costs(settings.environment_backend).get(tool_name)
 
 
 def _preview(value: Any, limit: int = 2000) -> Any:
@@ -88,7 +97,7 @@ async def before_tool_callback(
 ) -> dict | None:
     """Deduct budget. Free submit exit when exhausted."""
     tool_name = tool.name if hasattr(tool, "name") else str(tool)
-    cost = TOOL_COSTS.get(tool_name)
+    cost = _tool_cost(tool_name)
     if cost is None:
         return None
 
@@ -118,7 +127,7 @@ async def after_tool_callback(
 ) -> dict | None:
     """Record tool event in trajectory and append budget note to response."""
     tool_name = tool.name if hasattr(tool, "name") else str(tool)
-    cost = TOOL_COSTS.get(tool_name, 0)
+    cost = _tool_cost(tool_name) or 0
     budget_before = tool_context.state.get("_budget_before")
     budget_after = tool_context.state.get("budget_remaining")
     initial = tool_context.state.get("initial_budget", 0)
