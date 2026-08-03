@@ -50,7 +50,10 @@ Strategy:
 # of sync — the grading function (shared/db_utils.py ex_base/ex_base_external_pred)
 # compares result ROWS as exact tuples against a reference answer for BOTH
 # backends, so this applies identically regardless of which one is active.
-RESULT_SHAPE_TIP = "- Match the exact output shape the grading expects: return ONLY the column(s) the question actually asks for, in the order asked, with no extra descriptive or ID columns (e.g. don't add a plant name or snapshot ID column unless the question asks to see it). Your submission is graded by comparing result rows to a reference answer as exact tuples, so an unrequested extra column causes a failing mismatch even when the requested value itself is correct."
+RESULT_SHAPE_TIP = (
+    "- Match the exact output shape the grading expects: return ONLY the column(s) the question actually asks for, in the order asked, with no extra descriptive or ID columns (e.g. don't add a plant name or snapshot ID column unless the question asks to see it). Your submission is graded by comparing result rows to a reference answer as exact tuples, so an unrequested extra column causes a failing mismatch even when the requested value itself is correct.\n"
+    "- Row ORDER is part of that comparison for many questions. Whenever the question implies a ranking — 'top', 'best/worst', 'highest/lowest', 'most/least' — always add an explicit ORDER BY on the measure being ranked, even if the question does not say 'sorted by'. When no ranking is implied, order is ignored, so a sensible ORDER BY never costs you anything and its absence can fail an otherwise correct answer."
+)
 
 # ── a-interact instruction ──
 AINTERACT_INSTRUCTION = """You are a helpful PostgreSQL agent that interacts with a user and a database to solve the user's question.
