@@ -217,6 +217,53 @@ def canonical_cell(value) -> str:
     return str(value)
 
 
+def _monotonic_dirs(rows) -> List[set]:
+    """Per column, which of {"asc", "desc"} that column's values are consistent
+    with across `rows` (both, for an all-equal column; neither, when the values
+    don't compare — mixed types or NULLs).
+
+    Runs on TYPED values, never on canonical_cell output: as strings '10' sorts
+    before '9', which would invert numeric orderings.
+    """
+    dirs = []
+    for j in range(len(rows[0]) if rows else 0):
+        col = [r[j] for r in rows]
+        asc = desc = True
+        try:
+            for a, b in zip(col, col[1:]):
+                if not a <= b: asc = False
+                if not a >= b: desc = False
+                if not (asc or desc): break
+        except TypeError:
+            asc = desc = False
+        dirs.append({d for d, ok in (("asc", asc), ("desc", desc)) if ok})
+    return dirs
+
+
+def _order_compatible(pred_res, gt_res) -> bool:
+    """True when pred's row order is consistent with every ordering gold's own
+    rows exhibit — i.e. the two differ only by permuting rows that TIE on gold's
+    sort key.
+
+    Gold's ORDER BY is not available here, so it's inferred: any column that is
+    monotonic across all of gold's rows is treated as a candidate sort key, and
+    pred must be monotonic the same way in each. An `ORDER BY x DESC` with ties
+    leaves the tied block's order up to the engine, so Postgres and a semantic
+    layer legitimately disagree there (verified on exchange_traded_funds_3,
+    where two funds tie at 4.68 and a fully correct answer scored 0).
+
+    Deliberately conservative: when no column of gold is monotonic the sort key
+    wasn't projected, nothing can be inferred, and this returns False so the
+    caller keeps the strict identity comparison.
+    """
+    gold_dirs = _monotonic_dirs(gt_res)
+    keys = [j for j, d in enumerate(gold_dirs) if d]
+    if not keys:
+        return False
+    pred_dirs = _monotonic_dirs(pred_res)
+    return all(gold_dirs[j] <= pred_dirs[j] for j in keys)
+
+
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     """Score two already-preprocessed row sets — 1 if they match, else 0.
 
@@ -225,12 +272,18 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     comparisons, so it stays one visible knob rather than two copies of this
     tail that drift.
     """
+    pred_cells, gt_cells = pred_res, gt_res
     if cell is not None:
-        pred_res = [tuple(cell(v) for v in row) for row in pred_res]
-        gt_res = [tuple(cell(v) for v in row) for row in gt_res]
+        pred_cells = [tuple(cell(v) for v in row) for row in pred_res]
+        gt_cells = [tuple(cell(v) for v in row) for row in gt_res]
     if conditions and conditions.get("order", False):
-        return 1 if pred_res == gt_res else 0
-    return 1 if set(pred_res) == set(gt_res) else 0
+        if pred_cells == gt_cells:
+            return 1
+        # Same rows in a different order: only a tie permutation is forgiven.
+        if sorted(pred_cells) != sorted(gt_cells):
+            return 0
+        return 1 if _order_compatible(pred_res, gt_res) else 0
+    return 1 if set(pred_cells) == set(gt_cells) else 0
 
 
 def preprocess_results(results, decimal_places: int = 2):
