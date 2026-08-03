@@ -31,6 +31,9 @@ bird-interact-full/
 shared/_local_provider.py
 shared/_legacy_*.py
 
+# Local-only run scripts (personal task subsets, local endpoints)
+scripts/[0-9]*run.sh
+
 # Personal / development files
 Bird_ADK_plan.md
 CLAUDE.md
