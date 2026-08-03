@@ -67,6 +67,18 @@ class Settings(BaseSettings):
     semantic_layer_mcp_url: str = ""
     semantic_layer_mcp_token: str = ""
 
+    # What a failed submit_sql tells the agent.
+    #   "none"  - "Your SQL is not correct." and nothing else. Upstream
+    #             BIRD-Interact's protocol: the 3-coin charge IS the penalty for
+    #             guessing, so this is the default and the only setting whose
+    #             scores are comparable to published BIRD-Interact numbers.
+    #   "shape" - adds row/column counts and whether the rows match but the
+    #             order doesn't. Never reveals a value, a column name or a row.
+    # Applies to BOTH backends (raw and semantic-layer) — they share
+    # _compare_rows — so a run's level is recorded in the results JSON to keep
+    # scores self-describing.
+    submit_feedback_level: str = "none"
+
     @property
     def data_dir(self) -> Path:
         return PROJECT_ROOT / f"bird-interact-{self.dataset}"

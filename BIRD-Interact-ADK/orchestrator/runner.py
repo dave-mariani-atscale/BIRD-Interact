@@ -42,6 +42,9 @@ async def run_parallel_evaluation(
             return
         output = {
             "mode": mode,
+            # Anything but "none" makes these scores non-comparable to published
+            # BIRD-Interact numbers, so the run records which regime produced it.
+            "submit_feedback_level": settings.submit_feedback_level,
             "metrics": {
                 "total_tasks": n,
                 "total_reward": total_reward,

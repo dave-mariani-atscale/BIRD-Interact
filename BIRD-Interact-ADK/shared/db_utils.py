@@ -286,6 +286,35 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     return 1 if set(pred_cells) == set(gt_cells) else 0
 
 
+def diagnose_rows(pred_res, gt_res, conditions, cell=None) -> str:
+    """One sentence describing HOW a failed submission's rows differ from gold.
+
+    Shape only — counts, and whether the rows match but their order doesn't.
+    Never a value, a column name or a row, so it narrows the search without
+    handing over the answer. Callers must gate this on
+    settings.submit_feedback_level; see that field for the comparability
+    caveat. Returns "" when it has nothing useful to add.
+    """
+    if not pred_res:
+        return "Your query returned no rows."
+    p_rows, g_rows = len(pred_res), len(gt_res)
+    p_cols, g_cols = len(pred_res[0]), len(gt_res[0]) if gt_res else 0
+    if p_cols != g_cols:
+        return (f"Wrong number of columns: you returned {p_cols}, the expected answer has "
+                f"{g_cols}. Row count {'matches' if p_rows == g_rows else f'is {p_rows} vs {g_rows}'}.")
+    if p_rows != g_rows:
+        return (f"Wrong number of rows: you returned {p_rows}, the expected answer has {g_rows}. "
+                f"Column count matches ({p_cols}).")
+    if cell is not None:
+        pred_res = [tuple(cell(v) for v in row) for row in pred_res]
+        gt_res = [tuple(cell(v) for v in row) for row in gt_res]
+    if sorted(pred_res) == sorted(gt_res):
+        return (f"Right {p_rows} rows and right {p_cols} columns, but in the wrong ORDER — "
+                "add or correct the ORDER BY.")
+    return (f"Right shape ({p_rows} rows x {p_cols} columns) but the values differ — "
+            "check the filter, the aggregation grain, and which columns you projected.")
+
+
 def preprocess_results(results, decimal_places: int = 2):
     if results is None:
         return []
