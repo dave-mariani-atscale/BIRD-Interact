@@ -77,6 +77,9 @@ backends:
       - Reference models as "<schema>"."<table>" (or fully qualified "atscale_catalogs"."<schema>"."<table>") exactly as returned by list_models.
       - This SQL dialect does NOT support CTEs (WITH ... AS (...)) — rewrite multi-step logic as a derived table instead: SELECT ... FROM (SELECT ... FROM ...) alias WHERE/GROUP BY ...
       - COUNT(*) is rejected by this engine — use COUNT(<column>) instead (e.g. COUNT("Plant Record") or COUNT(DISTINCT "Plants Sitelabel") at the correct grain, not COUNT(*)).
+      - Count dimension members only with COUNT(DISTINCT "<dim>"). Plain COUNT("<dim>") returns the member itself and silently ignores GROUP BY (one row per member), so never read cardinality off it. COUNT("<measure>") is fine but counts non-null rows only; COUNT(DISTINCT "<measure>") is unsupported.
+      - ORDER BY resolves only against columns the same SELECT projects; anything else fails with "Could not find correct column to sort by". To sort by more than you return, put the sort key, ORDER BY and LIMIT in a derived table: SELECT <cols> FROM (SELECT <cols>, <sort expr> AS sortkey FROM <model> ... ORDER BY sortkey DESC LIMIT <n>) t
+      - That inner LIMIT is required — an inner ORDER BY without one is silently dropped (use a large n if the question has no cutoff). Never reference a column in the outer ORDER BY/WHERE that the outer SELECT does not project ("Unmatched physical type").
       - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
       - Ask one clarification question at a time.
       - Be efficient with your actions to conserve budget.
