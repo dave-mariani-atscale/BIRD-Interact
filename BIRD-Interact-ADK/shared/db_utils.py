@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import threading
+from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
@@ -311,6 +312,20 @@ def diagnose_rows(pred_res, gt_res, conditions, cell=None) -> str:
     if sorted(pred_res) == sorted(gt_res):
         return (f"Right {p_rows} rows and right {p_cols} columns, but in the wrong ORDER — "
                 "add or correct the ORDER BY.")
+    # Same columns, permuted. Compared as whole column VECTORS, so this only
+    # fires when every column of gold is present exactly once and the rows line
+    # up — a permutation is then the only difference left. Worth its own message
+    # because the generic one below sends the agent back to the filter and the
+    # grain, when all it has to do is reorder the SELECT list. Nothing here
+    # names a column or a value, same as every other branch.
+    # Counter, not sorted(): on the raw path these are typed values, so two
+    # columns of different types (str ticker, float score) would raise TypeError
+    # under comparison. Multiset equality needs no ordering.
+    pred_cols = Counter(tuple(r[j] for r in pred_res) for j in range(p_cols))
+    gt_cols = Counter(tuple(r[j] for r in gt_res) for j in range(g_cols))
+    if pred_cols == gt_cols:
+        return (f"Right {p_rows} rows with the right values, but your {p_cols} COLUMNS are in the "
+                "wrong order — reorder the SELECT list.")
     return (f"Right shape ({p_rows} rows x {p_cols} columns) but the values differ — "
             "check the filter, the aggregation grain, and which columns you projected.")
 
