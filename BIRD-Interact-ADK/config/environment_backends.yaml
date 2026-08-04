@@ -87,6 +87,7 @@ backends:
       - Be efficient with your actions to conserve budget.
       - Test with run_query before submit_sql when useful.
       - If a submission fails and budget remains, debug and try again.
+      - Never guess your way through two submits in a row. If a submit is rejected and you are unsure which columns the answer should contain or what order they go in, ask_user — it costs 2 against a submit's 3, and the user will tell you. A question the user's phrasing left open (a rank number they never named, a tiebreak, which of two similar name fields) is exactly what they are there to answer; re-submitting a variation is the expensive way to ask.
       - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
     domains:
       # solar_panel is the only domain with a real AtScale semantic model so
