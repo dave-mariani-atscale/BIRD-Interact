@@ -68,6 +68,15 @@ def get_backend_tool_costs(backend_name: str) -> Dict[str, float]:
     return backend.get("tool_costs", {})
 
 
+def get_backend_error_hints(backend_name: str) -> List[Dict[str, str]]:
+    """This backend's [{match, hint}] list — a hint is appended to any tool
+    response containing `match`. Lets a backend correct its own engine's
+    misleading error text without system_agent/callbacks.py learning any
+    engine's error strings. Empty list if the backend defines none."""
+    backend = get_backend_config(backend_name)
+    return backend.get("error_hints", []) or []
+
+
 def get_backend_tools_factory(backend_name: str) -> Callable[[], List[Any]]:
     """Resolve this backend's ADK tool-list factory from its `tools_module` /
     `tools_factory` config (e.g. system_agent.tools_atscale.get_ainteract_tools_atscale)

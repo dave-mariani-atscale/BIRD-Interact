@@ -46,6 +46,21 @@ backends:
     mcp_token_env: SEMANTIC_LAYER_MCP_TOKEN
     tools_module: system_agent.tools_atscale
     tools_factory: get_ainteract_tools_atscale
+    # Appended to any tool response containing `match` (case-insensitive), by
+    # system_agent.callbacks.after_tool_callback — which stays backend-agnostic
+    # by reading these from config rather than knowing any engine's error text.
+    # Use for errors whose own message points the wrong way: the semantic
+    # layer's sort-by failure ends with a generic "check column names with
+    # explore_columns" block, which is not the repair and costs a submit to
+    # discover. Free — no coins, the response is already paid for.
+    error_hints:
+      - match: could not find correct column to sort by
+        hint: >-
+          The sort key is not in your SELECT list. Do NOT just add it — that makes the answer one
+          column wider than asked for and fails on column count. Wrap instead: SELECT <only the
+          columns asked for> FROM (SELECT <those columns>, <sort expr> AS sortkey FROM <model>
+          WHERE ... ORDER BY sortkey DESC LIMIT <n>) t — the inner LIMIT is required or the
+          ordering is silently dropped, and the outer SELECT must not reference sortkey.
     tool_costs:
       list_models: 1.0
       explore_columns: 1.0

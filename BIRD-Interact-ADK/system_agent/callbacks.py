@@ -209,5 +209,23 @@ async def after_tool_callback(
     # Append budget note to agent-visible response (matches reference implementation)
     if budget_after is not None and budget_after >= 0:
         budget_note = f"\n\n[SYSTEM NOTE: Remaining budget: {budget_after:.1f}/{initial:.1f}]"
-        return str(tool_response) + budget_note
+        return str(tool_response) + _error_hints(tool_response) + budget_note
     return None
+
+
+def _error_hints(tool_response) -> str:
+    """Hints the ACTIVE backend declares for errors whose own message misleads —
+    config/environment_backends.yaml's `error_hints`, matched case-insensitively
+    against the response text. Costs nothing: the response is already paid for.
+    Kept config-driven so this file never learns a specific engine's error
+    strings; "raw" has no backend config and so never gets any."""
+    if settings.environment_backend == "raw":
+        return ""
+    try:
+        from shared.environment_backends import get_backend_error_hints
+        hints = get_backend_error_hints(settings.environment_backend)
+    except Exception:
+        return ""
+    text = str(tool_response).lower()
+    matched = [h["hint"] for h in hints if h.get("match", "").lower() in text and h.get("hint")]
+    return "".join(f"\n\n[SYSTEM NOTE: {h.strip()}]" for h in matched)
