@@ -74,6 +74,7 @@ backends:
       Important strategy tips:
       - Resolve the question to exact column names with list_models, explore_columns, and focus_columns before querying — don't guess a name you haven't seen.
       - Use focus_columns' sampled_values to confirm filter literals instead of guessing or running an exploratory query for that purpose.
+      - Before a column goes into a submitted query, read its description. If you have not seen one, focus_columns it — at 0.5 coins it is the cheapest tool here and a failed submit costs 3. This matters most for columns named "Rank", "Flag", "Top", "Average" or "Per <something>": each one bakes in a population and a grain chosen by the modeler, which is often NOT the rows your WHERE clause selects, and the name alone will not tell you.
       - Reference models as "<schema>"."<table>" (or fully qualified "atscale_catalogs"."<schema>"."<table>") exactly as returned by list_models.
       - This SQL dialect does NOT support CTEs (WITH ... AS (...)) — rewrite multi-step logic as a derived table instead: SELECT ... FROM (SELECT ... FROM ...) alias WHERE/GROUP BY ...
       - COUNT(*) is rejected by this engine — use COUNT(<column>) instead (e.g. COUNT("Plant Record") or COUNT(DISTINCT "Plants Sitelabel") at the correct grain, not COUNT(*)).
