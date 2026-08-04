@@ -132,6 +132,23 @@ async def before_tool_callback(
                 "the filter — before submitting again."
             }
 
+    # Refuse a bundled clarification. The user simulator's action parser resolves
+    # exactly one labeled ambiguity per turn (user_simulator/server.py's
+    # _parse_action), so a multi-part question gets its first part answered and
+    # the rest comes back as filler — etf_5 asked "how many funds?" and "what
+    # info?" together and got gold's exact column list plus "a reasonable sample
+    # size" in place of the LIMIT 100 it needed. Not charged; the agent re-asks
+    # one thing. A single question carrying a parenthetical example keeps one "?"
+    # and passes; a false positive only costs a free re-ask.
+    if tool_name == "ask_user" and args.get("question", "").count("?") > 1:
+        tool_context.state["_budget_before"] = budget
+        tool_context.state["_free_call"] = True
+        return {
+            "error": "That asks more than one question. The user answers one at a "
+            "time, so the extra parts come back vague. Not charged. Re-ask only "
+            "the single question whose answer most changes your query."
+        }
+
     if budget < cost:
         tool_context.state["_budget_before"] = budget
         if tool_name == "submit_sql":
