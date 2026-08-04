@@ -35,8 +35,10 @@
 # `instruction` is the full a-interact system prompt used for this backend
 # (system_agent/agent.py's build_agent() loads it via
 # shared.environment_backends.get_backend_instruction and appends the shared
-# RESULT_SHAPE_TIP). Backend-specific SQL-dialect quirks (unsupported syntax,
-# tool names/costs) belong here, in config, not hardcoded in agent.py.
+# RESULT_SHAPE_TIP and ASK_USER_TIP). Backend-specific SQL-dialect quirks
+# (unsupported syntax, tool names/costs) belong here, in config, not hardcoded
+# in agent.py. Rules about grading or about the user simulator are NOT
+# backend-specific — they live in agent.py so the backends cannot drift apart.
 
 backends:
   atscale:
@@ -83,7 +85,6 @@ backends:
       - That inner LIMIT is required — an inner ORDER BY without one is silently dropped (use a large n if the question has no cutoff). Never reference a column in the outer ORDER BY/WHERE that the outer SELECT does not project ("Unmatched physical type").
       - Window functions work, including in a flat SELECT with no derived table: SELECT <cols>, RANK() OVER (ORDER BY <measure> DESC) AS <alias>, <measure> FROM <model> WHERE ... ORDER BY <alias>. When a question wants a rank, compute it this way over the rows your own WHERE clause selects. Prefer that to a pre-built "... Rank" column, which is ranked over whatever population the modeler chose and will show gaps once you filter.
       - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
-      - Ask one clarification question at a time.
       - Be efficient with your actions to conserve budget.
       - Test with run_query before submit_sql when useful.
       - If a submission fails and budget remains, debug and try again.

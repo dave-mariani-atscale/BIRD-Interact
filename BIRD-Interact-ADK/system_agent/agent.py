@@ -55,6 +55,15 @@ RESULT_SHAPE_TIP = (
     "- Row ORDER is part of that comparison for many questions. Whenever the question implies a ranking — 'top', 'best/worst', 'highest/lowest', 'most/least' — always add an explicit ORDER BY on the measure being ranked, even if the question does not say 'sorted by'. When no ranking is implied, order is ignored, so a sensible ORDER BY never costs you anything and its absence can fail an otherwise correct answer."
 )
 
+# Backend-agnostic for the same reason as RESULT_SHAPE_TIP: the user simulator
+# is one service shared by every backend, so how to interrogate it must not live
+# in a per-backend config. Keyed off the same trigger words as the ORDER BY tip
+# above — a ranking word implies both a sort and, usually, an unstated cutoff.
+ASK_USER_TIP = (
+    "- Ask about exactly ONE ambiguity per ask_user call. The user answers one thing per turn: a bundled question gets its first part answered and the rest comes back as filler, and you still paid 2 coins. Ask the question whose answer most changes the query, then ask the next.\n"
+    "- When the question implies a cutoff but never names it — 'highest', 'top', 'some', 'enough', 'sufficient', 'significant' — that number is something the user knows and you cannot derive. Ask for it outright ('exactly how many rows should the result contain?'). If the answer is qualitative ('a reasonable sample', 'the top ones'), ask again offering explicit options ('10, 25, 50, or 100?'). That second ask is worth 2 coins: a wrong cutoff fails the exact-tuple comparison however correct everything else is.\n"
+)
+
 # ── a-interact instruction ──
 AINTERACT_INSTRUCTION = """You are a helpful PostgreSQL agent that interacts with a user and a database to solve the user's question.
 
@@ -81,7 +90,6 @@ Available tools and costs:
 Important strategy tips:
 - First explore the database schema, column meanings, and relevant external knowledge to understand the task.
 - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to SQL.
-- Ask one clarification question at a time.
 - Be efficient with your actions to conserve budget.
 - Make sure the submitted SQL is valid and addresses all aspects of the question.
 - Keep track of the remaining budget and prioritize actions accordingly.
@@ -89,7 +97,7 @@ Important strategy tips:
 - Test SQL with execute_sql before submit_sql when useful.
 - If a submission fails and budget remains, debug and try again.
 - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
-""" + RESULT_SHAPE_TIP + "\n"
+""" + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP
 
 
 def build_agent(mode: str = "c-interact") -> Agent:
@@ -113,7 +121,8 @@ def build_agent(mode: str = "c-interact") -> Agent:
         else:
             from shared.environment_backends import get_backend_instruction, get_backend_tools_factory
             tools = get_backend_tools_factory(settings.environment_backend)()
-            instruction = get_backend_instruction(settings.environment_backend) + RESULT_SHAPE_TIP + "\n"
+            instruction = (get_backend_instruction(settings.environment_backend)
+                           + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP)
         return Agent(
             model=model,
             name="bird_interact_agent",
