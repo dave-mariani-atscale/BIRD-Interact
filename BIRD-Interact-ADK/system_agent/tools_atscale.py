@@ -100,10 +100,10 @@ async def explore_columns(search_terms: List[str], tool_context: ToolContext) ->
     if err:
         return err
     # Models often emit a bare string here despite the List[str] signature. The
-    # MCP server iterates search_terms, so a string degrades into one search per
-    # CHARACTER and matches nearly every column: "premium fund" returned 86,794
-    # chars of unranked catalog where ["premium fund"] returns 1,335 with the
-    # right column first. Coerce rather than reject — the intent is unambiguous.
+    # MCP server tokenises a bare string on whitespace and ORs the terms, so a
+    # multi-word string matches far too much: "premium fund" returns 86,794
+    # chars of unranked catalog where ["premium fund"], searched as one phrase,
+    # returns 1,335 with the right column first. Coerce to a single phrase.
     if isinstance(search_terms, str):
         search_terms = [search_terms]
     return await _call("explore_columns", {**domain, "search_terms": search_terms})
