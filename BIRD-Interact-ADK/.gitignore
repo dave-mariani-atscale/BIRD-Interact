@@ -34,6 +34,9 @@ shared/_legacy_*.py
 # Local-only run scripts (personal task subsets, local endpoints)
 scripts/[0-9]*run.sh
 
+# Holds a live Apps Script deployment URL + write token
+scripts/sheet.py
+
 # Personal / development files
 Bird_ADK_plan.md
 CLAUDE.md
