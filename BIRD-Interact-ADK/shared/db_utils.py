@@ -192,8 +192,11 @@ def resolve_decimal_places(conditions) -> int:
 
     Honoring `decimal` at all is an ADK choice: upstream BIRD-Interact always
     preprocesses at 2, so scores for tasks declaring `decimal >= 0 and != 2` are
-    not directly comparable to published numbers.
+    not directly comparable to published numbers. Gated on
+    settings.grading_honor_decimal, which is off by default; see that field.
     """
+    if not settings.grading_honor_decimal:
+        return 2  # upstream: preprocess_results' default, conditions ignored
     dp = (conditions or {}).get("decimal")
     return dp if isinstance(dp, int) and dp >= 0 else 2
 
@@ -280,7 +283,11 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     if conditions and conditions.get("order", False):
         if pred_cells == gt_cells:
             return 1
-        # Same rows in a different order: only a tie permutation is forgiven.
+        # Same rows in a different order: only a tie permutation is forgiven,
+        # and only when settings.grading_tie_tolerance is on. Upstream stops at
+        # the strict compare above.
+        if not settings.grading_tie_tolerance:
+            return 0
         if sorted(pred_cells) != sorted(gt_cells):
             return 0
         return 1 if _order_compatible(pred_res, gt_res) else 0

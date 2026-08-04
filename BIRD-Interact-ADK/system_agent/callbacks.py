@@ -119,7 +119,7 @@ async def before_tool_callback(
     # deterministic, so re-running it can only burn 3 coins for no information —
     # observed 7 times across the 2026-07-31..08-03 etf runs (21 coins), always
     # as the agent re-spelling the table name after an uninformative rejection.
-    if tool_name == "submit_sql":
+    if tool_name == "submit_sql" and settings.free_wasted_actions:
         normalized = _normalize_sql(args.get("sql", ""))
         if normalized and normalized in tool_context.state.get("_failed_submits", []):
             tool_context.state["_budget_before"] = budget
@@ -140,7 +140,8 @@ async def before_tool_callback(
     # size" in place of the LIMIT 100 it needed. Not charged; the agent re-asks
     # one thing. A single question carrying a parenthetical example keeps one "?"
     # and passes; a false positive only costs a free re-ask.
-    if tool_name == "ask_user" and args.get("question", "").count("?") > 1:
+    if (tool_name == "ask_user" and settings.free_wasted_actions
+            and args.get("question", "").count("?") > 1):
         tool_context.state["_budget_before"] = budget
         tool_context.state["_free_call"] = True
         return {

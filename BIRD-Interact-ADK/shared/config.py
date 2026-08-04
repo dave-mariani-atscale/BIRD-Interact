@@ -79,6 +79,34 @@ class Settings(BaseSettings):
     # scores self-describing.
     submit_feedback_level: str = "none"
 
+    # ── Deviations from upstream BIRD-Interact's protocol ──
+    # Each defaults to upstream behaviour, so a clean checkout reproduces
+    # published numbers. Turning any of them on makes a run non-comparable, so
+    # all three are recorded in the results JSON next to submit_feedback_level.
+    # Verified against the reference implementation checked out beside this repo
+    # (bird_interact_agent/, evaluation/) on 2026-08-04 — see the tracker's
+    # B-06, B-09 and B-10.
+
+    # GRADING. Upstream compares ordered results with a bare
+    # `predicted_res == ground_res` (test_case_utils/test_utils.py). When gold's
+    # ORDER BY key has duplicate values, the order within a tied block is
+    # arbitrary and the two sources legitimately disagree. True forgives a
+    # permutation confined to ties; False keeps upstream's strict compare.
+    grading_tie_tolerance: bool = False
+
+    # GRADING. Upstream never reads conditions["decimal"] — it always rounds to
+    # 2 (preprocess_results' default). True honours each task's declared
+    # precision, which differs from upstream on the 125 of 600 tasks that
+    # declare `decimal >= 0 and != 2`. Note -1 means "unspecified" and resolves
+    # to 2 either way, so 377 tasks are unaffected by this flag.
+    grading_honor_decimal: bool = False
+
+    # BUDGET (a-interact only). Upstream's update_budget deducts a cost by
+    # action TYPE and never inspects the outcome, so a duplicate submit and a
+    # bundled question both cost full price. True refuses those two at no charge
+    # instead; False charges for them as upstream does.
+    free_wasted_actions: bool = False
+
     @property
     def data_dir(self) -> Path:
         return PROJECT_ROOT / f"bird-interact-{self.dataset}"

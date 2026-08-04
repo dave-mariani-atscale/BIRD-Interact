@@ -45,6 +45,13 @@ async def run_parallel_evaluation(
             # Anything but "none" makes these scores non-comparable to published
             # BIRD-Interact numbers, so the run records which regime produced it.
             "submit_feedback_level": settings.submit_feedback_level,
+            # Deviations from upstream's protocol, all off by default. Recorded
+            # so a totals number always carries the regime that produced it.
+            "deviations": {
+                "grading_tie_tolerance": settings.grading_tie_tolerance,
+                "grading_honor_decimal": settings.grading_honor_decimal,
+                "free_wasted_actions": settings.free_wasted_actions,
+            },
             "metrics": {
                 "total_tasks": n,
                 "total_reward": total_reward,
