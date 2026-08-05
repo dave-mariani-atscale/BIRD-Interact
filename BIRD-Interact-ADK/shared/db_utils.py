@@ -208,6 +208,15 @@ def canonical_cell(value) -> str:
     vs 186709472.0, Decimal('6.90') vs 6.9 — so str() alone reports equal values
     as unequal. Numerics collapse to one fixed-point form.
 
+    String values are case-folded when settings.grading_casefold is on. Gold SQL
+    frequently wraps a text column in LOWER(...) (e.g. `LOWER(pm.pnlkind)`) that
+    the agent has no way to see or replicate — a semantic layer's dimension
+    attribute returns its own stored display casing (e.g. "Bifacial"), not gold's
+    ad-hoc lowercased form ("bifacial"). Confirmed live: a submission with
+    numerically-correct values to ~10 significant digits failed outright on this
+    alone. Case-folding only matters for genuinely case-varying gold conventions
+    the agent can't predict; it doesn't paper over an actually-wrong answer.
+
     Only reached via _compare_rows' `cell` hook, and only from the cross-source
     path: on the raw path Python's own numeric equality already ignores
     representation, and collapsing to strings there would newly equate str '100'
@@ -218,54 +227,56 @@ def canonical_cell(value) -> str:
     if isinstance(value, (int, float, Decimal)):
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
-    return str(value)
+    return str(value).lower() if settings.grading_casefold else str(value)
 
 
-def _monotonic_dirs(rows) -> List[set]:
-    """Per column, which of {"asc", "desc"} that column's values are consistent
-    with across `rows` (both, for an all-equal column; neither, when the values
-    don't compare — mixed types or NULLs).
+def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
+    """True when pred differs from gold only by reordering rows that TIE on the
+    (assumed) sort column.
 
-    Runs on TYPED values, never on canonical_cell output: as strings '10' sorts
-    before '9', which would invert numeric orderings.
+    Gold SQL and a semantic layer are two different execution engines with no
+    shared tie-breaking convention — SQL never guarantees a stable order among
+    rows equal on the ORDER BY expression, and rounding to the task's decimal
+    precision makes ties far more likely than the underlying raw data would
+    suggest. Confirmed live: gold's own 336-row result for one task had 8 tied
+    pairs after rounding, with neither gold's nor the agent's query supplying a
+    secondary tiebreaker — an exact-order comparison fails on these even when
+    every value is correct.
+
+    Heuristic: assume the LAST column is the sort key (true for every
+    "label, value ORDER BY value" query shape seen so far — the dominant style
+    in this benchmark). Group GOLD rows into consecutive runs sharing that
+    column's value, then verify the PREDICTED rows occupying the same index
+    range are the same rows, with order inside a run not mattering and the runs
+    themselves still in gold's sequence. Any structural mismatch (row count, or
+    a shape the tie-group heuristic doesn't fit) returns False and the caller
+    keeps the strict comparison rather than silently passing.
+
+    Counter, not set(): a tie group holding the same row twice would compare
+    equal to one holding it once alongside a different row.
+
+    Called on canonical_cell output on the cross-source path, so 4.68 and
+    Decimal('4.68') group together. Only equality is used, never `<` — nothing
+    here breaks on strings the way an ordering comparison would.
     """
-    dirs = []
-    for j in range(len(rows[0]) if rows else 0):
-        col = [r[j] for r in rows]
-        asc = desc = True
-        try:
-            for a, b in zip(col, col[1:]):
-                if not a <= b: asc = False
-                if not a >= b: desc = False
-                if not (asc or desc): break
-        except TypeError:
-            asc = desc = False
-        dirs.append({d for d, ok in (("asc", asc), ("desc", desc)) if ok})
-    return dirs
-
-
-def _order_compatible(pred_res, gt_res) -> bool:
-    """True when pred's row order is consistent with every ordering gold's own
-    rows exhibit — i.e. the two differ only by permuting rows that TIE on gold's
-    sort key.
-
-    Gold's ORDER BY is not available here, so it's inferred: any column that is
-    monotonic across all of gold's rows is treated as a candidate sort key, and
-    pred must be monotonic the same way in each. An `ORDER BY x DESC` with ties
-    leaves the tied block's order up to the engine, so Postgres and a semantic
-    layer legitimately disagree there (verified on exchange_traded_funds_3,
-    where two funds tie at 4.68 and a fully correct answer scored 0).
-
-    Deliberately conservative: when no column of gold is monotonic the sort key
-    wasn't projected, nothing can be inferred, and this returns False so the
-    caller keeps the strict identity comparison.
-    """
-    gold_dirs = _monotonic_dirs(gt_res)
-    keys = [j for j, d in enumerate(gold_dirs) if d]
-    if not keys:
+    if len(pred_res) != len(gt_res):
         return False
-    pred_dirs = _monotonic_dirs(pred_res)
-    return all(gold_dirs[j] <= pred_dirs[j] for j in keys)
+    if not gt_res:
+        return True
+    groups = []
+    for row in gt_res:
+        key = row[-1]
+        if groups and groups[-1][0] == key:
+            groups[-1][1].append(row)
+        else:
+            groups.append((key, [row]))
+    idx = 0
+    for _key, group_rows in groups:
+        n = len(group_rows)
+        if Counter(pred_res[idx:idx + n]) != Counter(group_rows):
+            return False
+        idx += n
+    return True
 
 
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
@@ -288,9 +299,7 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
         # the strict compare above.
         if not settings.grading_tie_tolerance:
             return 0
-        if sorted(pred_cells) != sorted(gt_cells):
-            return 0
-        return 1 if _order_compatible(pred_res, gt_res) else 0
+        return 1 if _ordered_match_tolerating_ties(pred_cells, gt_cells) else 0
     return 1 if set(pred_cells) == set(gt_cells) else 0
 
 

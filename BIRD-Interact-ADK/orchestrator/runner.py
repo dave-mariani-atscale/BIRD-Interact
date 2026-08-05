@@ -50,6 +50,7 @@ async def run_parallel_evaluation(
             "deviations": {
                 "grading_tie_tolerance": settings.grading_tie_tolerance,
                 "grading_honor_decimal": settings.grading_honor_decimal,
+                "grading_casefold": settings.grading_casefold,
                 "free_wasted_actions": settings.free_wasted_actions,
             },
             "metrics": {

@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # ── Deviations from upstream BIRD-Interact's protocol ──
     # Each defaults to upstream behaviour, so a clean checkout reproduces
     # published numbers. Turning any of them on makes a run non-comparable, so
-    # all three are recorded in the results JSON next to submit_feedback_level.
+    # all four are recorded in the results JSON next to submit_feedback_level.
     # Verified against the reference implementation checked out beside this repo
     # (bird_interact_agent/, evaluation/) on 2026-08-04 — see the tracker's
     # B-06, B-09 and B-10.
@@ -100,6 +100,14 @@ class Settings(BaseSettings):
     # declare `decimal >= 0 and != 2`. Note -1 means "unspecified" and resolves
     # to 2 either way, so 377 tasks are unaffected by this flag.
     grading_honor_decimal: bool = False
+
+    # GRADING (semantic-layer path only). Gold SQL often wraps a text column in
+    # LOWER(...) the agent cannot see, while a semantic layer returns its stored
+    # display casing ("Bifacial" vs gold's "bifacial") — a numerically-correct
+    # submission can fail on casing alone. True case-folds string cells in
+    # canonical_cell; False compares them as-is. No effect on the raw path,
+    # which never passes a `cell` hook to _compare_rows.
+    grading_casefold: bool = False
 
     # BUDGET (a-interact only). Upstream's update_budget deducts a cost by
     # action TYPE and never inspects the outcome, so a duplicate submit and a
