@@ -24,18 +24,29 @@ if [ -z "${ATSCALE_CLIENT_SECRET:-}" ] || [ -z "${PG_PASSWORD:-}" ]; then
 fi
 
 # ── AtScale auth (Keycloak password grant) ──
-ATSCALE_BASE_URL="http://localhost"
+# Keycloak is a container, so nginx on :80 proxies to it fine.
+ATSCALE_BASE_URL="${ATSCALE_BASE_URL:-http://localhost}"
+
+# ── Engine API ──
+# NOT ${ATSCALE_BASE_URL}/engine. nginx resolves that prefix to a container
+# named "engine"; when the engine runs natively on the host instead, the name
+# doesn't resolve and every call returns 502 ("engine could not be resolved").
+# Talking to the engine's own port skips nginx entirely. For a containerized
+# engine: ENGINE_URL=http://localhost/engine bash create_bird_connections.sh
+ENGINE_URL="${ENGINE_URL:-http://localhost:10502}"
 CLIENT_ID="atscale-modeler"
 CLIENT_SECRET="${ATSCALE_CLIENT_SECRET}"
-ATSCALE_USERNAME="dave@atscale.com"
-ATSCALE_PASSWORD="123"
+ATSCALE_USERNAME="atscale-kc-admin" # "dave@atscale.com"
+ATSCALE_PASSWORD="@scaleAdmin123" # "123"
 
 # ── Postgres data warehouse details (same server for every BIRD database) ──
-# host.docker.internal, not localhost: this is resolved by AtScale's own
-# engine container, where "localhost" would mean the AtScale container
-# itself, not the BIRD Postgres container/host.
-PG_HOST="host.docker.internal"
-PG_PORT="5433"
+# This host/port is resolved by the ENGINE, not by this script. With the engine
+# running natively, "localhost" is correct; a containerized engine needs
+# host.docker.internal instead, since its own "localhost" is the container.
+# 5433 is bird_interact_postgresql_full, which holds the 22 BIRD databases —
+# not 10514 (testdata-db), a different server with different credentials.
+PG_HOST="${PG_HOST:-localhost}"
+PG_PORT="${PG_PORT:-5433}"
 PG_USER="root"
 AGGREGATE_SCHEMA="aggregates"
 
@@ -88,7 +99,7 @@ for db in "${BIRD_DATABASES[@]}"; do
   name="bird_${db}"
   echo "Creating connection: ${name} ..."
 
-  response=$(curl -s -w '\n%{http_code}' --location "${ATSCALE_BASE_URL}/engine/connection-groups" \
+  response=$(curl -s -w '\n%{http_code}' --location "${ENGINE_URL}/connection-groups" \
     --header "Authorization: Bearer ${TOKEN}" \
     --header 'Content-Type: application/json' \
     --data "{
