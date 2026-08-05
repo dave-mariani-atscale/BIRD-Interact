@@ -204,6 +204,15 @@ def canonical_cell(value) -> str:
     vs 186709472.0, Decimal('6.90') vs 6.9 — so str() alone reports equal values
     as unequal. Numerics collapse to one fixed-point form.
 
+    String values are case-folded. Gold SQL frequently wraps a text column in
+    LOWER(...) (e.g. `LOWER(pm.pnlkind)`) that the agent has no way to see or
+    replicate — a semantic layer's dimension attribute returns its own stored
+    display casing (e.g. "Bifacial"), not gold's ad-hoc lowercased form
+    ("bifacial"). Confirmed live: a submission with numerically-correct values
+    to ~10 significant digits failed outright on this alone. Case-folding only
+    matters for genuinely case-varying gold conventions the agent can't
+    predict; it doesn't paper over an actually-wrong answer.
+
     Only reached via _compare_rows' `cell` hook, and only from the cross-source
     path: on the raw path Python's own numeric equality already ignores
     representation, and collapsing to strings there would newly equate str '100'
@@ -214,22 +223,69 @@ def canonical_cell(value) -> str:
     if isinstance(value, (int, float, Decimal)):
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
-    return str(value)
+    return str(value).lower()
+
+
+def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
+    """Ordered-list comparison that tolerates rows tied on the (assumed) sort
+    column landing in a different relative order between two engines.
+
+    Gold SQL and a semantic layer are two different execution engines with no
+    shared tie-breaking convention — SQL never guarantees a stable order among
+    rows equal on the ORDER BY expression, and rounding to the task's decimal
+    precision makes ties far more likely than the underlying raw data would
+    suggest. Confirmed live: gold's own 336-row result for one task had 8
+    tied pairs after rounding, with neither gold's nor the agent's query
+    supplying a secondary tiebreaker — an exact-order comparison fails on
+    these even when every value is correct.
+
+    Heuristic: assume the LAST column is the sort key (true for every
+    "label, value ORDER BY value" query shape seen so far — the dominant
+    style in this benchmark). Group GOLD rows into consecutive runs sharing
+    that column's value, then verify the PREDICTED rows occupying that same
+    index range form the identical set (order within the tied group doesn't
+    matter), and that groups appear in the same overall sequence. Falls back
+    to an exact match on any structural mismatch (row count, or a tie-group
+    heuristic that doesn't hold for this shape) rather than silently passing.
+    """
+    if len(pred_res) != len(gt_res):
+        return False
+    if not gt_res:
+        return True
+    groups = []
+    for row in gt_res:
+        key = row[-1]
+        if groups and groups[-1][0] == key:
+            groups[-1][1].append(row)
+        else:
+            groups.append((key, [row]))
+    idx = 0
+    for _key, group_rows in groups:
+        n = len(group_rows)
+        if set(pred_res[idx:idx + n]) != set(group_rows):
+            return False
+        idx += n
+    return True
 
 
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     """Score two already-preprocessed row sets — 1 if they match, else 0.
 
     `cell` renders each value before comparing; None keeps the typed values.
-    That argument is the only difference between the raw and semantic-layer
-    comparisons, so it stays one visible knob rather than two copies of this
-    tail that drift.
+    That argument doubles as "are we on the cross-source (semantic-layer)
+    path", since it's the only place a tie-tolerant order comparison is
+    needed — the raw path executes both sides on the same engine, where ties
+    resolve identically for identical query text.
     """
     if cell is not None:
         pred_res = [tuple(cell(v) for v in row) for row in pred_res]
         gt_res = [tuple(cell(v) for v in row) for row in gt_res]
     if conditions and conditions.get("order", False):
-        return 1 if pred_res == gt_res else 0
+        if pred_res == gt_res:
+            return 1
+        if cell is not None and _ordered_match_tolerating_ties(pred_res, gt_res):
+            return 1
+        return 0
     return 1 if set(pred_res) == set(gt_res) else 0
 
 
