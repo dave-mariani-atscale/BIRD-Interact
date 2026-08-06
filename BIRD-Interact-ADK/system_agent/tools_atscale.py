@@ -20,7 +20,9 @@ keyed by the task's `db_name` (set in session state at init — see
 orchestrator/ainteract.py's `init_agent_session`).
 """
 
+import json
 import logging
+import re
 from typing import List, Optional
 
 from google.adk.tools import FunctionTool
@@ -73,15 +75,59 @@ async def _call(tool_name: str, arguments: dict) -> str:
 # a sync wrapper that calls asyncio.run() (which raises "cannot be called
 # from a running event loop").
 
+def _scope_to_domain(raw: str, domain: dict) -> str:
+    """Trim list_models' output to the single model configured for this domain.
+
+    The MCP tool takes no scope (ParamsListModels has only force_refresh), so it
+    returns every model in the catalog. Its `## <Model>` headings carry only the
+    model name — when two schemas hold a same-named model (the two ETF builds),
+    they are indistinguishable, and the agent explores the configured schema but
+    writes the other one into run_query, so every query fails "Column not found".
+    Sections do carry `catalog.schema.table:`, so scope on that.
+
+    The server also emits each model twice, in two rendering passes, and the two
+    bodies disagree: for bird_etf_prompt_only the second pass lists dimensions
+    (Transparency Group, Offered Category, Family Listing Exchange) that
+    explore_columns confirms that model does not have — they belong to the other
+    ETF build. Only the first matching section is kept; see tracker Q-17.
+    """
+    fq = f"{domain['catalog']}.{domain['schema']}.{domain['table']}"
+    head, _, rest = raw.partition("\n")
+    try:
+        entries = [
+            e for e in json.loads(head)
+            if (e.get("table_catalog"), e.get("table_schema"), e.get("table_name"))
+            == (domain["catalog"], domain["schema"], domain["table"])
+        ]
+        head = json.dumps(entries[:1])
+    except (ValueError, TypeError):
+        logger.warning("list_models: could not parse header JSON; passing through unscoped")
+    model, tail = None, []
+    for sec in re.split(r"(?m)^## ", rest):
+        if not sec.strip():
+            continue
+        if model is None and f"catalog.schema.table: {fq}" in sec:
+            model = "## " + sec.rstrip()
+        elif sec.startswith("Next Steps"):
+            tail = ["## " + sec.rstrip()]
+    if model is None:
+        logger.warning("list_models: no section matched %s; passing through unscoped", fq)
+        return raw
+    return "\n".join([head, model, *tail])
+
+
 async def list_models(tool_context: ToolContext) -> str:
-    """List the semantic models (dimensions, hierarchies, metrics) available.
-    Use this first to see what models exist before exploring columns.
+    """List the semantic model available for this task (dimensions, hierarchies,
+    metrics). Use this first to see the model's shape before exploring columns.
     Cost: 1 bird-coin.
 
     Returns:
-        The available models as text.
+        The model as text. Query it under exactly the schema/table shown here.
     """
-    return await _call("list_models", {})
+    domain, err = _domain_or_error(tool_context)
+    if err:
+        return err
+    return _scope_to_domain(await _call("list_models", {}), domain)
 
 
 async def explore_columns(search_terms: List[str], tool_context: ToolContext) -> str:
