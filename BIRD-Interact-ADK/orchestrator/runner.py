@@ -102,12 +102,18 @@ async def run_parallel_evaluation(
         )
 
 
-def load_tasks(data_path: str, limit: int = None, databases: List[str] = None) -> List[dict]:
+def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, query_only: bool = False) -> List[dict]:
     tasks = []
     with open(data_path) as f:
         for line in f:
             if line.strip():
                 tasks.append(json.loads(line))
+
+    if query_only and settings.environment_backend == "raw":
+        before_count = len(tasks)
+        tasks = [t for t in tasks if t.get("category") == "Query"]
+        logger.warning("--query-only: excluded %d Management-category tasks (%d Query tasks remain)",
+                        before_count - len(tasks), len(tasks))
 
     if settings.environment_backend != "raw":
         # Semantic layers are read-only — Management-category (DDL/DML) tasks
@@ -243,6 +249,8 @@ def main():
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--databases", type=str, default=None,
                          help="Comma-separated selected_database values to run (e.g. 'solar_panel,hulushows'). Default: all.")
+    parser.add_argument("--query-only", action="store_true",
+                         help="Run only Query-category tasks on the raw backend (non-raw backends already exclude Management tasks).")
     parser.add_argument("--backend", type=str, default="raw",
                          help="Environment backend: 'raw' (original Postgres tools, default) or a named "
                               "backend from config/environment_backends.yaml (e.g. 'atscale'). Pushed to "
@@ -264,7 +272,7 @@ def main():
     _set_service_backend(args.backend)
 
     databases = [d.strip() for d in args.databases.split(",") if d.strip()] if args.databases else None
-    tasks = load_tasks(args.data, args.limit, databases)
+    tasks = load_tasks(args.data, args.limit, databases, args.query_only)
     logger.info("%s: Evaluating %d tasks with concurrency=%d", args.mode, len(tasks), args.concurrency)
 
     asyncio.run(run_parallel_evaluation(
