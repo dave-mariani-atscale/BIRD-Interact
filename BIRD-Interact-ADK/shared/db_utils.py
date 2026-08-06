@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import os
 import re
 import subprocess
@@ -268,6 +269,109 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     return True
 
 
+def _try_parse_number(value) -> Optional[float]:
+    """Best-effort float parse; None (not 0) for anything non-numeric, so
+    callers can tell "not a number" apart from "the number zero"."""
+    if isinstance(value, bool):
+        return None  # bool is an int subclass — don't let True/False parse as 1.0/0.0
+    if isinstance(value, (int, float, Decimal)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _values_close(a, b, rel_tol: float = 1e-6, abs_tol: float = 1e-9) -> bool:
+    """Numeric values within a tight relative tolerance count as equal;
+    everything else falls back to case-folded string equality (same rule
+    canonical_cell applies to non-numerics)."""
+    a_num, b_num = _try_parse_number(a), _try_parse_number(b)
+    if a_num is not None and b_num is not None:
+        return math.isclose(a_num, b_num, rel_tol=rel_tol, abs_tol=abs_tol)
+    return str(a).lower() == str(b).lower()
+
+
+def _rows_close(row_a, row_b) -> bool:
+    return len(row_a) == len(row_b) and all(_values_close(x, y) for x, y in zip(row_a, row_b))
+
+
+def _multiset_match_tolerant(pred_res, gt_res) -> bool:
+    """Unordered row-set equality, but a row "matches" another if every cell
+    is _values_close rather than ==. O(n^2); fine at the row counts this
+    benchmark's queries return."""
+    if len(pred_res) != len(gt_res):
+        return False
+    remaining = list(gt_res)
+    for p in pred_res:
+        for i, g in enumerate(remaining):
+            if _rows_close(p, g):
+                remaining.pop(i)
+                break
+        else:
+            return False
+    return True
+
+
+def _ordered_match_tolerating_ties_numeric(pred_res, gt_res) -> bool:
+    """_ordered_match_tolerating_ties, but both the tie-grouping key
+    comparison and the within-group set comparison use _values_close instead
+    of ==, so a numeric-precision-noise mismatch can't itself break the tie
+    grouping it's meant to look past."""
+    if len(pred_res) != len(gt_res):
+        return False
+    if not gt_res:
+        return True
+    groups = []
+    for row in gt_res:
+        key = row[-1]
+        if groups and _values_close(groups[-1][0], key):
+            groups[-1][1].append(row)
+        else:
+            groups.append((key, [row]))
+    idx = 0
+    for _key, group_rows in groups:
+        n = len(group_rows)
+        if not _multiset_match_tolerant(list(pred_res[idx:idx + n]), group_rows):
+            return False
+        idx += n
+    return True
+
+
+def _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) -> bool:
+    """Fallback comparison for the cross-source path: True if pred_res and
+    gt_res match once numeric cells are compared with a tight relative
+    tolerance instead of exact string equality.
+
+    Exists to absorb float32-vs-float64 precision noise a semantic layer and
+    Postgres can each introduce independently of the query being right or
+    wrong — e.g. a warehouse casting one operand to `::real` mid-formula.
+    Confirmed live: a semantic-layer answer matching gold to 9 significant
+    figures still failed the exact comparison by about 1 part in 760 million,
+    solely from gold's own float32 cast, with no error in either query.
+
+    Deliberately only ever called AFTER the exact/tie-tolerant comparison in
+    _compare_rows has already failed — it must never be the reason a
+    genuinely wrong answer passes, only the reason a right-to-many-more-sig-
+    figs-than-the-task-asks-for answer isn't marked wrong. Operates on the
+    PRE-rounding row values (not the decimal-place-rounded ones _compare_rows
+    sees), since rounding two nearby-but-not-identical floats can itself
+    round them to different displayed values before this tolerance ever gets
+    a chance to see how close they really were.
+    """
+    if conditions and conditions.get("order", False):
+        if _rows_close_ordered(pred_res, gt_res):
+            return True
+        return _ordered_match_tolerating_ties_numeric(pred_res, gt_res)
+    return _multiset_match_tolerant(pred_res, gt_res)
+
+
+def _rows_close_ordered(pred_res, gt_res) -> bool:
+    return len(pred_res) == len(gt_res) and all(_rows_close(p, g) for p, g in zip(pred_res, gt_res))
+
+
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     """Score two already-preprocessed row sets — 1 if they match, else 0.
 
@@ -408,6 +512,14 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     otherwise almost never string-match a gold value rounded via
     preprocess_results, even when the underlying answer is correct. Equal
     precision is necessary but not sufficient, hence canonical_cell.
+
+    If that rounded exact comparison fails, fall back to
+    _compare_rows_numeric_tolerant on the PRE-rounding rows — see its
+    docstring. Rounding first and only tolerance-comparing the rounded
+    values would defeat the point: two floats close enough to be the same
+    answer can round to visibly different decimals (76022464.2857143 vs
+    76022464.18488877 -> "76022464.29" vs "76022464.18"), which is exactly
+    the class of mismatch this fallback exists to see past.
     """
     if not pred_res or not sol_sqls:
         return 0
@@ -415,11 +527,13 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     if gt_err or gt_to:
         return 0
     decimal_places = resolve_decimal_places(conditions)
-    pred_res = preprocess_results(pred_res, decimal_places)
-    gt_res = preprocess_results(gt_res, decimal_places)
-    if not gt_res:
+    pred_rounded = preprocess_results(pred_res, decimal_places)
+    gt_rounded = preprocess_results(gt_res, decimal_places)
+    if not gt_rounded:
         return 0
-    return _compare_rows(pred_res, gt_res, conditions, cell=canonical_cell)
+    if _compare_rows(pred_rounded, gt_rounded, conditions, cell=canonical_cell):
+        return 1
+    return 1 if _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) else 0
 
 
 def test_case_default(pred_sqls, sol_sqls, db_name, conn, conditions=None):
