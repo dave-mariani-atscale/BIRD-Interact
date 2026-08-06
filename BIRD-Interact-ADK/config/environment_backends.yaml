@@ -127,11 +127,17 @@ backends:
         schema: bird_atscale_models_catalog_main
         table: Solar Panel
       exchange_traded_funds:
-        # LOCAL ONLY. Both ETF models are deployed, so old-vs-new is a schema
-        # swap: bird_etf_prompt_only (diannewood/bird-etf-prompt-only) or
-        # bird_atscale_models_catalog (AtScaleInc/bird-atscale-models). Schemas
-        # confirmed via list_models 2026-08-06 — the `..._catalog_main` this
-        # entry used to carry was stale and would not resolve.
+        # LOCAL ONLY. Points at diannewood/bird-etf-prompt-only, the ETF model
+        # of record since 2026-08-06; the AtScaleInc comparison model is now
+        # undeployed.
+        #
+        # The schema name is NOT stable across redeploys — this entry has gone
+        # stale in both directions in a single day (bird_etf_prompt_only ->
+        # bird_etf_prompt_only_main), and the suffix appears to follow the
+        # branch deployed from. A stale entry fails every task in the domain
+        # with no hint that config is the cause, so after ANY redeploy read the
+        # schema back from list_models and match it here.
+        # Verified live 2026-08-06: 154 measures / 212 dimensions.
         catalog: atscale_catalogs
-        schema: bird_etf_prompt_only
+        schema: bird_etf_prompt_only_main
         table: Exchange Traded Funds
