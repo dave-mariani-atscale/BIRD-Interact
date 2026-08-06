@@ -128,8 +128,16 @@ backends:
         table: Solar Panel
       exchange_traded_funds:
         # LOCAL ONLY. Points at diannewood/bird-etf-prompt-only, the ETF model
-        # of record since 2026-08-06; the AtScaleInc comparison model is now
-        # undeployed.
+        # of record since 2026-08-06.
+        #
+        # The model is deployed under the name `exchange_traded_funds_test`,
+        # NOT "Exchange Traded Funds". That rename is deliberate: the MCP's
+        # list_models joins pg_class on relname alone (metadata.py:31, no
+        # namespace predicate), so two models sharing a name across schemas each
+        # render twice with the other's column_groups attached (Q-17). Distinct
+        # names sidestep it, which is what lets the AtScaleInc comparison model
+        # stay deployed alongside this one. Do not "tidy" this name back to the
+        # label form without undeploying the other ETF model first.
         #
         # The schema name is NOT stable across redeploys — this entry has gone
         # stale in both directions in a single day (bird_etf_prompt_only ->
@@ -140,4 +148,4 @@ backends:
         # Verified live 2026-08-06: 154 measures / 212 dimensions.
         catalog: atscale_catalogs
         schema: bird_etf_prompt_only_main
-        table: Exchange Traded Funds
+        table: exchange_traded_funds_test
