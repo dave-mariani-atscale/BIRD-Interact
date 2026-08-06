@@ -29,7 +29,7 @@ from google.adk.tools import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 
 from shared.config import settings
-from shared.environment_backends import get_domain_config
+from shared.environment_backends import get_domain_config, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
 
 logger = logging.getLogger(__name__)
@@ -208,6 +208,13 @@ async def run_query(query: str, tool_context: ToolContext) -> str:
     Returns:
         The query results, or an error message.
     """
+    domain, err = _domain_or_error(tool_context)
+    if err:
+        return err
+    violation = query_domain_violation(query, domain)
+    if violation:
+        logger.warning("run_query blocked (wrong model): %s", query)
+        return violation
     return await _call("run_query", {"query": query})
 
 

@@ -6,10 +6,15 @@ resolves the actual URL/token via shared.config.settings.
 """
 
 import importlib
+import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
+import sqlglot
 import yaml
+from sqlglot import expressions as exp
+
+logger = logging.getLogger(__name__)
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "environment_backends.yaml"
 
@@ -36,6 +41,60 @@ def get_domain_config(backend_name: str, selected_database: str) -> Dict[str, st
     None if the domain has no semantic model configured yet."""
     backend = get_backend_config(backend_name)
     return backend.get("domains", {}).get(selected_database)
+
+
+def query_domain_violation(query: str, domain: Dict[str, str]) -> Optional[str]:
+    """An error string if `query`'s FROM target is not this domain's model, else None.
+
+    Nothing else forces the agent onto the model the task is about. explore_columns
+    and focus_columns are scoped server-side (the MCP tools take catalog/schema/table),
+    but run_query takes only `query` — so with two same-labelled models deployed, an
+    agent can explore one and query the other, and a submission can be *graded* against
+    the wrong one. This is the only thing standing between those.
+
+    Takes an already-resolved domain dict rather than a backend name, so it never has
+    to special-case "raw" (which has no backend config entry at all).
+
+    Deliberately permissive in two places, because a guard that blocks valid work is
+    worse than the leak it prevents:
+      - unparseable query -> None. The engine is a better judge of its own dialect, and
+        its syntax error is more useful to the agent than ours would be.
+      - single-part table name -> skipped. The MCP rejects those itself with a clearer
+        message (validation.py's FromQualificationError); duplicating it here would only
+        make the two disagree over time.
+    """
+    try:
+        statement = sqlglot.parse_one(query)
+    except Exception as e:
+        logger.warning("domain guard: could not parse query (%s); allowing through", e)
+        return None
+    if statement is None:
+        return None
+
+    want_schema = domain.get("schema", "").casefold()
+    want_table = domain.get("table", "").casefold()
+    want_catalog = domain.get("catalog", "").casefold()
+
+    for tbl in statement.find_all(exp.Table):
+        schema = tbl.text("db")
+        if not schema:
+            continue
+        catalog = tbl.text("catalog")
+        if (
+            schema.casefold() == want_schema
+            and tbl.name.casefold() == want_table
+            and (not catalog or catalog.casefold() == want_catalog)
+        ):
+            continue
+        found = ".".join(p for p in (catalog, schema, tbl.name) if p)
+        return (
+            f'Query rejected: it references "{found}", which is not the semantic model '
+            f"for this task. This task is about "
+            f'"{domain.get("schema")}"."{domain.get("table")}" — query only that model, '
+            "exactly as list_models returned it. Another model may look similar or even "
+            "share its label; results from it do not answer this question."
+        )
+    return None
 
 
 def get_configured_domains(backend_name: str) -> set:

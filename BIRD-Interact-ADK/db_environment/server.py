@@ -18,6 +18,7 @@ from shared.db_utils import (
     create_task_db, reset_task_db, drop_task_db,
     diagnose_rows, canonical_cell, preprocess_results, resolve_decimal_places,
 )
+from shared.environment_backends import get_domain_config, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
 from shared.models import (
     ExecuteSQLRequest, ExecuteSQLResponse, InitTaskRequest,
@@ -265,21 +266,33 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                 # tasks are filtered out upstream (orchestrator/runner.py) for
                 # non-raw backends since a semantic layer can't perform writes.
                 pred_sql_text = pred_sqls[0] if pred_sqls else ""
-                result_text = _run_query_via_semantic_layer(pred_sql_text)
-                if result_text.startswith("Error"):
-                    message = f"[exec_err_flg] Error executing submitted query via semantic layer: {result_text}"
+                # Refuse to grade a submission aimed at a different semantic model.
+                # run_query carries no scope of its own, so without this a task can be
+                # scored on rows from a model that merely shares this one's label.
+                domain = get_domain_config(settings.environment_backend, base_db)
+                violation = query_domain_violation(pred_sql_text, domain) if domain else None
+                if violation:
+                    # Scores 0 like any non-executable submit rather than aborting the
+                    # run. Logged because a hit here means model isolation leaked.
+                    logger.warning("submit rejected for task %s (wrong model): %s",
+                                   req_task_id, pred_sql_text)
+                    message = f"[exec_err_flg] {violation}"
                 else:
-                    pred_res = parse_semantic_layer_rows(result_text)
-                    try:
-                        result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
-                        if result == 1:
-                            passed = True
-                            message = "SQL passed test case."
-                        else:
-                            message = _incorrect_message(
-                                pred_res, sol_sqls, task_db, conn, conditions, cell=canonical_cell)
-                    except Exception:
-                        message = "Your SQL is not correct."
+                    result_text = _run_query_via_semantic_layer(pred_sql_text)
+                    if result_text.startswith("Error"):
+                        message = f"[exec_err_flg] Error executing submitted query via semantic layer: {result_text}"
+                    else:
+                        pred_res = parse_semantic_layer_rows(result_text)
+                        try:
+                            result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
+                            if result == 1:
+                                passed = True
+                                message = "SQL passed test case."
+                            else:
+                                message = _incorrect_message(
+                                    pred_res, sol_sqls, task_db, conn, conditions, cell=canonical_cell)
+                        except Exception:
+                            message = "Your SQL is not correct."
             elif sol_sqls:
                 # Execute pred SQL (also serves as executability check)
                 pred_query_result, pred_err, pred_to, _ = execute_queries(pred_sqls, task_db, conn)
