@@ -85,11 +85,15 @@ def _scope_to_domain(raw: str, domain: dict) -> str:
     writes the other one into run_query, so every query fails "Column not found".
     Sections do carry `catalog.schema.table:`, so scope on that.
 
-    The server also emits each model twice, in two rendering passes, and the two
-    bodies disagree: for bird_etf_prompt_only the second pass lists dimensions
-    (Transparency Group, Offered Category, Family Listing Exchange) that
-    explore_columns confirms that model does not have — they belong to the other
-    ETF build. Only the first matching section is kept; see tracker Q-17.
+    Scope on schema ONLY — keep every section for the configured model. The
+    server renders each model twice and the two passes disagree, each leaking a
+    different field from the other build: pass 2 labelled bird_etf_prompt_only
+    lists dimensions that model does not have, while pass 1 labelled
+    bird_atscale_models_catalog carries a correct header but prompt_only's
+    column_groups. Neither pass is authoritative, so dropping either one hides
+    real structure — keeping only the first cost the catalog model its true
+    (dataset-named) column_groups and the agent queried them as tables,
+    "relation \"funds\" does not exist", 0.0 across all 5 tasks. See Q-17.
     """
     fq = f"{domain['catalog']}.{domain['schema']}.{domain['table']}"
     head, _, rest = raw.partition("\n")
@@ -102,18 +106,19 @@ def _scope_to_domain(raw: str, domain: dict) -> str:
         head = json.dumps(entries[:1])
     except (ValueError, TypeError):
         logger.warning("list_models: could not parse header JSON; passing through unscoped")
-    model, tail = None, []
+    kept, tail, seen = [], [], set()
     for sec in re.split(r"(?m)^## ", rest):
-        if not sec.strip():
+        if not sec.strip() or sec in seen:
             continue
-        if model is None and f"catalog.schema.table: {fq}" in sec:
-            model = "## " + sec.rstrip()
+        seen.add(sec)
+        if f"catalog.schema.table: {fq}" in sec:
+            kept.append("## " + sec.rstrip())
         elif sec.startswith("Next Steps"):
             tail = ["## " + sec.rstrip()]
-    if model is None:
+    if not kept:
         logger.warning("list_models: no section matched %s; passing through unscoped", fq)
         return raw
-    return "\n".join([head, model, *tail])
+    return "\n".join([head, *kept, *tail])
 
 
 async def list_models(tool_context: ToolContext) -> str:
