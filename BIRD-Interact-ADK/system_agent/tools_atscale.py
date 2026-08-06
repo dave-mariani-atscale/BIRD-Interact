@@ -85,13 +85,19 @@ async def list_models(tool_context: ToolContext) -> str:
 
 
 async def explore_columns(search_terms: List[str], tool_context: ToolContext) -> str:
-    """Fuzzy-search the semantic model's columns (dimensions/metrics) by keyword.
+    """Search the semantic model's columns (dimensions/metrics) by keyword.
     Call repeatedly with different search terms as needed — this does not
     return everything at once. Returns descriptions grouped by column_group.
     Cost: 1 bird-coin.
 
+    Not fuzzy: a term must appear verbatim and in order in a column's name or
+    description. "fund years" matches "Fund Years With Return Data"; "years
+    fund" and "return years" match nothing. Pass several one- or two-word terms
+    rather than one long phrase, and on an empty result drop a word, never add
+    one.
+
     Args:
-        search_terms: Keywords to search for, e.g. ["sales price", "state", "year"].
+        search_terms: Short keywords, e.g. ["sales price", "state", "year"].
 
     Returns:
         Matching columns with descriptions, grouped by column_group.

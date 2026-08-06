@@ -62,6 +62,7 @@ RESULT_SHAPE_TIP = (
 ASK_USER_TIP = (
     "- Ask about exactly ONE ambiguity per ask_user call. The user answers one thing per turn: a bundled question gets its first part answered and the rest comes back as filler, and you still paid 2 coins. Ask the question whose answer most changes the query, then ask the next.\n"
     "- When the question implies a cutoff but never names it — 'highest', 'top', 'some', 'enough', 'sufficient', 'significant' — that number is something the user knows and you cannot derive. Ask for it outright ('exactly how many rows should the result contain?'). If the answer is qualitative ('a reasonable sample', 'the top ones'), ask again offering explicit options ('10, 25, 50, or 100?'). That second ask is worth 2 coins: a wrong cutoff fails the exact-tuple comparison however correct everything else is.\n"
+    "- When the answer needs a classification, status or summary COLUMN — 'show whether each one has drifted', 'add a summary', 'label each as X or Y' — the exact wording that column prints is the user's to decide and you cannot derive it. Ask for the literal text of every case ('what exact text should that column show for each one?'), and use their spelling verbatim. Those labels are compared as cell values, so correct rows under wording you invented score zero.\n"
 )
 
 # ── a-interact instruction ──
