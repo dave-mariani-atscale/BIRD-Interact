@@ -15,6 +15,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
+from shared.output_paths import timestamped_output_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -34,7 +35,11 @@ async def run_parallel_evaluation(
     p1_count = 0
     p2_count = 0
     completed = 0
+    # Stamped once here, not per _save(), so incremental saves keep
+    # appending to this run's own file instead of starting a new one.
+    output_path = timestamped_output_path(output_path)
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Writing results to %s", output_path)
 
     async def _save():
         n = len(results)

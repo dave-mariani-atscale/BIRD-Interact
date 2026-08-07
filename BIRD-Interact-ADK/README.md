@@ -104,8 +104,12 @@ DATASET=full python -m orchestrator.runner --mode a-interact --concurrency 3
 ### 7. View results
 
 ```bash
-# Generate HTML report
-python -m orchestrator.report results/eval_a_interact.json
+# Generate HTML report. Every run writes its own timestamped file
+# (results/eval_a_interact_YYYYMMDD_HHMMSS.json) so runs stay
+# comparable instead of overwriting each other -- the runner logs the
+# exact path it wrote. Newest first:
+ls -t results/*.json | head
+python -m orchestrator.report results/eval_a_interact_YYYYMMDD_HHMMSS.json
 
 # Run test harness (validates endpoints without LLM calls)
 python -m orchestrator.test_harness --concurrency 5
