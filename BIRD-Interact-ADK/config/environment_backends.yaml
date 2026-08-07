@@ -61,6 +61,28 @@ backends:
           columns asked for> FROM (SELECT <those columns>, <sort expr> AS sortkey FROM <model>
           WHERE ... ORDER BY sortkey DESC LIMIT <n>) t — the inner LIMIT is required or the
           ordering is silently dropped, and the outer SELECT must not reference sortkey.
+      - match: have been incorrectly constructed
+        hint: >-
+          You referenced an alias computed in a subquery from an outer WHERE/ORDER BY. A
+          window-function alias in WHERE cannot be rescued by ANY wrapping (double-wrapping fails
+          identically) — restructure instead: aggregate filter → HAVING inside the derived table
+          that computes the aggregate, repeating the full expression (never the alias); per-group
+          top-1 → self-join-on-MAX; global top-n → ORDER BY + LIMIT inside a derived table, with
+          an outer SELECT that trims to only the asked-for columns.
+      - match: don't understand function
+        hint: >-
+          This dialect has no percentile_cont/percentile_disc/median, no percent_rank, and no
+          string_agg/listagg/group_concat/array_to_string (ARRAY_AGG is accepted but returns
+          broken results) — one rejection means the whole family is absent, NEVER retry a synonym
+          spelling. Percentiles/medians cannot be computed here at all; reinterpret the question
+          or ask_user. For string aggregation, fetch the member rows with run_query, concatenate
+          them yourself, and submit a FROM-less literal-values query instead:
+          SELECT 'A' AS grp, 'X, Y, Z' AS members UNION ALL SELECT 'B', 'P, Q'.
+      - match: aggregate functions are not allowed
+        hint: >-
+          Move the condition into a HAVING clause inside the derived table that computes the
+          aggregate, repeating the full aggregate expression — never the alias, and never an
+          outer WHERE.
     tool_costs:
       list_models: 1.0
       explore_columns: 1.0
