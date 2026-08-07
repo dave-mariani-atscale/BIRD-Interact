@@ -41,7 +41,7 @@
 # backend-specific — they live in agent.py so the backends cannot drift apart.
 
 backends:
-  atscale:
+  atscale: &atscale
     mcp_url_env: SEMANTIC_LAYER_MCP_URL
     mcp_token_env: SEMANTIC_LAYER_MCP_TOKEN
     tools_module: system_agent.tools_atscale
@@ -149,3 +149,26 @@ backends:
         catalog: atscale_catalogs
         schema: bird_etf_prompt_only_main
         table: exchange_traded_funds_test
+
+  # LOCAL ONLY — the A/B comparison arm. Identical to `atscale` in every respect
+  # (the merge key makes instruction / tool_costs / error_hints literally the
+  # same objects, so the two arms cannot silently drift apart) except that
+  # exchange_traded_funds points at the AtScaleInc comparison model instead of
+  # the prompt-only one.
+  #
+  # Exists as a BACKEND rather than a config swap so an A/B needs no edit and no
+  # service restart between arms: --backend is pushed to the already-running
+  # services via /set_backend, so both arms provably execute the same harness
+  # process. The previous blocked A/B had to restart between arms, which left a
+  # post-deploy warm-up confounded with the arm itself.
+  atscale_catalog:
+    <<: *atscale
+    domains:
+      solar_panel:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Solar Panel
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Exchange Traded Funds
