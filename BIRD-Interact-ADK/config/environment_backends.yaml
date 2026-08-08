@@ -195,3 +195,21 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Exchange Traded Funds
+
+  # LOCAL ONLY - the one-shot A/B arm. Identical to `atscale` (same merge key,
+  # so instruction / tool_costs / error_hints are literally the same objects)
+  # except exchange_traded_funds points at ETF_0807, the model built in one
+  # shot from docs/create_bird_model_prompt.md (repo diannewood/bird-etf-0807).
+  # Deployed 2026-08-07 with `sml-cli atscale-deploy`, which uses the catalog
+  # name verbatim (no _main suffix) - schema read back from list_models.
+  atscale_0807:
+    <<: *atscale
+    domains:
+      solar_panel:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Solar Panel
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_etf_0807
+        table: ETF_0807
