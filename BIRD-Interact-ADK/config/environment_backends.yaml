@@ -150,66 +150,13 @@ backends:
         schema: bird_atscale_models_catalog_main
         table: Solar Panel
       exchange_traded_funds:
-        # LOCAL ONLY. Points at diannewood/bird-etf-prompt-only, the ETF model
-        # of record since 2026-08-06.
-        #
-        # The model is deployed under the name `exchange_traded_funds_test`,
-        # NOT "Exchange Traded Funds". That rename is deliberate: the MCP's
-        # list_models joins pg_class on relname alone (metadata.py:31, no
-        # namespace predicate), so two models sharing a name across schemas each
-        # render twice with the other's column_groups attached (Q-17). Distinct
-        # names sidestep it, which is what lets the AtScaleInc comparison model
-        # stay deployed alongside this one. Do not "tidy" this name back to the
-        # label form without undeploying the other ETF model first.
-        #
-        # The schema name is NOT stable across redeploys — this entry has gone
-        # stale in both directions in a single day (bird_etf_prompt_only ->
-        # bird_etf_prompt_only_main), and the suffix appears to follow the
-        # branch deployed from. A stale entry fails every task in the domain
-        # with no hint that config is the cause, so after ANY redeploy read the
-        # schema back from list_models and match it here.
-        # Verified live 2026-08-06: 154 measures / 212 dimensions.
-        catalog: atscale_catalogs
-        schema: bird_etf_prompt_only_main
-        table: exchange_traded_funds_test
-
-  # LOCAL ONLY — the A/B comparison arm. Identical to `atscale` in every respect
-  # (the merge key makes instruction / tool_costs / error_hints literally the
-  # same objects, so the two arms cannot silently drift apart) except that
-  # exchange_traded_funds points at the AtScaleInc comparison model instead of
-  # the prompt-only one.
-  #
-  # Exists as a BACKEND rather than a config swap so an A/B needs no edit and no
-  # service restart between arms: --backend is pushed to the already-running
-  # services via /set_backend, so both arms provably execute the same harness
-  # process. The previous blocked A/B had to restart between arms, which left a
-  # post-deploy warm-up confounded with the arm itself.
-  atscale_catalog:
-    <<: *atscale
-    domains:
-      solar_panel:
-        catalog: atscale_catalogs
-        schema: bird_atscale_models_catalog_main
-        table: Solar Panel
-      exchange_traded_funds:
+        # The schema name is NOT stable across redeploys — the suffix follows
+        # how the model was deployed (`_main` from the branch-based path, the
+        # catalog name verbatim from `sml-cli atscale-deploy`). A stale entry
+        # fails every task in the domain with no hint that config is the cause,
+        # so after ANY redeploy read the schema back from list_models and match
+        # it here. This applies to solar_panel above too — both models ship from
+        # the same repo, so one redeploy can invalidate both entries at once.
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Exchange Traded Funds
-
-  # LOCAL ONLY - the one-shot A/B arm. Identical to `atscale` (same merge key,
-  # so instruction / tool_costs / error_hints are literally the same objects)
-  # except exchange_traded_funds points at ETF_0807, the model built in one
-  # shot from docs/create_bird_model_prompt.md (repo diannewood/bird-etf-0807).
-  # Deployed 2026-08-07 with `sml-cli atscale-deploy`, which uses the catalog
-  # name verbatim (no _main suffix) - schema read back from list_models.
-  atscale_0807:
-    <<: *atscale
-    domains:
-      solar_panel:
-        catalog: atscale_catalogs
-        schema: bird_atscale_models_catalog_main
-        table: Solar Panel
-      exchange_traded_funds:
-        catalog: atscale_catalogs
-        schema: bird_etf_0807
-        table: ETF_0807
