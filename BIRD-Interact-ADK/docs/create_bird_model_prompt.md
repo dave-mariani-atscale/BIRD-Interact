@@ -24,6 +24,9 @@ database name (see Build process). Run unattended.
    (`utilities/create_bird_connections.sh` in the BIRD-Interact fork provisions a
    connection per BIRD database).
 2. The AtScale MCP server is running and connected.
+3. Deploy credentials: `ATSCALE_API_URL` is the SML API base URL without `/v1/public`
+   (locally `http://local.atscaleinternal.com:3001`); `ATSCALE_API_TOKEN` — locally, use
+   `ATSCALE_MCP_TEST_API_TOKEN` from `AtScaleInc/mcp/.env`.
 
 ## Answer-key firewall — read before opening any JSONL
 
@@ -42,7 +45,11 @@ Two working rules that keep the build honest:
 - Hard-code a KB constant or threshold into the model only when its ambiguity entry is
   `is_mask: false` (an openly stated convention). When `is_mask` is true the benchmark
   intends the agent to resolve it by asking the user; baking it into the model answers
-  the question for the agent.
+  the question for the agent. Still ship the masked concept's components — but each
+  component's description must say it is one input to a larger named concept and that the
+  agent should ask the user for the complete definition, every condition and threshold,
+  before filtering. Observed failure otherwise: the agent anchors its clarifying question
+  on the one component it found, gets a partial yes, and never learns the rest.
 
 ## Sources — and only these
 
@@ -90,7 +97,12 @@ one by accident, say so in your report.
 - Where an entity can reach another by more than one join path (a direct FK vs a
   many-to-many bridge), ship attributes for both readings with descriptions saying which
   path each uses and when to prefer which. Don't assume the structurally "more correct"
-  path is the one questions mean.
+  path is the one questions mean. If the bridge's pairs exactly mirror pairs derivable
+  from the fact (verify live), model it as a plain link-count fact instead of an M2M
+  bridge.
+- Key each dimension leaf on the column the fact's FK actually references (watch
+  numeric-id FKs against text labels — type mismatch); keep the descriptive string as
+  `name_column`.
 
 **Ranks and top-N**
 - Expose the ranks and orderings that superlative and top-N questions need, at each grain
@@ -191,9 +203,9 @@ one by accident, say so in your report.
 **Descriptions**
 - Every measure and attribute description carries: formula and provenance, units and
   scale, live null and coverage counts, disambiguation from near-twins, and the
-  paraphrases someone would actually ask with. `explore_columns` is an ordered substring
-  match, not fuzzy search — a concept phrased differently from its description returns
-  nothing, so include several wordings. Descriptions on objects the discovery API doesn't
+  paraphrases someone would actually ask with. `explore_columns` is a contiguous,
+  case-insensitive substring match, not fuzzy search — "count of years" does not match
+  "count of calendar years" — so include several wordings verbatim. Descriptions on objects the discovery API doesn't
   expose don't count. The model's own description should be an orientation guide, not a
   one-liner.
 
@@ -228,6 +240,11 @@ in BIRD-Interact-ADK's `docs/model-change-log.md` for whether each still applies
   editing the spec and re-running, never by hand-editing emitted YAML — any identity that
   must survive (model name, catalog) belongs in the generator as a parameter, or
   regeneration silently reverts it.
+- Have the generator self-audit its output: duplicate labels, unreferenced datasets,
+  metrics naming columns no dataset defines — `sml-cli validate` misses some of these.
+- Before validate/deploy, dry-run every derived dataset's SQL directly against the
+  warehouse (row count plus a hand-recomputed spot value). This catches same-level alias
+  references and formula transpositions that no SML layer can.
 - Follow the SML authoring skills from `get_sml_skills`; `sml-cli validate` clean; commit
   and push before deploying (deploy resolves the model from the git remote); deploy.
 - Record every post-build change — the kind of change and why, naming the tracker row if
@@ -247,7 +264,8 @@ read the outbound warehouse SQL for any semi-additive or window-based construct.
    to document — the sole exception is metrics already documented as dialect-blocked
    (e.g. percentile medians on Postgres).
 3. **Discoverability.** Search the deployed model with question-style paraphrases only,
-   never an object's own name; the intended object must surface. If not, fix the
+   never an object's own name — take the probe phrases from the task briefs' own
+   `amb_user_query` wordings; the intended object must surface. If not, fix the
    description.
 4. **Coverage.** One passing query per question shape: group aggregate,
    filter-by-classification then measure, superlative/top-N, cross-fact, entity-level
