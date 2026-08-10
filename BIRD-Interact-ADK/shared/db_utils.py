@@ -8,7 +8,7 @@ import re
 import subprocess
 import threading
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
@@ -169,12 +169,48 @@ def get_connection_for_phase(db_name: str):
     return pool.getconn()
 
 
+_NUMERIC_STR_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)$")
+
+
 def process_decimals_recursive(item, decimal_places: int):
+    """Round every numeric cell to `decimal_places`, HALF_UP, whatever Python
+    type it arrived as.
+
+    Both rounding branches must agree on the rounding MODE. They did not: a
+    Decimal was quantized ROUND_HALF_UP while a float went through Python's
+    round(), which is banker's rounding (half-to-even). Gold SQL rounds inside
+    the query (Postgres ROUND = half-up) and so reaches here as an
+    already-rounded Decimal, while a semantic layer returns full-precision
+    floats that get rounded here — so at an exact .5 boundary the two sides
+    disagreed by one unit in the last place and the row compared unequal even
+    though the answer was right. Confirmed live: 3 of 1000 rows on one task
+    (17/16 -> gold 1.063 vs 1.062, 20/320 -> 0.063 vs 0.062, 3/80 -> 0.038 vs
+    0.037). The numeric-tolerance fallback cannot rescue those, because gold's
+    pre-rounding value is already the rounded one.
+
+    Numeric-looking STRINGS are rounded too. A SQL interface may return a
+    numeric as a string ('0.27800000000000000000' for a CAST(... AS
+    numeric(p,s)) expression, which this benchmark's own agent instructions
+    tell the agent to write), and a string previously fell straight through
+    unrounded — so it could never match a gold scalar that had been rounded.
+    The coercion is applied identically to both sides, so it can only make
+    values that were equal-but-differently-represented compare equal; it cannot
+    make genuinely different values match.
+    """
     quantizer = Decimal(1).scaleb(-decimal_places)
+    if isinstance(item, bool):
+        return item  # bool is an int subclass — never treat it as a number here
     if isinstance(item, Decimal):
         return item.quantize(quantizer, rounding=ROUND_HALF_UP)
     elif isinstance(item, float):
-        return round(item, decimal_places)
+        if item != item or item in (float("inf"), float("-inf")):
+            return item  # NaN / +-inf have no decimal expansion to quantize
+        return Decimal(str(item)).quantize(quantizer, rounding=ROUND_HALF_UP)
+    elif isinstance(item, str) and _NUMERIC_STR_RE.match(item.strip()):
+        try:
+            return Decimal(item.strip()).quantize(quantizer, rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError):
+            return item
     elif isinstance(item, (list, tuple)):
         return type(item)(process_decimals_recursive(x, decimal_places) for x in item)
     elif isinstance(item, dict):
@@ -227,6 +263,71 @@ def canonical_cell(value) -> str:
     return str(value).lower()
 
 
+def _cell_cmp(a, b) -> Optional[int]:
+    """Three-way compare of two cells, numerically when both look numeric and
+    as case-folded strings otherwise. None means "not orderable" (a NULL, or a
+    pair that can't be compared), which disqualifies a column from being
+    treated as a sort key."""
+    if a is None or b is None:
+        return None
+    an, bn = _try_parse_number(a), _try_parse_number(b)
+    if an is not None and bn is not None:
+        return (an > bn) - (an < bn)
+    try:
+        sa, sb = str(a).lower(), str(b).lower()
+    except Exception:
+        return None
+    return (sa > sb) - (sa < sb)
+
+
+def _sort_key_indices(gt_res) -> List[int]:
+    """Infer which columns the gold result is ORDERed BY, as column indices.
+
+    The tie-tolerant comparisons need to know which columns rows may be
+    permuted within. This used to assume the sort column was the LAST one,
+    which holds for the "label, value ORDER BY value" shape but silently breaks
+    whenever the sorted measure is not last: with a 3-column
+    (id, measure, category) result sorted on the measure, grouping by the
+    category collapses the run structure and an entirely correct answer fails.
+    Confirmed live on a task where 375 of 1000 rows tied on the sort column and
+    the two engines broke those ties differently.
+
+    A column qualifies if gold's values are monotonic across the whole result
+    AND it has at least two distinct values. The constant-column exclusion
+    matters: a single-valued column is trivially monotonic, and grouping on it
+    would collapse every row into one group, silently turning an ordered
+    comparison into an unordered one.
+
+    Among qualifying columns, pick the one with the FEWEST distinct values.
+    Several columns can be monotonic at once — an id or label column is often
+    incidentally sorted too — and including those would make the key finer than
+    the true sort expression, giving every row its own group and destroying the
+    very tie tolerance this exists to provide. The sort measure is the coarsest
+    of the monotonic columns; an identifier is the finest. Ties in distinct-count
+    prefer the rightmost column, which reproduces the historical behaviour on
+    the "label, value ORDER BY value" shape. Falls back to the last column when
+    nothing qualifies, so previously-passing comparisons are unaffected.
+    """
+    if not gt_res:
+        return [-1]
+    width = len(gt_res[0])
+    best, best_distinct = None, None
+    for c in range(width):
+        col = [row[c] for row in gt_res]
+        cmps = [_cell_cmp(col[i], col[i + 1]) for i in range(len(col) - 1)]
+        if any(x is None for x in cmps):
+            continue
+        if not (all(x <= 0 for x in cmps) or all(x >= 0 for x in cmps)):
+            continue
+        if all(x == 0 for x in cmps):
+            continue  # constant column — would collapse the whole result into one group
+        # count distinct by adjacent change, since the column is monotonic
+        distinct = 1 + sum(1 for x in cmps if x != 0)
+        if best_distinct is None or distinct <= best_distinct:
+            best, best_distinct = c, distinct
+    return [best] if best is not None else [-1]
+
+
 def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     """Ordered-list comparison that tolerates rows tied on the (assumed) sort
     column landing in a different relative order between two engines.
@@ -240,10 +341,10 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     supplying a secondary tiebreaker — an exact-order comparison fails on
     these even when every value is correct.
 
-    Heuristic: assume the LAST column is the sort key (true for every
-    "label, value ORDER BY value" query shape seen so far — the dominant
-    style in this benchmark). Group GOLD rows into consecutive runs sharing
-    that column's value, then verify the PREDICTED rows occupying that same
+    The sort key is inferred by _sort_key_indices (every column gold is
+    monotonic in, excluding constants) rather than assumed to be the last
+    column, which was wrong whenever the sorted measure was not last. Group
+    GOLD rows into consecutive runs sharing that key, then verify the PREDICTED rows occupying that same
     index range form the identical set (order within the tied group doesn't
     matter), and that groups appear in the same overall sequence. Falls back
     to an exact match on any structural mismatch (row count, or a tie-group
@@ -253,9 +354,10 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
         return False
     if not gt_res:
         return True
+    key_idxs = _sort_key_indices(gt_res)
     groups = []
     for row in gt_res:
-        key = row[-1]
+        key = tuple(row[i] for i in key_idxs)
         if groups and groups[-1][0] == key:
             groups[-1][1].append(row)
         else:
@@ -324,10 +426,12 @@ def _ordered_match_tolerating_ties_numeric(pred_res, gt_res) -> bool:
         return False
     if not gt_res:
         return True
+    key_idxs = _sort_key_indices(gt_res)
     groups = []
     for row in gt_res:
-        key = row[-1]
-        if groups and _values_close(groups[-1][0], key):
+        key = tuple(row[i] for i in key_idxs)
+        if groups and len(groups[-1][0]) == len(key) and all(
+                _values_close(a, b) for a, b in zip(groups[-1][0], key)):
             groups[-1][1].append(row)
         else:
             groups.append((key, [row]))
