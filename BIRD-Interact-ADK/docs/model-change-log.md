@@ -15,6 +15,7 @@ still applies before carrying its workaround into a new model.
 | E-02 | Derived-dataset SQL executes without the connection's schema on the `search_path`; bare table references deploy clean then fail every query with `relation does not exist`. | Schema-qualify every table reference in derived SQL (`public.<table>` for all BIRD connections). | Yes - applied in `cybermarket_pattern` (2026-08-10). Not re-tested against a fixed build. |
 | Q-17 | Two deployed models sharing a name render corrupted metadata. | Keep deployed model names unique across the engine; do not publish the same catalog to two schemas. | Yes - see the deploy-path note under cybermarket_pattern. |
 | MDX-Median | `Median()` is rejected at deploy as a `metric_calc`; must be `calculation_method: percentile` with `named_quantiles`. On the Postgres dialect the percentile sketch is then rejected at query time. Percentile metrics are exposed as `<name>_instance_<q>`; metadata is cached until `list_models force_refresh`. | Ship the percentile form anyway and record the dialect limitation. | Not exercised by `cybermarket_pattern` - no knowledge-base definition in that database requires a median. |
+| D-01 | The engine re-parses and re-emits derived-dataset SQL, and a `'|'` string literal does not survive the round trip: every query touching the dataset fails with a raw warehouse `syntax error at or near "'|'"`. Other literals (`'$'`, `','`, `' km'`, `'Yes'`, `'2FA'`) round-trip fine, so this is specific to the pipe character. Layer 1 validation and deploy both pass - it only surfaces on a live query. | Never use `|` in derived SQL. Where a composite key needs representing, use a compound SML leaf key (`sml-create-dimension` R5) rather than concatenating a surrogate. | Yes - found and fixed in `cybermarket_pattern` on 2026-08-10 (acceptance run 1). |
 | Catalog-suffix | Deploying from Design Center appends the git branch to the catalog name (`_main`); `sml-cli atscale-deploy` uses the catalog name verbatim. The two paths publish to different schemas. | Read the schema back from `list_models` after any redeploy and make `config/environment_backends.yaml` match. | Yes - the two existing models are published at `bird_atscale_models_catalog_main`. |
 
 ---
@@ -136,3 +137,35 @@ from `list_models` afterwards and add the matching `domains` entry to
         schema: <schema read back from list_models>
         table: Cybermarket Pattern
 ```
+
+**2026-08-10 - acceptance run 1 (post-deploy).** Deployed to
+`atscale_catalogs.bird_atscale_models_catalog_main.Cybermarket Pattern`,
+alongside the two existing models in one catalog - no duplicate model names, so
+Q-17 avoided.
+
+Found and fixed:
+
+- **D-01** (new workarounds row): `|| '|' ||` in `Product Listing Detail` and
+  `Transaction Event` made every query on those two datasets fail. About half of
+  Gates 1, 2 and 4 were unqueryable. Replaced the concatenated
+  `product_listing_key` with a compound natural leaf key on the source's
+  four-part PK; the generator now asserts no `|` remains in any emitted SQL.
+- Three discoverability gaps: `how much cash flow they handle per day`,
+  `dodgy buyers` and `how anonymous a session appears` returned no candidate
+  from `explore_columns` (ordered substring match, so a differently-phrased
+  concept returns nothing). Added those phrasings, plus `how often they hide
+  their identity`, `how the buyer verified their identity` and `pass the secure
+  criteria`.
+- Two baselines in `cybermarket_pattern/ACCEPTANCE.md` had been written by
+  padding digits onto 6-decimal figures. The model was correct in both cases;
+  the document was wrong and is corrected from full-precision source values.
+
+Everything runnable without the two affected datasets passed exact-equal: 15 of
+25 exactness rows, 9 of 15 conformance probes, 4 of 6 coverage shapes. The
+group-vs-average separation is confirmed working (CEI 14.905 pooled vs 23.265
+mean; likewise DPE, BRDR, TVR, PLR). Pooled Group Formula calcs agree with the
+source to ~15 significant figures - the engine's summation order differs from
+Postgres's, a last-unit double difference, not a modelling error.
+
+A redeploy is required before the remaining gate rows can run, and before the
+benchmark: the deployed build still has D-01.
