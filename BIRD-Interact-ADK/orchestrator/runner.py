@@ -27,6 +27,7 @@ async def run_parallel_evaluation(
     output_path: str,
     concurrency: int = 5,
     mode: str = "a-interact",
+    meta: Dict[str, Any] = None,
 ):
     semaphore = asyncio.Semaphore(concurrency)
     results: List[Dict[str, Any]] = []
@@ -47,6 +48,9 @@ async def run_parallel_evaluation(
             return
         output = {
             "mode": mode,
+            # Run provenance so a summary tool can group runs without parsing
+            # filenames -- which arm and which repetition this file is.
+            **(meta or {}),
             "metrics": {
                 "total_tasks": n,
                 "total_reward": total_reward,
@@ -235,6 +239,13 @@ def main():
     parser.add_argument("--output", default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--concurrency", type=int, default=5)
+    parser.add_argument("--repeat", type=int, default=1,
+                         help="Run the whole evaluation N times in sequence, writing one "
+                              "timestamped output file per repetition. Sequential on purpose: "
+                              "concurrent runs of the same database would collide on the "
+                              "per-task scratch DB name (create_task_db has no run id and "
+                              "force-drops it), and /set_backend is global to the shared "
+                              "services. Use --concurrency for parallelism within a run.")
     parser.add_argument("--databases", type=str, default=None,
                          help="Comma-separated selected_database values to run (e.g. 'solar_panel,hulushows'). Default: all.")
     parser.add_argument("--backend", type=str, default="raw",
@@ -261,13 +272,26 @@ def main():
     tasks = load_tasks(args.data, args.limit, databases)
     logger.info("%s: Evaluating %d tasks with concurrency=%d", args.mode, len(tasks), args.concurrency)
 
-    asyncio.run(run_parallel_evaluation(
-        tasks=tasks,
-        run_single_task=run_single_task,
-        output_path=output,
-        concurrency=args.concurrency,
-        mode=args.mode,
-    ))
+    if args.repeat < 1:
+        parser.error("--repeat must be at least 1")
+
+    for run_index in range(1, args.repeat + 1):
+        # Tag each repetition's filename so a directory listing is unambiguous
+        # even if two runs somehow land in the same wall-clock second.
+        run_output = output
+        if args.repeat > 1:
+            p = Path(output)
+            run_output = str(p.with_name(f"{p.stem}_run{run_index:02d}{p.suffix}"))
+            logger.info("=== repetition %d of %d ===", run_index, args.repeat)
+        asyncio.run(run_parallel_evaluation(
+            tasks=tasks,
+            run_single_task=run_single_task,
+            output_path=run_output,
+            concurrency=args.concurrency,
+            mode=args.mode,
+            meta={"backend": args.backend, "run_index": run_index,
+                  "repeat_total": args.repeat},
+        ))
 
 
 if __name__ == "__main__":
