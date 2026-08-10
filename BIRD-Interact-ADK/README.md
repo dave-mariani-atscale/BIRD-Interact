@@ -99,7 +99,27 @@ python -m orchestrator.runner --mode a-interact --limit 10
 
 # Full dataset
 DATASET=full python -m orchestrator.runner --mode a-interact --concurrency 3
+
+# One database, and a named semantic-layer backend from
+# config/environment_backends.yaml instead of raw Postgres. --backend is pushed
+# to the already-running services via /set_backend, so switching arms between
+# runs needs no restart.
+python -m orchestrator.runner --mode a-interact \
+    --databases cybermarket_pattern --backend atscale
+
+# Repeat the whole evaluation N times, one timestamped file per repetition
+# (..._run01_<ts>.json, _run02_, ...). Agent variance moves a single run's
+# average reward by up to ~0.10, so a before/after judgement needs N>=3 per arm.
+python -m orchestrator.runner --mode a-interact --repeat 3 \
+    --databases cybermarket_pattern --backend atscale \
+    --output results/eval_cybermarket_pattern_atscale.json
 ```
+
+`--repeat` is sequential on purpose. Two concurrent runs of the same database
+collide on the per-task scratch DB (`create_task_db` names it
+`{db}__{task_id}` with no run id, and force-drops it), and `/set_backend` is
+global to the shared services, so parallel runs on different backends would
+fight over one setting. Use `--concurrency` for parallelism *within* a run.
 
 ### 7. View results
 
@@ -114,6 +134,33 @@ python -m orchestrator.report results/eval_a_interact_YYYYMMDD_HHMMSS.json
 # Run test harness (validates endpoints without LLM calls)
 python -m orchestrator.test_harness --concurrency 5
 ```
+
+Summarise across runs — per-arm scores with their spread, lift, and which tasks
+actually moved:
+
+```bash
+# Every database it finds
+python scripts/summarize_runs.py
+
+# One database; --since restricts to runs newer than a timestamp, for
+# before/after comparisons
+python scripts/summarize_runs.py --database cybermarket_pattern --since 20260810_140000
+```
+
+It reports the runs found, the headline per-arm numbers, a like-for-like table,
+per-task stability (always / never / flaky), and where the arms differ. Two
+things it does deliberately:
+
+- **Headline and like-for-like are kept apart.** The `raw` arm also runs the
+  Management tasks (DDL/DML) that a read-only semantic-layer backend filters
+  out, and scores differently on them — so headline numbers are *not* comparable
+  across arms. Lift is computed only over the query tasks both arms attempted.
+- **Spread is printed next to lift**, with the reminder that a lift smaller than
+  roughly twice the largest single-arm standard deviation isn't distinguishable
+  from variance.
+
+The always/never/flaky breakdown is usually the most informative part: a task
+that flips between runs can't support a conclusion in either direction.
 
 ## LLM Configuration
 
@@ -193,15 +240,21 @@ Set `DATASET=lite` or `DATASET=full` in `.env`.
 │   ├── db_utils.py         # PostgreSQL pooling & evaluation
 │   └── models.py           # Pydantic models
 ├── orchestrator/           # Evaluation runners
-│   ├── runner.py           # Parallel runner (--mode, --concurrency, --oracle)
+│   ├── runner.py           # Parallel runner (--mode, --concurrency, --backend,
+│   │                       #   --databases, --repeat)
 │   ├── cinteract.py        # c-interact pipeline
 │   ├── ainteract.py        # a-interact pipeline
 │   ├── report.py           # HTML report generator
 │   └── test_harness.py     # Endpoint validation (no LLM)
 ├── bird-interact-lite/     # Lite dataset (300 tasks)
 ├── bird-interact-full/     # Full dataset (600 tasks)
+├── config/
+│   └── environment_backends.yaml  # Named semantic-layer backends (--backend)
 ├── docker-compose.yml      # PostgreSQL containers
-├── scripts/                # Service startup scripts
+├── scripts/                # Service startup + eval scripts
+│   ├── start_services.sh   # Launch the three services
+│   ├── run_eval.sh         # Wrapper: starts services if needed, then the runner
+│   └── summarize_runs.py   # Cross-run summary: per-arm scores, spread, lift
 ├── .env.example            # Configuration template
 └── requirements.txt
 ```
