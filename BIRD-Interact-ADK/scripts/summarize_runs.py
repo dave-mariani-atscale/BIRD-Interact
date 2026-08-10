@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Summarise evaluation runs: per-arm scores, lift, and per-task stability.
 
-    python scripts/summarize_runs.py                          # every database
+    python scripts/summarize_runs.py                          # every database, every run
     python scripts/summarize_runs.py --database cybermarket_pattern
-    python scripts/summarize_runs.py --since 20260810_1400    # only newer runs
+    python scripts/summarize_runs.py --lastn 3                # 3 most recent runs PER ARM
 
 Why this exists: a single run's score moves by as much as +/-0.10 from agent
 variance alone, so a before/after delta from one run per arm says nothing. This
@@ -29,7 +29,7 @@ import statistics
 from collections import defaultdict
 
 
-def load_runs(results_dir: str, database: str | None, since: str | None):
+def load_runs(results_dir: str, database: str | None, lastn: int | None):
     runs = []
     for path in sorted(glob.glob(os.path.join(results_dir, "*.json")),
                        key=os.path.getmtime):
@@ -51,10 +51,21 @@ def load_runs(results_dir: str, database: str | None, since: str | None):
         db = sorted(dbs)[0] if len(dbs) == 1 else (",".join(sorted(dbs)) or "?")
         if database and db != database:
             continue
-        if since and base.rsplit(".", 1)[0][-15:] < since:
-            continue
         runs.append({"path": base, "arm": arm, "db": db, "doc": doc,
+                     "mtime": os.path.getmtime(path),
                      "by_id": {r["task_id"]: r for r in results}})
+
+    if lastn:
+        # Per (database, arm), not globally: the arms are usually run in an
+        # uneven interleaving, so a global "last N files" would silently compare
+        # e.g. 5 atscale runs against 1 raw run. Per-arm keeps it N vs N.
+        kept = []
+        groups = defaultdict(list)
+        for r in runs:
+            groups[(r["db"], r["arm"])].append(r)
+        for g in groups.values():
+            kept.extend(sorted(g, key=lambda r: r["mtime"])[-lastn:])
+        runs = sorted(kept, key=lambda r: r["mtime"])
     return runs
 
 
@@ -159,12 +170,16 @@ def main():
     ap.add_argument("--results-dir", default="results")
     ap.add_argument("--database", default=None,
                     help="Only summarise this selected_database (e.g. cybermarket_pattern)")
-    ap.add_argument("--since", default=None,
-                    help="Only include runs whose filename timestamp is >= this "
-                         "(e.g. 20260810_140000), for before/after comparisons")
+    ap.add_argument("--lastn", type=int, default=None, metavar="N",
+                    help="Only summarise the N most recent runs OF EACH ARM (per "
+                         "database), by file mtime. Use this to compare the runs "
+                         "since a change without hand-picking files. Default: all runs.")
     args = ap.parse_args()
 
-    runs = load_runs(args.results_dir, args.database, args.since)
+    if args.lastn is not None and args.lastn < 1:
+        ap.error("--lastn must be at least 1")
+
+    runs = load_runs(args.results_dir, args.database, args.lastn)
     if not runs:
         print(f"No runs with results found in {args.results_dir!r}"
               + (f" for database {args.database!r}" if args.database else ""))

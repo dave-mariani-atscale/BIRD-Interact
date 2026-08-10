@@ -139,12 +139,12 @@ Summarise across runs — per-arm scores with their spread, lift, and which task
 actually moved:
 
 ```bash
-# Every database it finds
+# Every database, every run it finds
 python scripts/summarize_runs.py
 
-# One database; --since restricts to runs newer than a timestamp, for
-# before/after comparisons
-python scripts/summarize_runs.py --database cybermarket_pattern --since 20260810_140000
+# One database, and only the 3 most recent runs OF EACH ARM -- so a --repeat 3
+# comparison is a clean 3-vs-3 however the two arms were interleaved
+python scripts/summarize_runs.py --database cybermarket_pattern --lastn 3
 ```
 
 It reports the runs found, the headline per-arm numbers, a like-for-like table,
