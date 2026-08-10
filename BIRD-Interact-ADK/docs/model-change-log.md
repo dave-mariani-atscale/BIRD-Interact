@@ -167,5 +167,27 @@ mean; likewise DPE, BRDR, TVR, PLR). Pooled Group Formula calcs agree with the
 source to ~15 significant figures - the engine's summation order differs from
 Postgres's, a last-unit double difference, not a modelling error.
 
-A redeploy is required before the remaining gate rows can run, and before the
-benchmark: the deployed build still has D-01.
+**2026-08-10 - acceptance run 2 (after redeploying the D-01 fix). All four gates
+pass.** Exactness 25/25 exact-equal against source, Conformance 15/15 pairs
+non-empty, Discoverability 14/14 paraphrases, Coverage 6/6 shapes.
+
+- D-01 confirmed fixed: the transaction and product-listing halves of the model
+  are queryable, and the compound leaf key does not fan out (Transaction Count
+  still totals exactly 1000 when grouped through Product Listing).
+- Group-vs-average separation verified on all nine ratio formulas, diverging
+  1.43x (ACI) to 4.09x (TVR). A Group Formula returning its average twin's
+  number would have meant the MDX was wrong.
+- Rank twins verified: `SSD Rank Descending <= 10` returns 11 rows because two
+  threads tie at position 10 - the RANK reading of "top N", which is why the
+  DENSE_RANK twin ships beside it.
+- Negative test: `Buyer Count` grouped by `Completion State` was refused before
+  execution, naming the conforming fact groups, at no warehouse cost. That is
+  `unrelated_dimensions_handling: error` working as intended.
+- **Re-verification gotcha.** Source columns declared `real` (float4) must be
+  re-checked with `::float8`, not `::numeric`. The engine casts `real -> FLOAT8`
+  and preserves the binary value; `::numeric` rounds each value to its shortest
+  round-trip decimal and produces a spurious 8th-significant-digit mismatch.
+  This caused a false alarm on ACI and THR before being tracked down.
+
+`config/environment_backends.yaml` now carries the `cybermarket_pattern` domain
+entry pointing at `bird_atscale_models_catalog_main` / `Cybermarket Pattern`.

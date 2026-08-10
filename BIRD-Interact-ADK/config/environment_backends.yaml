@@ -95,10 +95,14 @@ backends:
       - If a submission fails and budget remains, debug and try again.
       - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
     domains:
-      # solar_panel and exchange_traded_funds have real AtScale semantic
-      # models (AtScaleInc/bird-atscale-models). Add further domains here
-      # only once a real per-domain model has been built and deployed — do
-      # not point a domain at an unrelated model just to test plumbing.
+      # solar_panel, exchange_traded_funds and cybermarket_pattern have real
+      # AtScale semantic models (AtScaleInc/bird-atscale-models). Add further
+      # domains here only once a real per-domain model has been built and
+      # deployed — do not point a domain at an unrelated model just to test
+      # plumbing. The schema below is what list_models reports after a deploy;
+      # re-read it after any redeploy (Catalog-suffix row in
+      # docs/model-change-log.md) or every task fails with no hint that config
+      # is the cause.
       solar_panel:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
@@ -107,3 +111,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Exchange Traded Funds
+      cybermarket_pattern:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Cybermarket Pattern
