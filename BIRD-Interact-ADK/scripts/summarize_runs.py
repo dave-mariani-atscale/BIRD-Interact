@@ -69,6 +69,36 @@ def load_runs(results_dir: str, database: str | None, lastn: int | None):
     return runs
 
 
+# A run whose every task scored zero, or whose tool calls mostly errored, is
+# almost always broken infrastructure rather than a bad model: a dead MCP
+# endpoint, an undeployed model, a corrupted catalog. Averaging it in produces a
+# confident and completely wrong lift, so such runs are flagged and excluded.
+# Observed: an entire 3-run arm scored 0.000 because a redeploy of a SIBLING
+# model corrupted the shared catalog, and every call returned
+# 'ERROR: relation "..." already exists'.
+_INFRA_MARKERS = ("Error calling ", "already exists", "No semantic model configured")
+
+
+def run_health(run) -> tuple[bool, str]:
+    """(is_suspect, reason) for one run."""
+    results = list(run["by_id"].values())
+    if not results:
+        return True, "no task results"
+    calls = errs = 0
+    for r in results:
+        for t in r.get("tool_trajectory") or []:
+            if not t.get("tool"):
+                continue
+            calls += 1
+            if any(m in str(t.get("result") or "") for m in _INFRA_MARKERS):
+                errs += 1
+    if calls and errs / calls > 0.30:
+        return True, f"{errs}/{calls} tool calls ({errs/calls:.0%}) returned an infrastructure error"
+    if all(r.get("total_reward", 0) == 0 for r in results):
+        return True, f"every one of {len(results)} tasks scored zero"
+    return False, ""
+
+
 def _fmt(vals):
     if not vals:
         return "n/a"
@@ -88,11 +118,30 @@ def summarize(db: str, runs: list):
         by_arm[r["arm"]].append(r)
 
     print("\n1. RUNS FOUND")
+    suspect = {}
     for arm in sorted(by_arm):
         for r in by_arm[arm]:
             m = r["doc"]["metrics"]
+            bad, why = run_health(r)
+            if bad:
+                suspect[r["path"]] = why
             print(f"   {r['path']:<62} {arm:<8} n={m['total_tasks']:<3} "
-                  f"avg={m['average_reward']:.3f}")
+                  f"avg={m['average_reward']:.3f}{'   <<< SUSPECT' if bad else ''}")
+
+    if suspect:
+        print("\n!! SUSPECT RUNS EXCLUDED -- these look like broken infrastructure,")
+        print("!! not a model result. Fix the cause and re-run before drawing any")
+        print("!! conclusion; scores below omit them.")
+        for path, why in suspect.items():
+            print(f"     {path}\n       {why}")
+        for arm in list(by_arm):
+            by_arm[arm] = [r for r in by_arm[arm] if r["path"] not in suspect]
+            if not by_arm[arm]:
+                print(f"\n     ARM '{arm}' HAS NO USABLE RUNS LEFT -- no comparison is possible "
+                      f"for it.")
+                del by_arm[arm]
+        if not by_arm:
+            return
 
     print("\n2. HEADLINE, as each run reported it (NOT comparable across arms --")
     print("   the raw arm also runs the Management tasks the atscale arm filters out)")
