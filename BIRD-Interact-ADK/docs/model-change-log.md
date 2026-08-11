@@ -505,3 +505,22 @@ Processing Workflow 821, Feature Analysis 539, ESI non-null population 825.
 Task 7 re-tested against the deployed model with no simulation: still 0 on its
 own, and **1** once B-19 (strip gold's ROUND on the cross-source path) and B-20
 (wire the tolerance value) are applied at 1e-4.
+
+**B-19 fixed 2026-08-11 (67724b9), which changes the flag picture.** The
+semantic-layer path now gives gold the same `remove_comments` ->
+`remove_distinct` -> `remove_round` cleanup the raw path and upstream already
+give it. Unflagged, because it retires a deviation rather than adding one.
+
+The side effect matters more than the fix: stripping gold's `ROUND()` removes
+the ARTIFICIAL ties it manufactured. Gold's `ORDER BY` was sorting on rounded
+values, so its row order was arbitrary inside each tied block and no external
+engine could reproduce it; unrounded, the order is strict and a full-precision
+semantic layer matches it directly. `GRADING_TIE_TOLERANCE` is now a NO-OP on
+the semantic-layer arm - identical pass counts with it on or off, on both
+domains (archeology 5/21 submissions, ETF 17/74). The arm reaches 1.40 on
+archeology under UPSTREAM grading flags.
+
+So the archeology lift no longer depends on a deviation flag, and B-15 is
+superseded: the cause is removed rather than the symptom forgiven. The flag now
+only affects the RAW arm, which makes keeping it on a choice that slightly
+favours raw rather than one that rescues the semantic layer.
