@@ -1,0 +1,95 @@
+# Seven-task ETF iteration set — for testing changes aimed at lift over raw.
+#
+# Use with:  python -m orchestrator.runner --backend atscale --tasks scripts/tasks_iter7.txt ...
+#
+# WHY THESE SEVEN. A full ETF run is 19 tasks / ~268 tool calls, and most of it
+# carries no signal: eight tasks have scored identically on every run ever
+# recorded (etf_2/13/16/20 always 1.0, etf_14 always 0.7, etf_6/7/9/10/11/12/18
+# always 0.0 on both arms). This set is 118 calls — 44% of a full run — and
+# reproduces the headline gap almost exactly:
+#
+#                    raw     atscale   lift
+#   full 19 tasks    0.321   0.426     +0.105
+#   these 7          0.143   0.243     +0.100
+#
+# Baselines restated 2026-08-10 under GRADING_TIE_TOLERANCE=false (the flag was
+# measured symmetric — it was worth +0.0526 to BOTH arms, all of it etf_3 phase
+# 1, so lift is unchanged and only the absolute numbers moved).
+#
+# Five of the seven score below 1.0, so there is room to move. Each covers a
+# DIFFERENT failure category, so a change that helps one is visible on its own
+# rather than averaged away. Ordered cheapest-first, so a broken change shows up
+# before the expensive tasks run.
+#
+# Baselines below are raw = etf_raw_full_0806.json, atscale =
+# rebase0810_atscale_r1.json (both n=1 — see the variance note at the bottom).
+
+# --- regression canary: 6 calls, must stay 1.0 -----------------------------
+# Stable 1.0 on both arms across every run. It is here to catch an instruction
+# change that breaks working behaviour. If this drops, stop and fix before
+# reading anything else in the set.
+exchange_traded_funds_13   # raw 1.0 | atscale 1.0
+
+# --- answer SHAPE and column ORDER ----------------------------------------
+# Reached the right 4 columns with the right values and failed on column ORDER
+# alone, at -1 coins. Tests the new "a wrong-column-ORDER rejection means your
+# values are right — permute, don't re-derive, keep 3 coins in reserve" rule.
+# Also now a masked-KB task: it scored 0.7 on three 0806 runs and 0.0 on 0810,
+# the drop coinciding with the masked-flag removal, so it exercises the
+# ask-user-for-the-screen path too.
+exchange_traded_funds_1    # raw 0.0 | atscale 0.0
+
+# --- engine-error dead ends ------------------------------------------------
+# Died on TWO of the six new error hints in one task: GREATEST/LEAST
+# (MinMaxExpr) and "Unmatched physical type" from an outer ORDER BY on an
+# unprojected sortkey. Best single test of the hint changes.
+exchange_traded_funds_6    # raw 0.0 | atscale 0.0
+
+# --- silently-wrong SQL + result shape -------------------------------------
+# Three categories at once: the ProjectContext hint (UNION ALL across a
+# model/literal boundary), COUNT("<dim>") returning members instead of a count
+# (silently wrong, not an error), and a 63-vs-11 row-count misread.
+exchange_traded_funds_11   # raw 0.0 | atscale 0.0
+
+# --- tie-block ordering + the least stable task in the set -----------------
+# Both arms reach gold's rows and differ only by the order within a tied
+# ORDER BY block, so both now score 0.0 under GRADING_TIE_TOLERANCE=false and
+# both scored 1.0 with it on — an even trade, which is how that flag was
+# measured symmetric. Also the least stable task we have (atscale 0.0 on all
+# three 0806 runs, 1.0 on 0810), so read it across repeats, never off one run.
+exchange_traded_funds_3    # raw 0.0 | atscale 0.0 (both 1.0 if tie tolerance is on)
+
+# --- discovery-budget exhaustion -------------------------------------------
+# The worst discovery-waste task: 14 explore_columns calls, 8 of them empty,
+# 14 of 18 coins gone before the first real query. Tests both the discovery
+# budgeting rules and the new "beaten down / oversold / drawdown" paraphrases
+# (measured post-deploy: those three now hit the target column in one call).
+exchange_traded_funds_9    # raw 0.0 | atscale 0.0
+
+# --- cross-fact conformance (the fix landed 2026-08-10) --------------------
+# Phase 2 was rejected outright because the yearly-rows measures do not conform
+# to Sector. Now has Fund Up-/Down-Market Years With Return Data as dimension
+# attributes; the exact failing query shape was verified to execute post-deploy.
+# The most expensive task in the set (26 calls) but the only one carrying
+# unclaimed phase-2 reward.
+exchange_traded_funds_4    # raw 0.0 | atscale 0.7
+
+# --- SWAPS ------------------------------------------------------------------
+# etf_10 (16 calls) — swap in when attempting the percentile/median work. It is
+#   the one structural AtScale disadvantage: gold uses a median, the engine's
+#   quantile sketch is dialect-blocked, and raw's percentile_cont just works.
+#   Pointless to spend calls on until that fix is actually attempted.
+# etf_8 (16 calls) — swap in for ORDER BY / tie-break work; it burned three
+#   submits guessing sort order.
+# etf_18, etf_12, etf_7 — masked-KB constants and an unexplained row-count gap.
+#   All 0.0 on both arms with no identified fix, so they cost calls and tell you
+#   nothing until there is a specific hypothesis to test.
+#
+# --- READING THE RESULTS ----------------------------------------------------
+# Run-to-run spread on average reward is ~0.055 (measured n=3, solar_panel), and
+# on 7 tasks one task flipping is worth ~0.14. So a single run of this set
+# CANNOT resolve a small change — it tells you direction and catches
+# regressions. Confirm anything that matters with a repeat, and prefer
+# per-task before/after over the average. The raw arm does not need re-running:
+# raw is unaffected by model or instruction changes, and with
+# GRADING_AUDIT_PATH set, any grader change can be re-scored offline for free.
