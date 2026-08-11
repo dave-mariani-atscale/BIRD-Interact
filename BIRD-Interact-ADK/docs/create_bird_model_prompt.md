@@ -113,6 +113,12 @@ one by accident, say so in your report.
   whose descriptions say which question each answers and name the other. The caller
   cannot recover the missing reading: a window alias used in `WHERE` must also be
   projected on this engine, which changes the column count.
+- A pre-built rank's **population** is part of its definition. A rank computed over every
+  entity returns a gapped sequence the moment the caller filters (1, 2, 3, 5, 8...), which
+  is not the dense within-filter rank a "top N of the entities that ..." question means.
+  Put the population in the *name*, not only the description — an object whose name
+  matches the question's vocabulary gets picked on surface word match, and by then the
+  caller has already filtered. Where questions ask both ways, ship both readings.
 
 **Group vs entity level**
 - Group-level and entity-level versions of a statistic are separate, separately named
@@ -193,6 +199,12 @@ one by accident, say so in your report.
   the label is what to show — prescribe `GROUP BY key` + `SELECT label`. When you warn
   against a column for one purpose, say what it *is* for; a caution with no counterpart
   guidance is read as "never use this column".
+- A name that mirrors a question's phrasing must satisfy **every** condition in that
+  phrasing. A measure named in the question's own words that quietly drops one of its
+  qualifiers is worse than a neutrally-named one: it is the obvious pick, it returns a
+  plausible number over a larger population, and nothing signals the mismatch. Either
+  carry every qualifier in the name, or name it for what it actually computes and let the
+  description carry the paraphrases.
 - Keep `unique_name` and label identical for anything an agent will query. The tools
   surface `unique_name`, so a friendly label attached to a snake_case technical name is
   invisible where it matters — and a snake_case identifier gets written unquoted, as a
@@ -215,6 +227,15 @@ These work around tracked engine/tool defects — parenthesized IDs reference th
 defect tracker and are provenance, not something to resolve. Check the Workarounds table
 in BIRD-Interact-ADK's `docs/model-change-log.md` for whether each still applies.
 
+- **Precompute whatever the query dialect cannot express.** A caller cannot work around a
+  missing language feature; they discover it by spending submits on queries that never
+  execute. Any concept the questions need that the dialect cannot say is a model object,
+  not a caller problem — move the computation into a measure or attribute so that SQL is
+  never written. Currently inexpressible on this engine: percentile/median (see below),
+  string aggregation (`string_agg`/`listagg`/`group_concat` rejected, `ARRAY_AGG` accepted
+  but silently does not aggregate), `GREATEST`/`LEAST`, `IN (subquery)`/`EXISTS`, CTEs,
+  and `COUNT(*)`. Re-probe the list against the live engine before each build; a
+  workaround that stops being needed is dead weight, and a new gap is a silent failure.
 - **Schema-qualify derived-dataset SQL** with the connection's declared schema —
   `public.<table>` for all current BIRD connections. The engine executes derived SQL
   without that schema on the `search_path`; bare references deploy clean and then fail
