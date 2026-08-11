@@ -483,3 +483,25 @@ which is M-10 one dimension over; and gold's sixth column is the raw
 `system_usage` jsonb projected whole, which no semantic-layer measure can
 return. The third is structural - task 10 is not winnable by this arm at any
 model quality.
+
+**Deployed 2026-08-11.** `sml-cli atscale-deploy . --catalog-name="bird_atscale_models_catalog_main"`
+(the `--catalog-name` override is required - the flag defaults to the catalog's
+own `unique_name`, which is the UNSUFFIXED schema, and deploying there would
+have created the duplicate this model already suffered once). `ATSCALE_API_URL`
+must be the bare host, not the `/v1/public` base - sml-cli appends that path
+itself and a doubled URL 404s on `/v1/public/v1/public/repos`. Deploy resolves
+the project from the git REMOTE, so the commit must be pushed first.
+
+Q-17b gate after deploy: `list_models` succeeds and returns all five models in
+`bird_atscale_models_catalog_main` - Archeology Scan, Cybermarket Pattern,
+Exchange Traded Funds, Households, Solar Panel - with no unsuffixed duplicate.
+Dave's Households model landed on main during this work and went out with it.
+
+Verified live: `Site + ESI` and `Site + MFS` return 900 rows where they returned
+898, SC5861 and SC6651 come back with a NULL measure, and every count is
+unmoved - Site Equipment Record 998, Ambient Condition Reading 908, Mesh 839,
+Processing Workflow 821, Feature Analysis 539, ESI non-null population 825.
+
+Task 7 re-tested against the deployed model with no simulation: still 0 on its
+own, and **1** once B-19 (strip gold's ROUND on the cross-source path) and B-20
+(wire the tolerance value) are applied at 1e-4.
