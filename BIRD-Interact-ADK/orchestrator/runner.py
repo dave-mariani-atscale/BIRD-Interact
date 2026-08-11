@@ -16,6 +16,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
+from shared.output_paths import timestamped_output_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ async def run_parallel_evaluation(
     output_path: str,
     concurrency: int = 5,
     mode: str = "a-interact",
+    meta: Dict[str, Any] = None,
 ):
     semaphore = asyncio.Semaphore(concurrency)
     results: List[Dict[str, Any]] = []
@@ -35,7 +37,11 @@ async def run_parallel_evaluation(
     p1_count = 0
     p2_count = 0
     completed = 0
+    # Stamped once here, not per _save(), so incremental saves keep
+    # appending to this run's own file instead of starting a new one.
+    output_path = timestamped_output_path(output_path)
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Writing results to %s", output_path)
 
     async def _save():
         n = len(results)
@@ -43,6 +49,9 @@ async def run_parallel_evaluation(
             return
         output = {
             "mode": mode,
+            # Run provenance so a summary tool can group runs without parsing
+            # filenames -- which arm and which repetition this file is.
+            **(meta or {}),
             # Anything but "none" makes these scores non-comparable to published
             # BIRD-Interact numbers, so the run records which regime produced it.
             "submit_feedback_level": settings.submit_feedback_level,
@@ -270,6 +279,13 @@ def main():
     parser.add_argument("--output", default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--concurrency", type=int, default=5)
+    parser.add_argument("--repeat", type=int, default=1,
+                         help="Run the whole evaluation N times in sequence, writing one "
+                              "timestamped output file per repetition. Sequential on purpose: "
+                              "concurrent runs of the same database would collide on the "
+                              "per-task scratch DB name (create_task_db has no run id and "
+                              "force-drops it), and /set_backend is global to the shared "
+                              "services. Use --concurrency for parallelism within a run.")
     parser.add_argument("--databases", type=str, default=None,
                          help="Comma-separated selected_database values to run (e.g. 'solar_panel,hulushows'). Default: all.")
     parser.add_argument("--tasks", type=str, default=None,
@@ -312,13 +328,26 @@ def main():
     tasks = load_tasks(args.data, args.limit, databases, args.query_only, tasks_filter)
     logger.info("%s: Evaluating %d tasks with concurrency=%d", args.mode, len(tasks), args.concurrency)
 
-    asyncio.run(run_parallel_evaluation(
-        tasks=tasks,
-        run_single_task=run_single_task,
-        output_path=output,
-        concurrency=args.concurrency,
-        mode=args.mode,
-    ))
+    if args.repeat < 1:
+        parser.error("--repeat must be at least 1")
+
+    for run_index in range(1, args.repeat + 1):
+        # Tag each repetition's filename so a directory listing is unambiguous
+        # even if two runs somehow land in the same wall-clock second.
+        run_output = output
+        if args.repeat > 1:
+            p = Path(output)
+            run_output = str(p.with_name(f"{p.stem}_run{run_index:02d}{p.suffix}"))
+            logger.info("=== repetition %d of %d ===", run_index, args.repeat)
+        asyncio.run(run_parallel_evaluation(
+            tasks=tasks,
+            run_single_task=run_single_task,
+            output_path=run_output,
+            concurrency=args.concurrency,
+            mode=args.mode,
+            meta={"backend": args.backend, "run_index": run_index,
+                  "repeat_total": args.repeat},
+        ))
 
 
 if __name__ == "__main__":

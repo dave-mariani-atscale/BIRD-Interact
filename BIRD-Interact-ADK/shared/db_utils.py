@@ -2,13 +2,14 @@
 
 import json
 import logging
+import math
 import os
 import re
 import subprocess
 import threading
 from collections import Counter
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
@@ -169,12 +170,48 @@ def get_connection_for_phase(db_name: str):
     return pool.getconn()
 
 
+_NUMERIC_STR_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)$")
+
+
 def process_decimals_recursive(item, decimal_places: int):
+    """Round every numeric cell to `decimal_places`, HALF_UP, whatever Python
+    type it arrived as.
+
+    Both rounding branches must agree on the rounding MODE. They did not: a
+    Decimal was quantized ROUND_HALF_UP while a float went through Python's
+    round(), which is banker's rounding (half-to-even). Gold SQL rounds inside
+    the query (Postgres ROUND = half-up) and so reaches here as an
+    already-rounded Decimal, while a semantic layer returns full-precision
+    floats that get rounded here — so at an exact .5 boundary the two sides
+    disagreed by one unit in the last place and the row compared unequal even
+    though the answer was right. Confirmed live: 3 of 1000 rows on one task
+    (17/16 -> gold 1.063 vs 1.062, 20/320 -> 0.063 vs 0.062, 3/80 -> 0.038 vs
+    0.037). The numeric-tolerance fallback cannot rescue those, because gold's
+    pre-rounding value is already the rounded one.
+
+    Numeric-looking STRINGS are rounded too. A SQL interface may return a
+    numeric as a string ('0.27800000000000000000' for a CAST(... AS
+    numeric(p,s)) expression, which this benchmark's own agent instructions
+    tell the agent to write), and a string previously fell straight through
+    unrounded — so it could never match a gold scalar that had been rounded.
+    The coercion is applied identically to both sides, so it can only make
+    values that were equal-but-differently-represented compare equal; it cannot
+    make genuinely different values match.
+    """
     quantizer = Decimal(1).scaleb(-decimal_places)
+    if isinstance(item, bool):
+        return item  # bool is an int subclass — never treat it as a number here
     if isinstance(item, Decimal):
         return item.quantize(quantizer, rounding=ROUND_HALF_UP)
     elif isinstance(item, float):
-        return round(item, decimal_places)
+        if item != item or item in (float("inf"), float("-inf")):
+            return item  # NaN / +-inf have no decimal expansion to quantize
+        return Decimal(str(item)).quantize(quantizer, rounding=ROUND_HALF_UP)
+    elif isinstance(item, str) and _NUMERIC_STR_RE.match(item.strip()):
+        try:
+            return Decimal(item.strip()).quantize(quantizer, rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError):
+            return item
     elif isinstance(item, (list, tuple)):
         return type(item)(process_decimals_recursive(x, decimal_places) for x in item)
     elif isinstance(item, dict):
@@ -230,6 +267,71 @@ def canonical_cell(value) -> str:
     return str(value).lower() if settings.grading_casefold else str(value)
 
 
+def _cell_cmp(a, b) -> Optional[int]:
+    """Three-way compare of two cells, numerically when both look numeric and
+    as case-folded strings otherwise. None means "not orderable" (a NULL, or a
+    pair that can't be compared), which disqualifies a column from being
+    treated as a sort key."""
+    if a is None or b is None:
+        return None
+    an, bn = _try_parse_number(a), _try_parse_number(b)
+    if an is not None and bn is not None:
+        return (an > bn) - (an < bn)
+    try:
+        sa, sb = str(a).lower(), str(b).lower()
+    except Exception:
+        return None
+    return (sa > sb) - (sa < sb)
+
+
+def _sort_key_indices(gt_res) -> List[int]:
+    """Infer which columns the gold result is ORDERed BY, as column indices.
+
+    The tie-tolerant comparisons need to know which columns rows may be
+    permuted within. This used to assume the sort column was the LAST one,
+    which holds for the "label, value ORDER BY value" shape but silently breaks
+    whenever the sorted measure is not last: with a 3-column
+    (id, measure, category) result sorted on the measure, grouping by the
+    category collapses the run structure and an entirely correct answer fails.
+    Confirmed live on a task where 375 of 1000 rows tied on the sort column and
+    the two engines broke those ties differently.
+
+    A column qualifies if gold's values are monotonic across the whole result
+    AND it has at least two distinct values. The constant-column exclusion
+    matters: a single-valued column is trivially monotonic, and grouping on it
+    would collapse every row into one group, silently turning an ordered
+    comparison into an unordered one.
+
+    Among qualifying columns, pick the one with the FEWEST distinct values.
+    Several columns can be monotonic at once — an id or label column is often
+    incidentally sorted too — and including those would make the key finer than
+    the true sort expression, giving every row its own group and destroying the
+    very tie tolerance this exists to provide. The sort measure is the coarsest
+    of the monotonic columns; an identifier is the finest. Ties in distinct-count
+    prefer the rightmost column, which reproduces the historical behaviour on
+    the "label, value ORDER BY value" shape. Falls back to the last column when
+    nothing qualifies, so previously-passing comparisons are unaffected.
+    """
+    if not gt_res:
+        return [-1]
+    width = len(gt_res[0])
+    best, best_distinct = None, None
+    for c in range(width):
+        col = [row[c] for row in gt_res]
+        cmps = [_cell_cmp(col[i], col[i + 1]) for i in range(len(col) - 1)]
+        if any(x is None for x in cmps):
+            continue
+        if not (all(x <= 0 for x in cmps) or all(x >= 0 for x in cmps)):
+            continue
+        if all(x == 0 for x in cmps):
+            continue  # constant column — would collapse the whole result into one group
+        # count distinct by adjacent change, since the column is monotonic
+        distinct = 1 + sum(1 for x in cmps if x != 0)
+        if best_distinct is None or distinct <= best_distinct:
+            best, best_distinct = c, distinct
+    return [best] if best is not None else [-1]
+
+
 def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     """True when pred differs from gold only by reordering rows that TIE on the
     (assumed) sort column.
@@ -243,14 +345,15 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     secondary tiebreaker — an exact-order comparison fails on these even when
     every value is correct.
 
-    Heuristic: assume the LAST column is the sort key (true for every
-    "label, value ORDER BY value" query shape seen so far — the dominant style
-    in this benchmark). Group GOLD rows into consecutive runs sharing that
-    column's value, then verify the PREDICTED rows occupying the same index
-    range are the same rows, with order inside a run not mattering and the runs
-    themselves still in gold's sequence. Any structural mismatch (row count, or
-    a shape the tie-group heuristic doesn't fit) returns False and the caller
-    keeps the strict comparison rather than silently passing.
+    The sort key is inferred by _sort_key_indices (every column gold is
+    monotonic in, excluding constants) rather than assumed to be the last
+    column, which was wrong whenever the sorted measure was not last. Group
+    GOLD rows into consecutive runs sharing that key, then verify the PREDICTED
+    rows occupying that same index range form the identical set (order within
+    the tied group doesn't matter), and that groups appear in the same overall
+    sequence. Falls back to an exact match on any structural mismatch (row
+    count, or a tie-group heuristic that doesn't hold for this shape) rather
+    than silently passing.
 
     Counter, not set(): a tie group holding the same row twice would compare
     equal to one holding it once alongside a different row.
@@ -263,9 +366,10 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
         return False
     if not gt_res:
         return True
+    key_idxs = _sort_key_indices(gt_res)
     groups = []
     for row in gt_res:
-        key = row[-1]
+        key = tuple(row[i] for i in key_idxs)
         if groups and groups[-1][0] == key:
             groups[-1][1].append(row)
         else:
@@ -279,75 +383,109 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     return True
 
 
-_TOL_MAX_ROWS = 2000  # unordered matching is O(n^2); above this, skip the rescue
-
-
-def _as_number(value):
-    """The value as a float when it is numerically comparable, else None.
-    bool is an int subclass and must not be treated as a number here — True
-    would otherwise compare close to 1.0000001."""
+def _try_parse_number(value) -> Optional[float]:
+    """Best-effort float parse; None (not 0) for anything non-numeric, so
+    callers can tell "not a number" apart from "the number zero"."""
     if isinstance(value, bool):
-        return None
+        return None  # bool is an int subclass — don't let True/False parse as 1.0/0.0
     if isinstance(value, (int, float, Decimal)):
         return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
     return None
 
 
-def _cells_close(a, b, rel: float) -> bool:
-    na, nb = _as_number(a), _as_number(b)
-    if na is None or nb is None:
-        # Non-numeric cells still have to match exactly; canonical_cell only to
-        # normalise representation (and to honour grading_casefold).
-        return canonical_cell(a) == canonical_cell(b)
-    if na == nb:
-        return True
-    scale = max(abs(na), abs(nb))
-    return scale > 0 and abs(na - nb) <= rel * scale
+def _values_close(a, b, rel_tol: float = 1e-6, abs_tol: float = 1e-9) -> bool:
+    """Numeric values within a tight relative tolerance count as equal;
+    everything else falls back to case-folded string equality (same rule
+    canonical_cell applies to non-numerics)."""
+    a_num, b_num = _try_parse_number(a), _try_parse_number(b)
+    if a_num is not None and b_num is not None:
+        return math.isclose(a_num, b_num, rel_tol=rel_tol, abs_tol=abs_tol)
+    return str(a).lower() == str(b).lower()
 
 
-def _rows_close(pred_res, gt_res, conditions, rel: float) -> bool:
-    """True when pred and gt differ only by floating-point representation.
+def _rows_close(row_a, row_b) -> bool:
+    return len(row_a) == len(row_b) and all(_values_close(x, y) for x, y in zip(row_a, row_b))
 
-    The gap this exists for: gold SQL casting an operand to ::real (float32)
-    produces an answer that differs from a correct double-precision computation
-    by about 1 part in 760 million — reported in the solar_panel build log as a
-    grader correction, and invisible in the displayed decimals. Rounding cannot
-    fix it, because rounding two values that straddle a decimal boundary pushes
-    them to *different* displayed values, which is why this runs on the raw
-    pre-rounding rows rather than on preprocess_results' output.
 
-    Only reached after the exact comparison has already failed, so it can turn a
-    0 into a 1 and never the reverse. Structure must still match exactly (row
-    count, column count) and every non-numeric cell must still be equal — the
-    tolerance applies per numeric cell only, so a genuinely wrong number (which
-    is never wrong by 1e-6 relative) is not rescued.
-
-    Gated on settings.grading_rel_tolerance; see that field.
-    """
-    if len(pred_res) != len(gt_res) or not gt_res:
+def _multiset_match_tolerant(pred_res, gt_res) -> bool:
+    """Unordered row-set equality, but a row "matches" another if every cell
+    is _values_close rather than ==. O(n^2); fine at the row counts this
+    benchmark's queries return."""
+    if len(pred_res) != len(gt_res):
         return False
-    if len(pred_res[0]) != len(gt_res[0]):
-        return False
-
-    def row_close(p, g):
-        return len(p) == len(g) and all(_cells_close(a, b, rel) for a, b in zip(p, g))
-
-    if conditions and conditions.get("order", False):
-        return all(row_close(p, g) for p, g in zip(pred_res, gt_res))
-    # Unordered: greedy match. Every gold row must be claimed exactly once, so
-    # this is multiset equality under tolerance, not "each pred row resembles
-    # something in gold".
-    if len(gt_res) > _TOL_MAX_ROWS:
-        return False
-    unused = list(gt_res)
+    remaining = list(gt_res)
     for p in pred_res:
-        for i, g in enumerate(unused):
-            if row_close(p, g):
-                unused.pop(i)
+        for i, g in enumerate(remaining):
+            if _rows_close(p, g):
+                remaining.pop(i)
                 break
         else:
             return False
-    return not unused
+    return True
+
+
+def _ordered_match_tolerating_ties_numeric(pred_res, gt_res) -> bool:
+    """_ordered_match_tolerating_ties, but both the tie-grouping key
+    comparison and the within-group set comparison use _values_close instead
+    of ==, so a numeric-precision-noise mismatch can't itself break the tie
+    grouping it's meant to look past."""
+    if len(pred_res) != len(gt_res):
+        return False
+    if not gt_res:
+        return True
+    key_idxs = _sort_key_indices(gt_res)
+    groups = []
+    for row in gt_res:
+        key = tuple(row[i] for i in key_idxs)
+        if groups and len(groups[-1][0]) == len(key) and all(
+                _values_close(a, b) for a, b in zip(groups[-1][0], key)):
+            groups[-1][1].append(row)
+        else:
+            groups.append((key, [row]))
+    idx = 0
+    for _key, group_rows in groups:
+        n = len(group_rows)
+        if not _multiset_match_tolerant(list(pred_res[idx:idx + n]), group_rows):
+            return False
+        idx += n
+    return True
+
+
+def _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) -> bool:
+    """Fallback comparison for the cross-source path: True if pred_res and
+    gt_res match once numeric cells are compared with a tight relative
+    tolerance instead of exact string equality.
+
+    Exists to absorb float32-vs-float64 precision noise a semantic layer and
+    Postgres can each introduce independently of the query being right or
+    wrong — e.g. a warehouse casting one operand to `::real` mid-formula.
+    Confirmed live: a semantic-layer answer matching gold to 9 significant
+    figures still failed the exact comparison by about 1 part in 760 million,
+    solely from gold's own float32 cast, with no error in either query.
+
+    Deliberately only ever called AFTER the exact/tie-tolerant comparison in
+    _compare_rows has already failed — it must never be the reason a
+    genuinely wrong answer passes, only the reason a right-to-many-more-sig-
+    figs-than-the-task-asks-for answer isn't marked wrong. Operates on the
+    PRE-rounding row values (not the decimal-place-rounded ones _compare_rows
+    sees), since rounding two nearby-but-not-identical floats can itself
+    round them to different displayed values before this tolerance ever gets
+    a chance to see how close they really were.
+    """
+    if conditions and conditions.get("order", False):
+        if _rows_close_ordered(pred_res, gt_res):
+            return True
+        return _ordered_match_tolerating_ties_numeric(pred_res, gt_res)
+    return _multiset_match_tolerant(pred_res, gt_res)
+
+
+def _rows_close_ordered(pred_res, gt_res) -> bool:
+    return len(pred_res) == len(gt_res) and all(_rows_close(p, g) for p, g in zip(pred_res, gt_res))
 
 
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
@@ -502,9 +640,13 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     if not pred_res or not gt_res:
         return 0
     score = _compare_rows(pred_res, gt_res, conditions)
+    # Same tolerant fallback as the semantic-layer path (ex_base_external_pred),
+    # deliberately the same function: grading must not differ by arm, or the
+    # lift number measures the grader instead of the semantic layer. The merge
+    # replaced this path's private helper with the branch's shared one, whose
+    # tolerance is fixed rather than read from grading_rel_tolerance_value.
     if score == 0 and settings.grading_rel_tolerance:
-        score = 1 if _rows_close(pred_raw, gt_raw, conditions,
-                                 settings.grading_rel_tolerance_value) else 0
+        score = 1 if _compare_rows_numeric_tolerant(pred_raw, gt_raw, conditions) else 0
     return score
 
 
@@ -580,6 +722,14 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     otherwise almost never string-match a gold value rounded via
     preprocess_results, even when the underlying answer is correct. Equal
     precision is necessary but not sufficient, hence canonical_cell.
+
+    If that rounded exact comparison fails, fall back to
+    _compare_rows_numeric_tolerant on the PRE-rounding rows — see its
+    docstring. Rounding first and only tolerance-comparing the rounded
+    values would defeat the point: two floats close enough to be the same
+    answer can round to visibly different decimals (76022464.2857143 vs
+    76022464.18488877 -> "76022464.29" vs "76022464.18"), which is exactly
+    the class of mismatch this fallback exists to see past.
     """
     if not pred_res or not sol_sqls:
         return 0
@@ -587,16 +737,23 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     if gt_err or gt_to:
         return 0
     decimal_places = resolve_decimal_places(conditions)
-    pred_raw, gt_raw = pred_res, gt_res
-    pred_res = preprocess_results(pred_res, decimal_places)
-    gt_res = preprocess_results(gt_res, decimal_places)
-    if not gt_res:
+    pred_rounded = preprocess_results(pred_res, decimal_places)
+    gt_rounded = preprocess_results(gt_res, decimal_places)
+    if not gt_rounded:
         return 0
-    score = _compare_rows(pred_res, gt_res, conditions, cell=canonical_cell)
-    if score == 0 and settings.grading_rel_tolerance:
-        score = 1 if _rows_close(pred_raw, gt_raw, conditions,
-                                 settings.grading_rel_tolerance_value) else 0
-    return score
+    if _compare_rows(pred_rounded, gt_rounded, conditions, cell=canonical_cell):
+        return 1
+    # Merge 2026-08-11: the tolerant fallback arrived from
+    # feature/atscale-mcp-semantic-layer ungated, i.e. on for every run. Kept
+    # behind grading_rel_tolerance (default false, as it already was here)
+    # because it can only turn a 0 into a 1, so leaving it always-on silently
+    # raises scores on BOTH arms and makes a totals number non-comparable to
+    # every earlier run and to published BIRD-Interact numbers. The flag is
+    # recorded in the results deviations block; flip it to adopt the branch's
+    # behaviour deliberately rather than as a side effect of a merge.
+    if not settings.grading_rel_tolerance:
+        return 0
+    return 1 if _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) else 0
 
 
 def test_case_default(pred_sqls, sol_sqls, db_name, conn, conditions=None):

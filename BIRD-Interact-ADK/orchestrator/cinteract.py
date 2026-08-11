@@ -27,6 +27,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
+from shared.output_paths import timestamped_output_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -226,6 +227,9 @@ async def run_single_task(task_data: dict) -> Dict[str, Any]:
 # ── Batch evaluation ──
 
 async def run_evaluation(data_path: str, output_path: str, limit: int = None):
+    # One file per run -- see shared.output_paths.
+    output_path = timestamped_output_path(output_path)
+    logger.info("Writing results to %s", output_path)
     tasks = []
     with open(data_path) as f:
         for line in f:
