@@ -4,6 +4,7 @@ import asyncio
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 import traceback
@@ -51,6 +52,7 @@ async def run_parallel_evaluation(
                 "grading_tie_tolerance": settings.grading_tie_tolerance,
                 "grading_honor_decimal": settings.grading_honor_decimal,
                 "grading_casefold": settings.grading_casefold,
+                "grading_rel_tolerance": settings.grading_rel_tolerance,
                 "free_wasted_actions": settings.free_wasted_actions,
             },
             "metrics": {
@@ -102,7 +104,8 @@ async def run_parallel_evaluation(
         )
 
 
-def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, query_only: bool = False) -> List[dict]:
+def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, query_only: bool = False,
+               tasks_filter: List[str] = None) -> List[dict]:
     tasks = []
     with open(data_path) as f:
         for line in f:
@@ -144,6 +147,23 @@ def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, q
         before_count = len(tasks)
         tasks = [t for t in tasks if t.get("selected_database") in wanted]
         logger.warning("--databases filter: %d -> %d tasks (databases: %s)", before_count, len(tasks), sorted(wanted & available))
+    if tasks_filter:
+        # Explicit instance_id list — the iteration lever. Most tasks in a
+        # database carry no signal about a given change (many score identically
+        # on every run), so a targeted subset buys the same information for a
+        # fraction of the API spend. Ordering follows the list given, not the
+        # file, so a cheap regression canary can run first.
+        wanted = [t.strip() for t in tasks_filter if t.strip()]
+        by_id = {t["instance_id"]: t for t in tasks}
+        missing = [w for w in wanted if w not in by_id]
+        if missing:
+            # Loud, because a typo'd id silently shrinking the set would look
+            # like a score change rather than a smaller denominator.
+            logger.warning("--tasks: %d requested id(s) not present after the other filters: %s",
+                           len(missing), missing)
+        before_count = len(tasks)
+        tasks = [by_id[w] for w in wanted if w in by_id]
+        logger.warning("--tasks filter: %d -> %d tasks", before_count, len(tasks))
     if limit:
         tasks = tasks[:limit]
     return tasks
@@ -249,6 +269,10 @@ def main():
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--databases", type=str, default=None,
                          help="Comma-separated selected_database values to run (e.g. 'solar_panel,hulushows'). Default: all.")
+    parser.add_argument("--tasks", type=str, default=None,
+                        help="Comma-separated instance_ids, or a path to a file of them "
+                             "(one per line, # comments allowed). Runs only those, in the "
+                             "order given. Use for cheap iteration on a task subset.")
     parser.add_argument("--query-only", action="store_true",
                          help="Run only Query-category tasks on the raw backend (non-raw backends already exclude Management tasks).")
     parser.add_argument("--backend", type=str, default="raw",
@@ -272,7 +296,17 @@ def main():
     _set_service_backend(args.backend)
 
     databases = [d.strip() for d in args.databases.split(",") if d.strip()] if args.databases else None
-    tasks = load_tasks(args.data, args.limit, databases, args.query_only)
+    tasks_filter = None
+    if args.tasks:
+        # Accept either a comma-separated list or a path to a file of ids
+        # (one per line, '#' comments allowed) so a saved subset is reusable.
+        if os.path.isfile(args.tasks):
+            with open(args.tasks) as f:
+                tasks_filter = [ln.split("#", 1)[0].strip() for ln in f]
+        else:
+            tasks_filter = args.tasks.split(",")
+        tasks_filter = [t for t in tasks_filter if t]
+    tasks = load_tasks(args.data, args.limit, databases, args.query_only, tasks_filter)
     logger.info("%s: Evaluating %d tasks with concurrency=%d", args.mode, len(tasks), args.concurrency)
 
     asyncio.run(run_parallel_evaluation(
