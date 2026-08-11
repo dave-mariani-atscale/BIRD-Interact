@@ -279,6 +279,77 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     return True
 
 
+_TOL_MAX_ROWS = 2000  # unordered matching is O(n^2); above this, skip the rescue
+
+
+def _as_number(value):
+    """The value as a float when it is numerically comparable, else None.
+    bool is an int subclass and must not be treated as a number here — True
+    would otherwise compare close to 1.0000001."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        return float(value)
+    return None
+
+
+def _cells_close(a, b, rel: float) -> bool:
+    na, nb = _as_number(a), _as_number(b)
+    if na is None or nb is None:
+        # Non-numeric cells still have to match exactly; canonical_cell only to
+        # normalise representation (and to honour grading_casefold).
+        return canonical_cell(a) == canonical_cell(b)
+    if na == nb:
+        return True
+    scale = max(abs(na), abs(nb))
+    return scale > 0 and abs(na - nb) <= rel * scale
+
+
+def _rows_close(pred_res, gt_res, conditions, rel: float) -> bool:
+    """True when pred and gt differ only by floating-point representation.
+
+    The gap this exists for: gold SQL casting an operand to ::real (float32)
+    produces an answer that differs from a correct double-precision computation
+    by about 1 part in 760 million — reported in the solar_panel build log as a
+    grader correction, and invisible in the displayed decimals. Rounding cannot
+    fix it, because rounding two values that straddle a decimal boundary pushes
+    them to *different* displayed values, which is why this runs on the raw
+    pre-rounding rows rather than on preprocess_results' output.
+
+    Only reached after the exact comparison has already failed, so it can turn a
+    0 into a 1 and never the reverse. Structure must still match exactly (row
+    count, column count) and every non-numeric cell must still be equal — the
+    tolerance applies per numeric cell only, so a genuinely wrong number (which
+    is never wrong by 1e-6 relative) is not rescued.
+
+    Gated on settings.grading_rel_tolerance; see that field.
+    """
+    if len(pred_res) != len(gt_res) or not gt_res:
+        return False
+    if len(pred_res[0]) != len(gt_res[0]):
+        return False
+
+    def row_close(p, g):
+        return len(p) == len(g) and all(_cells_close(a, b, rel) for a, b in zip(p, g))
+
+    if conditions and conditions.get("order", False):
+        return all(row_close(p, g) for p, g in zip(pred_res, gt_res))
+    # Unordered: greedy match. Every gold row must be claimed exactly once, so
+    # this is multiset equality under tolerance, not "each pred row resembles
+    # something in gold".
+    if len(gt_res) > _TOL_MAX_ROWS:
+        return False
+    unused = list(gt_res)
+    for p in pred_res:
+        for i, g in enumerate(unused):
+            if row_close(p, g):
+                unused.pop(i)
+                break
+        else:
+            return False
+    return not unused
+
+
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     """Score two already-preprocessed row sets — 1 if they match, else 0.
 
@@ -425,11 +496,55 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     if any([pred_err, pred_to, gt_err, gt_to]):
         return 0
     decimal_places = resolve_decimal_places(conditions)
+    pred_raw, gt_raw = pred_res, gt_res
     pred_res = preprocess_results(pred_res, decimal_places)
     gt_res = preprocess_results(gt_res, decimal_places)
     if not pred_res or not gt_res:
         return 0
-    return _compare_rows(pred_res, gt_res, conditions)
+    score = _compare_rows(pred_res, gt_res, conditions)
+    if score == 0 and settings.grading_rel_tolerance:
+        score = 1 if _rows_close(pred_raw, gt_raw, conditions,
+                                 settings.grading_rel_tolerance_value) else 0
+    return score
+
+
+def _json_safe(value):
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def record_graded_submission(**entry) -> None:
+    """Append one graded submission to settings.grading_audit_path as JSONL.
+
+    Why this exists: the semantic-layer path grades ROWS returned by the MCP,
+    and those rows are not otherwise kept anywhere. That made every grader
+    change a re-run — and a re-run costs API budget and carries run-to-run
+    variance far larger than the change being measured, so a change worth less
+    than about 0.06 average reward could not be evaluated at all. With the rows
+    plus the gold SQL recorded, any later grading change can be re-scored
+    offline against local Postgres for free, and two arms graded under
+    different rules can be brought onto one grader after the fact.
+
+    Off unless a path is configured. Never raises into the submit path: a
+    failure to write an audit line must not fail the submission being audited.
+    """
+    path = settings.grading_audit_path
+    if not path:
+        return
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps(_json_safe(entry), sort_keys=True) + "\n")
+    except Exception:
+        logger.warning("grading audit write failed", exc_info=True)
 
 
 def parse_semantic_layer_rows(result_text: str) -> List[tuple]:
@@ -472,11 +587,16 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     if gt_err or gt_to:
         return 0
     decimal_places = resolve_decimal_places(conditions)
+    pred_raw, gt_raw = pred_res, gt_res
     pred_res = preprocess_results(pred_res, decimal_places)
     gt_res = preprocess_results(gt_res, decimal_places)
     if not gt_res:
         return 0
-    return _compare_rows(pred_res, gt_res, conditions, cell=canonical_cell)
+    score = _compare_rows(pred_res, gt_res, conditions, cell=canonical_cell)
+    if score == 0 and settings.grading_rel_tolerance:
+        score = 1 if _rows_close(pred_raw, gt_raw, conditions,
+                                 settings.grading_rel_tolerance_value) else 0
+    return score
 
 
 def test_case_default(pred_sqls, sol_sqls, db_name, conn, conditions=None):

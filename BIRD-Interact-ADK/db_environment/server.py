@@ -17,6 +17,7 @@ from shared.db_utils import (
     remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
     diagnose_rows, canonical_cell, preprocess_results, resolve_decimal_places,
+    record_graded_submission,
 )
 from shared.environment_backends import get_domain_config, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
@@ -293,6 +294,16 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                                     pred_res, sol_sqls, task_db, conn, conditions, cell=canonical_cell)
                         except Exception:
                             message = "Your SQL is not correct."
+                        # These rows exist nowhere else — the MCP response is not
+                        # retained. Recorded so a grading change can be re-scored
+                        # offline instead of by spending a re-run. No-op unless
+                        # settings.grading_audit_path is set.
+                        record_graded_submission(
+                            task_id=req_task_id, phase=current_phase,
+                            attempt=_submit_attempts[req_task_id][current_phase],
+                            backend=settings.environment_backend, passed=passed,
+                            conditions=conditions, sol_sql=sol_sqls,
+                            pred_sql=pred_sql_text, pred_rows=pred_res)
             elif sol_sqls:
                 # Execute pred SQL (also serves as executability check)
                 pred_query_result, pred_err, pred_to, _ = execute_queries(pred_sqls, task_db, conn)
@@ -312,6 +323,15 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                             pred_query_result, sol_sqls, task_db, conn, conditions)
                     except Exception:
                         message = "Your SQL is not correct."
+                    # Recorded on the raw path too, so both arms can be brought
+                    # onto one grader after the fact — a raw baseline graded under
+                    # older rules is otherwise not comparable to a new arm.
+                    record_graded_submission(
+                        task_id=req_task_id, phase=current_phase,
+                        attempt=_submit_attempts[req_task_id][current_phase],
+                        backend=settings.environment_backend, passed=passed,
+                        conditions=conditions, sol_sql=sol_sqls,
+                        pred_sql=pred_sqls, pred_rows=pred_query_result)
                 else:
                     # Compat wrapper: custom test cases expect 3-value return (result, error, timeout)
                     def _execute_queries_compat(queries, db_name, conn=None):

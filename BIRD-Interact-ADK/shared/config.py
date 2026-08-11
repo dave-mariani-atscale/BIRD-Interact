@@ -109,6 +109,28 @@ class Settings(BaseSettings):
     # which never passes a `cell` hook to _compare_rows.
     grading_casefold: bool = False
 
+    # GRADING. Upstream compares numerics only after rounding to a fixed
+    # precision, with no tolerance. True adds a relative-tolerance retry on the
+    # RAW pre-rounding rows, applied only after the exact comparison has already
+    # failed — so it can turn a 0 into a 1 and never the reverse. It exists for
+    # gold SQL that casts an operand to ::real (float32), which shifts an
+    # otherwise-correct answer by ~1 part in 7.6e8; rounding cannot fix that,
+    # because two values either side of a decimal boundary round apart. See
+    # db_utils._rows_close. False keeps upstream's exact compare.
+    grading_rel_tolerance: bool = False
+    # The relative gap tolerated when the flag above is on. 1e-6 is ~700x
+    # looser than the float32 artefact it targets and ~4 orders tighter than any
+    # real disagreement seen in these runs, so it does not rescue wrong answers.
+    grading_rel_tolerance_value: float = 1e-6
+
+    # AUDIT (not a deviation — grading is unaffected). Path to a JSONL file
+    # recording each graded submission's predicted rows, gold SQL and verdict,
+    # so a later grading change can be re-scored offline against Postgres
+    # instead of by re-running the benchmark. Empty disables it. The
+    # semantic-layer path is the reason it exists: its predicted rows live only
+    # in the MCP response and were previously discarded after scoring.
+    grading_audit_path: str = ""
+
     # BUDGET (a-interact only). Upstream's update_budget deducts a cost by
     # action TYPE and never inspects the outcome, so a duplicate submit and a
     # bundled question both cost full price. True refuses those two at no charge
