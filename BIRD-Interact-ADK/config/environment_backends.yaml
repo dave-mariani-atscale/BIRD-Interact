@@ -83,6 +83,55 @@ backends:
           Move the condition into a HAVING clause inside the derived table that computes the
           aggregate, repeating the full aggregate expression — never the alias, and never an
           outer WHERE.
+      # The five below were each read off a submit that died on them in
+      # results/rebase0810_atscale_r1.json — every one was the task's LAST
+      # action, so the agent never learned what the repair was. Their own
+      # message either names an internal AST node or points at explore_columns,
+      # which is not the fix in any of these cases.
+      - match: unmatched physical type
+        hint: >-
+          An outer query referenced a column its own SELECT list does not project — nearly always
+          ORDER BY on a sortkey or measure that only the inner derived table projects. No amount of
+          extra wrapping fixes it, and adding the column to the outer SELECT changes your column
+          count. Put the ORDER BY *and* its LIMIT inside the derived table that projects the sort
+          column, and leave the outer SELECT with NO ORDER BY at all, projecting only the columns
+          the answer needs. If the query text is already that shape and unchanged, this error is
+          also an intermittent engine fault on calculated metrics — one identical retry is worth
+          more than a restructure.
+      - match: 'unexpected value node: minmaxexpr'
+        hint: >-
+          GREATEST and LEAST are not supported by this dialect. Rewrite as
+          CASE WHEN <a> > <b> THEN <a> ELSE <b> END, spelling out both operands in full every time
+          — a CASE over aliases fails for the separate reason that inner aliases are unreferencable.
+      - match: does not conform to dimension
+        hint: >-
+          That measure's fact table has no relationship to that dimension, so the two can NEVER
+          appear in one query, whatever the syntax — do not retry with quoting, aliasing, or an
+          inner derived table, all of which fail identically. The error text names the fact groups
+          that DO conform: either switch to a measure from one of those, or run the two halves as
+          separate queries and combine the rows yourself. Check this before you build a big query:
+          focus_columns' column_group field tells you which fact a measure lives on.
+      - match: column reference does not exist in sub selects
+        hint: >-
+          A derived table must itself project every column the outer query names, and every outer
+          reference must be qualified with that derived table's alias (t."Col", not bare "Col").
+          Add the missing column to the inner SELECT list and qualify all outer references. A
+          correlated reference from a scalar subquery out to an enclosing derived table is not
+          supported at all — restructure as a JOIN to a derived table instead.
+      - match: projectcontext
+        hint: >-
+          You combined a branch that reads the model with a branch that does not (a literal-only
+          SELECT, or one whose only model access is a scalar subquery) — UNION ALL across that
+          boundary is unsupported. Either make every branch read the model, or fetch the parts with
+          run_query and submit ONE fully FROM-less literal-values query holding the assembled rows
+          (that form does work on its own; it just cannot be mixed with a model query).
+      - match: quantile function
+        hint: >-
+          Percentile/median metrics are deployed but cannot execute on this engine's dialect. The
+          whole family is blocked, so never retry another percentile metric, another quantile
+          instance, or a different spelling. Each such metric names its mean twin in its
+          description — use that, or ask_user which reading they want. Computing the median
+          yourself with window functions also fails here (correlated subqueries are unsupported).
     tool_costs:
       list_models: 1.0
       explore_columns: 1.0
@@ -112,8 +161,12 @@ backends:
 
       Important strategy tips:
       - Resolve the question to exact column names with list_models, explore_columns, and focus_columns before querying — don't guess a name you haven't seen.
-      - explore_columns is not fuzzy: a term must appear verbatim and in order in a column's name or description. "fund years" matches "Fund Years With Return Data"; "years fund" and "return years" match nothing. Pass several one- or two-word terms rather than one long phrase, and on an empty result drop a word, never add one — repeated empties mean your phrasing is wrong, not that the column is missing.
+      - explore_columns matches literal substrings, not keywords: a term must appear verbatim and IN ORDER in a column's name or description. "fund years" matches "Fund Years With Return Data"; "years fund" and "return years" match nothing. Every word you add can only narrow the match towards zero, so search two-word fragments, never a descriptive phrase — and on an empty term drop a word, never add one.
+      - One explore_columns call costs 1 coin however many terms you pass, and the terms are OR'd: a term matching nothing does not suppress the ones that do, and the results come back as one union. So BATCH — put every wording of every concept you still need into a single call (4-6 terms is normal) rather than paying a coin per guess. Searching one term per call is the most expensive habit available here and the most common way to arrive at your first query with no budget left.
+      - Budget your discovery. You have ~18-20 coins for the whole task and a submit costs 3, so discovery that runs long is the most common way to lose a task you had already solved. list_models (1 coin) names every dimension and metric in the model — read it FIRST, and then search only for a concept you did not already see there. explore_columns costs a full coin per call, exactly as much as running a real query. Aim to be done with discovery inside about 4 coins.
+      - Two batches that come back empty for the same concept mean the model does not carry it under any name — absent, not mis-spelled. Stop generating synonyms and either ask_user for the concept's definition in terms of columns that DO exist, or build it from components you already found.
       - Use focus_columns' sampled_values to confirm filter literals instead of guessing or running an exploratory query for that purpose.
+      - A measure can only be grouped or filtered by dimensions its own fact table relates to. focus_columns' column_group field tells you which fact a measure lives on; if the measure and the dimension you want to slice it by sit on different facts, that single query is impossible no matter how it is written, and you must run the two halves separately and combine the rows yourself. Check this before building a large query, not after it is rejected.
       - Before a column goes into a submitted query, read its description. If you have not seen one, focus_columns it — at 0.5 coins it is the cheapest tool here and a failed submit costs 3. This matters most for columns named "Rank", "Flag", "Top", "Average" or "Per <something>": each one bakes in a population and a grain chosen by the modeler, which is often NOT the rows your WHERE clause selects, and the name alone will not tell you.
       - Reference models as "<schema>"."<table>" (the 2-part form). Prefer this over the fully-qualified "<catalog>"."<schema>"."<table>" form, especially if you reference the table more than once in one query (in subqueries, etc.) — repeating the 3-part form causes "cross-database references are not implemented", even though the same query with the 2-part form works fine.
       - The FROM clause must always be the fully-qualified "<schema>"."<table>" pair exactly as list_models returned it (its catalog/schema/table fields) — never a bare table/model name on its own, and never a schema name you're inferring or guessing (e.g. from the model's own label). A single-part or wrongly-paired reference fails with "Couldn't find schema named ...". You can only query the model itself (the "table" list_models returns), never an underlying dataset's own physical table name directly.
@@ -136,8 +189,10 @@ backends:
       - Not in this dialect: percentile_cont, percentile_disc, median, percent_rank, string_agg, listagg, group_concat, array_to_string — all fail with "Don't understand function"; ARRAY_AGG is accepted but returns broken results, so treat it as unavailable too. One rejection means the whole family is absent — NEVER retry a synonym spelling. Percentiles/medians cannot be computed on this engine at all: reinterpret the question or ask_user rather than spend submits. For string aggregation, fetch the member rows with run_query, concatenate them yourself, and submit a FROM-less literal-values query: SELECT 'A' AS grp, 'X, Y, Z' AS members UNION ALL SELECT 'B', 'P, Q'.
       - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
       - Be efficient with your actions to conserve budget.
-      - Test with run_query before submit_sql when useful.
+      - Run every candidate answer through run_query before submit_sql — always, not only when it seems useful. run_query costs 1 and a submit costs 3, and this engine rejects a lot of legal-looking SQL (see the constraints above), so submitting is the most expensive possible way to find a syntax problem. If run_query errors you are out 1 coin and still hold the submit; if the submit errors you are out 3 and have learned exactly the same thing. Measured: 7 of 49 submits in the last run never executed at all — 21 coins for zero verdicts, and four tasks whose final action was an engine error they could no longer afford to fix.
       - If a submission fails and budget remains, debug and try again.
+      - ask_user takes exactly ONE question. No "or", no "and if so", no parenthetical list of alternatives to pick from — the user answers a single thing per turn and everything else comes back as vague filler. Ask the one question whose answer most changes your query, and ask the next one next turn.
+      - A rejection that says your COLUMNS are in the wrong order is telling you the values are already correct. Do not re-derive anything, do not re-explore, and do not change the filter: permute the SELECT list and resubmit. Keep 3 coins in reserve so you can afford to — this is the cheapest failure to recover from and the easiest one to be too broke to fix. Note also that the user's own enumeration of which columns they want is not evidence of what order they go in.
       - Never guess your way through two submits in a row. If a submit is rejected and you are unsure which columns the answer should contain or what order they go in, ask_user — it costs 2 against a submit's 3, and the user will tell you. A question the user's phrasing left open (a rank number they never named, a tiebreak, which of two similar name fields) is exactly what they are there to answer; re-submitting a variation is the expensive way to ask.
       - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
     domains:
