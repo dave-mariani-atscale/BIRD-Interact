@@ -137,6 +137,27 @@ class Settings(BaseSettings):
     # instead; False charges for them as upstream does.
     free_wasted_actions: bool = False
 
+    # CAPABILITY (semantic-layer backends only). The raw backend gets three
+    # tools over the task's external_knowledge — the benchmark's glossary of
+    # domain terms — while the semantic-layer backends get none:
+    # system_agent/tools_atscale.py maps get_all_knowledge_definitions to
+    # get_sml_skills, which returns query-construction guidance, not
+    # definitions. Measured on the 19-task 0806/0810 ETF pair, the raw arm
+    # spent 80.5 coins there (4.24 per task of an 18-coin budget) and the
+    # semantic-layer arm 0, because it had no route to the same content. True
+    # gives the semantic-layer backends the same three tools at the same
+    # prices; False keeps them raw-only. Masked entries are unaffected either
+    # way — db_environment/server.py's _filter_knowledge strips every id named
+    # in knowledge_ambiguity.deleted_knowledge before the endpoints answer, so
+    # the entries the agent is meant to ask the user about stay hidden.
+    #
+    # Whether this SHOULD be on is a scope question, not a bug: if a semantic
+    # model is meant to replace the glossary, off is right and the handicap is
+    # the point. If the comparison is meant to hold knowledge constant while
+    # varying the schema layer, off understates the model. Recorded per run in
+    # the results JSON either way. See tracker B-12.
+    semantic_layer_knowledge_tools: bool = False
+
     @property
     def data_dir(self) -> Path:
         return PROJECT_ROOT / f"bird-interact-{self.dataset}"

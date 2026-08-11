@@ -65,6 +65,18 @@ ASK_USER_TIP = (
     "- When the answer needs a classification, status or summary COLUMN — 'show whether each one has drifted', 'add a summary', 'label each as X or Y' — the exact wording that column prints is the user's to decide and you cannot derive it. Ask for the literal text of every case ('what exact text should that column show for each one?'), and use their spelling verbatim. Those labels are compared as cell values, so correct rows under wording you invented score zero.\n"
 )
 
+# Appended to a semantic-layer backend's instruction ONLY when
+# settings.semantic_layer_knowledge_tools is on, because that is the same flag
+# that puts the three tools in the tool list (system_agent/tools_atscale.py).
+# Advertising them unconditionally would have the agent spend turns calling
+# tools it does not have. Not needed for the raw backend, whose static
+# AINTERACT_INSTRUCTION has always listed them.
+KNOWLEDGE_TOOLS_TIP = (
+    "- get_all_external_knowledge_names (0.5) lists the task's glossary of defined domain terms; get_knowledge_definition (0.5) returns one entry's formula and thresholds; get_all_knowledge_definitions (1) returns every entry at once and can be long.\n"
+    "- Call get_all_external_knowledge_names FIRST, before any column search. The user's question is written in this glossary's vocabulary, and an entry states the exact thresholds a phrase like 'bargain-bin', 'beaten down' or 'patient, cheap strategy' stands for. Reading the definition tells you which columns to look for, so it makes the model search shorter rather than adding to it — and the numbers in it are not derivable from the model or recoverable by asking the user.\n"
+    "- A term absent from that list has no official definition: that is when to ask_user. Do not ask the user to define a term the glossary already defines, and do not infer a threshold from a column description when the glossary states one — where they disagree, the glossary is what the answer is graded against."
+)
+
 # ── a-interact instruction ──
 AINTERACT_INSTRUCTION = """You are a helpful PostgreSQL agent that interacts with a user and a database to solve the user's question.
 
@@ -124,6 +136,8 @@ def build_agent(mode: str = "c-interact") -> Agent:
             tools = get_backend_tools_factory(settings.environment_backend)()
             instruction = (get_backend_instruction(settings.environment_backend)
                            + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP)
+            if settings.semantic_layer_knowledge_tools:
+                instruction += "\n" + KNOWLEDGE_TOOLS_TIP
         return Agent(
             model=model,
             name="bird_interact_agent",

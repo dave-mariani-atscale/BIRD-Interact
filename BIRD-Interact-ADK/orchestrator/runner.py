@@ -54,6 +54,9 @@ async def run_parallel_evaluation(
                 "grading_casefold": settings.grading_casefold,
                 "grading_rel_tolerance": settings.grading_rel_tolerance,
                 "free_wasted_actions": settings.free_wasted_actions,
+                # Not a grading change: it changes what the semantic-layer arm
+                # can DO, so two runs differing only here are not comparable.
+                "semantic_layer_knowledge_tools": settings.semantic_layer_knowledge_tools,
             },
             "metrics": {
                 "total_tasks": n,

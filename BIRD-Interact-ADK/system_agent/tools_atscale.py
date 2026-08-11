@@ -225,7 +225,7 @@ def get_ainteract_tools_atscale():
     'atscale' environment backend."""
     from system_agent.tools import ask_user, submit_sql  # backend-agnostic
 
-    return [
+    tools = [
         FunctionTool(list_models),
         FunctionTool(explore_columns),
         FunctionTool(focus_columns),
@@ -234,3 +234,27 @@ def get_ainteract_tools_atscale():
         FunctionTool(ask_user),
         FunctionTool(submit_sql),
     ]
+
+    # The task's external-knowledge glossary, off by default — see
+    # settings.semantic_layer_knowledge_tools for why this is a scope choice
+    # rather than a fix, and tracker B-12. These three are backend-agnostic
+    # already: they POST only a task_id to the db environment's
+    # /knowledge_names and /knowledge, which resolve the database from task
+    # data and never inspect the active backend. Their costs need no wiring —
+    # callbacks._tool_cost consults its own TOOL_COSTS table first, and all
+    # three are in it (0.5 / 0.5 / 1.0). The matching instruction text is
+    # appended by system_agent.agent.build_agent under the same flag, so the
+    # agent is never told about a tool it has not been given.
+    if settings.semantic_layer_knowledge_tools:
+        from system_agent.tools import (
+            get_all_external_knowledge_names,
+            get_knowledge_definition,
+            get_all_knowledge_definitions,
+        )
+        tools += [
+            FunctionTool(get_all_external_knowledge_names),
+            FunctionTool(get_knowledge_definition),
+            FunctionTool(get_all_knowledge_definitions),
+        ]
+
+    return tools
