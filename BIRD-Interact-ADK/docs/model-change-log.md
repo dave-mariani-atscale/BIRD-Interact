@@ -192,3 +192,91 @@ non-empty, Discoverability 14/14 paraphrases, Coverage 6/6 shapes.
 
 `config/environment_backends.yaml` now carries the `cybermarket_pattern` domain
 entry pointing at `bird_atscale_models_catalog_main` / `Cybermarket Pattern`.
+
+---
+
+## archeology_scan
+
+**2026-08-11 - initial build from `create_bird_model_prompt.v2.md`, prompt-only.**
+Model lives in `AtScaleInc/bird-atscale-models/archeology_scan/`; full rationale,
+exclusions and evidence in that folder's `SPEC.md`.
+
+**Catalog schema is `bird_atscale_models_catalog`, NOT `..._main`.** `sml-cli
+atscale-deploy` uses the catalog name verbatim, where a Design Center deploy
+appends the branch. Deploying this build therefore republished the whole shared
+catalog into the unsuffixed schema, so all four BIRD models now exist in BOTH
+`bird_atscale_models_catalog` and `bird_atscale_models_catalog_main`. The
+`_main` copies are whatever Design Center last published and do NOT contain
+`Archeology Scan`. Any `config/environment_backends.yaml` entry for this
+database must name `bird_atscale_models_catalog` / `Archeology Scan`, and
+remember `shared/environment_backends.py` caches that file in a module-level
+dict, so the services need restarting for an edit to take effect.
+
+Shape: 4 fact grains - `scan_fact` (1000, one scan), `site_equipment_fact` (998,
+one site-and-equipment pairing), `site_quality_fact` (900, one site),
+`conservation_fact` (455). Site is the only dimension reaching all four. 94
+metrics, 10 calculations, 120 queryable attributes.
+
+### Acceptance - all four gates pass
+
+- **Exactness.** Every probe exact-equal to the source to 12 decimal places:
+  scan/site/project/operator counts (1000/900/905/900), total points
+  (35,850,368,904), support sets (697 point cloud, 234 PCDR), per-site SQS and
+  SCE, site ranks, risk-zone split (778/122), and a four-fact cross-fact
+  aggregate (SQS 5.648103197666, MCR 3093.3410990582, DPQ 28.772710069248,
+  DPQ support 364, conservation records 322).
+- **Conformance.** Site reaches all four facts in one query; Project reaches
+  scan and conservation; Operator, Scan Date and Scan Record reach scan;
+  Equipment and Site Equipment Record reach site-equipment; Conservation Record
+  reaches conservation. All non-empty. Negative test: `Scan Count` grouped by
+  `Processing Software` was refused before execution, naming the conforming
+  fact groups, at no warehouse cost.
+- **Discoverability.** Probed with `amb_user_query` wordings only. All surfaced
+  the intended object.
+- **Coverage.** All six shapes pass: group aggregate, filter-by-classification,
+  superlative/top-N, cross-fact, entity-level detail, group-relative comparison.
+
+### Findings worth carrying to other databases
+
+- **`count(*)` in a dry run does not evaluate the select list.** Postgres
+  optimises the projection away, so a division-by-zero in a computed column
+  survives to query time. Counting `md5(row::text)` instead surfaced two: 4 of
+  944 scanners record 0% battery (EER), and ESI can approach -10 (EIF). Both
+  denominators now use `NULLIF` and the support flags exclude those rows.
+- **Engine MDX function set, probed with `validate_mdx_expression`:** `SQRT`,
+  `ABS`, `LOG10` and `EXP` are supported; **`POWER` is not** (`end of input
+  expected`). So `x^2` and `x^1.5` are rewritable as `x*x` and `x*SQRT(x)`, but
+  `x^0.3` is not. This is worth probing before deciding a group-level formula is
+  inexpressible - an earlier note in this build wrongly assumed none of these
+  were available.
+- **A dangling-cross-reference check keyed on `Name (ACRONYM)` is not enough.**
+  It matches the published base name and stops, so a description can promise a
+  `(Recomputed For Group)` twin that was never shipped - which is exactly what
+  the acceptance run found. Adding a qualifier-aware check immediately caught
+  two more, left stale by a rename whose phrase spanned a line break. Both
+  checks now run in the generator.
+- **The build-time discoverability gate caught missing OBJECTS, not just missing
+  wordings.** The model had no Registration ID and no Scan Timestamp at all,
+  both asked for by name in the task set. Worth treating a failing phrase as a
+  possible modelling gap, not automatically as a description fix.
+- **Four KB definitions select zero rows on this database** and are documented
+  rather than shipped as always-'No' flags: Conservation Emergency and High
+  Temporal Value Site (both need a CPI above 60-75, and CPI cannot exceed 46.98
+  because the KB gives no scale for its Site Type rarity term and the column
+  holds no rarity value), Texture-Critical Artifact (TDI maxes at 0.178 against
+  a threshold of 8.0, and the required texture values do not occur), and Digital
+  Conservation Priority. `dryrun.py` asserts each is still empty so the claims
+  cannot go stale.
+
+### Masked terms - expect these tasks to fail, and report them separately
+
+`High Resolution Scan` (KB 10) and `High Fidelity Mesh` (KB 13) are `is_mask:
+true` in every task that uses them, so neither ships as a flag; their components
+do, each directing the agent to ask the user for the full definition. That also
+rules out `Premium Quality Scan`, `Mesh Quality Classification` and `Full
+Archaeological Digital Twin`, which depend on them. Tasks `archeology_scan_6`,
+`archeology_scan_M_1` and `archeology_scan_M_3` turn on these terms and cannot
+honestly be fixed in the model. `DPQ` (task 5) and `FEE` (task 9) are also
+masked but are KB-named formulas rather than thresholds, so they ship under
+their own names - the ambiguity there is "which index did you mean", which
+competing named metrics answer honestly.
