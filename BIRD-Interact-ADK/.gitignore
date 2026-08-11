@@ -8,6 +8,9 @@ build/
 
 # Environment
 .env
+# Backups of a filled-in .env hold live API keys — never commit one
+.env.bak*
+.env.*.bak
 .venv/
 .venv-adk/
 .conda-py310/
@@ -50,6 +53,11 @@ CLAUDE.md
 .agents/
 skills-lock.json
 reference_code_paper/
+
+# Editor scratch
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
