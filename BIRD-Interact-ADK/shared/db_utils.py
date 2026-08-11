@@ -740,10 +740,35 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     values would defeat the point: two floats close enough to be the same
     answer can round to visibly different decimals (76022464.2857143 vs
     76022464.18488877 -> "76022464.29" vs "76022464.18"), which is exactly
-    the class of mismatch this fallback exists to see past.
+    the class of mismatch this fallback exists to see past. For that to hold,
+    gold has to reach the fallback unrounded too, which is why sol_sqls is put
+    through upstream's remove_comments/remove_distinct/remove_round first.
     """
     if not pred_res or not sol_sqls:
         return 0
+    # Gold gets the same cleanup upstream gives it, and that test_case_default
+    # already gives it on the raw path: remove_comments -> remove_distinct ->
+    # remove_round (evaluation/src/eval_bird_interact.py:258-263). Only the gold
+    # side is treated here because the prediction arrived as ROWS, not SQL.
+    #
+    # This is not a new deviation, it RETIRES one: until now the raw arm
+    # compared against gold stripped and this arm compared against gold
+    # verbatim, so the two arms graded differently and the lift measured the
+    # grader (the same concern ex_base's own comment raises). Hence no flag —
+    # the flags gate deviations FROM upstream, and this removes one.
+    #
+    # It also un-blocks the tolerant fallback below, which is documented to
+    # work on PRE-rounding values. That is true of the prediction but was false
+    # of gold whenever gold rounds inside its own SQL — 291 of the 600 tasks,
+    # and 10 of archeology_scan's 13. In those, gold's "pre-rounding" value was
+    # already rounded, so the fallback compared 18.4 against 18.45 instead of
+    # 18.4499998 against 18.45 and could never fire. It went unnoticed because
+    # the ETF golds it was built against don't round in SQL. See tracker B-19.
+    #
+    # Measured before adopting: 0 verdict changes either way across the 68
+    # recorded semantic-layer submissions whose gold rounds, and 0 of 82 golds
+    # across two domains change row count or fail to execute once stripped.
+    sol_sqls = remove_round(remove_distinct(remove_comments(sol_sqls)))
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
