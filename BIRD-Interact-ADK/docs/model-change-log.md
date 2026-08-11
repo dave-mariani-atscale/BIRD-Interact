@@ -201,7 +201,16 @@ entry pointing at `bird_atscale_models_catalog_main` / `Cybermarket Pattern`.
 Model lives in `AtScaleInc/bird-atscale-models/archeology_scan/`; full rationale,
 exclusions and evidence in that folder's `SPEC.md`.
 
-**Catalog schema is `bird_atscale_models_catalog`, NOT `..._main`.** `sml-cli
+**2026-08-11 - republished from Design Center; catalog schema is now `_main`.**
+Supersedes the paragraph below: `bird_atscale_models_catalog_main` now holds all
+four BIRD models including `Archeology Scan`, and `list_models` reports no
+unsuffixed copies at all. `config/environment_backends.yaml` gained an
+`archeology_scan` entry naming `bird_atscale_models_catalog_main` /
+`Archeology Scan`. No model content changed - deploy path only. The
+Catalog-suffix workaround row stands: read the schema back from `list_models`
+after any redeploy rather than assuming which path published last.
+
+**Superseded 2026-08-11 (see above). Catalog schema is `bird_atscale_models_catalog`, NOT `..._main`.** `sml-cli
 atscale-deploy` uses the catalog name verbatim, where a Design Center deploy
 appends the branch. Deploying this build therefore republished the whole shared
 catalog into the unsuffixed schema, so all four BIRD models now exist in BOTH
@@ -280,3 +289,197 @@ honestly be fixed in the model. `DPQ` (task 5) and `FEE` (task 9) are also
 masked but are KB-named formulas rather than thresholds, so they ship under
 their own names - the ambiguity there is "which index did you mean", which
 competing named metrics answer honestly.
+
+### First benchmark run, 2026-08-11 (n=1, 10 Query tasks, both arms)
+
+atscale 0.000 / raw 0.100. The acceptance gates above are not wrong - they
+measure the model against the SOURCE, and every probe still reproduces. What
+they do not measure is the grader, and both arms are sitting on grading floors
+rather than on model quality:
+
+- Tasks 3 and 4 return an EXACT multiset match to gold and fail only on the
+  order of tied rows (tracker B-15). The raw arm cannot hit this - it is the
+  same Postgres that produced gold - so the flag is asymmetric here, unlike on
+  ETF where it was measured symmetric. These two are the whole arm-to-arm gap.
+- Task 10's gold projects a `jsonb` column and crashes the grader, which
+  reports the crash as a wrong answer (tracker B-14). Unpassable on both arms.
+
+The remaining seven are genuine misses and are the real work: mostly row-count
+divergence (a filter or grain the agent did not reproduce), plus one
+over-projection on task 1. Do not read 0.000 as a dead catalog - `list_models`
+was healthy and 130 of 139 tool calls returned real data.
+
+**Tie-tolerant re-grade of the same run (trajectory fixed, offline, free).**
+With `GRADING_TIE_TOLERANCE=true`: raw 1.00 (unchanged - no raw submission was
+tie-order-only), atscale 1.40, mean 0.100 vs 0.140, +40% uplift. The replay
+reproduces all 37 live verdicts and the measured totals exactly under
+`tie=false`, so the flip is the only variable. atscale's 1.40 is a LOWER BOUND:
+both tasks earn phase 1 (0.7 each) but phase 2 was never attempted live, since
+phase 1 failed at the time. If both follow-ups also passed the arm would reach
+2.00 (mean 0.200, +100%), so the honest range for this flag is +40% to +100%.
+
+The mechanism is not rounding - `preprocess_results` rounds both sides to the
+same decimals whatever the SQL did, and stripping gold's `ROUND()` leaves the
+tie counts identical (75/825 and 455/528 either way). It is simply that the raw
+arm runs gold's own engine, so its tie permutation matches by construction,
+while the AtScale engine returns an equally valid different one.
+
+### Post-run teardown, 2026-08-11 - what the seven "genuine misses" actually are
+
+Every failing atscale submission was replayed against gold offline and, where a
+hypothesis needed testing, re-run live through `run_query`. The misses are not
+seven separate problems; they are three, and only one of them is the agent's.
+
+**1. Component averages use a support-set denominator; gold uses the population.
+This is the big one.** The model's `Average <X>` measures average over the rows
+that HAVE an X. Gold's formulas average over every row in scope and treat a
+missing input as zero. The two differ by exactly the coverage ratio, so any
+knowledge-base formula built on top of them is wrong by that factor.
+
+Worked example, site SC3083 (2 scans, both with a point cloud, only 1 with a
+spatial record):
+
+| quantity | model | gold |
+|---|---|---|
+| Average Surface Area | 974.76 (over the 1 scan that has one) | 487.38 (974.76 / 2 scans) |
+| PCDR | 12.95 | 25.89 |
+
+`59806438.5 / (4739.5 x 974.76) = 12.95` vs `59806438.5 / (4739.5 x 487.38) =
+25.89`. The numerator and the density code agree to the last digit; only the
+denominator's row count differs. SC7585 behaves identically (9.22 vs 4.61).
+
+Note the STRUCTURE was already right: `Point Cloud Density Ratio (PCDR)
+(Recomputed For Group)` correctly divides aggregates rather than averaging
+per-row ratios, which is what gold does. Switching to it does not help, because
+its inputs carry the same support-set denominators - 816 of 900 sites still
+differ either way. The fix belongs in the component measures, not in the ratio.
+
+Affects tasks 5 (582/900 sites differ), 9 (816/900) and, through Model Fidelity
+Score and the registration terms, 6. Task 9's gold is explicit about it:
+`AVG(COALESCE((pc.cloud_metrics->>'Total_Pts')::bigint, 0))` over
+`scans LEFT JOIN pointcloud`, not over pointcloud.
+
+**1b. But the denominator is not the scan count either - gold's joins fan out,
+and that half should NOT be chased.** Correcting only the support-set
+denominator reproduces gold on 201 of the 243 sites where the components are
+usable, and misses 42. The reason: `arcref` is not unique in any of these
+tables - up to 4 rows in `scans`, 3 in `pointcloud`, 2 in `spatial` - so gold's
+`ON sc.arcref = pc.arcref` fans out and its denominator is the JOINED row count.
+SC1245 is 1 scan but 2 joined rows; SC1518 is 2 scans but 5. The two counts
+differ on 92 of 900 sites.
+
+Reproducing that would mean making a scans x pointcloud x spatial cross product
+the fact grain, which would corrupt every other measure in the model to chase an
+artifact of a sloppy join. Recommendation: fix 1, log 1b as a gold defect
+(tracker B-17), and accept task 9 as unwinnable for this arm. Note the
+consequence - because grading is all-or-nothing, fixing 1 alone buys NO score on
+task 9; do it for model correctness, not for lift.
+
+**2. A site with no rows in a fact disappears when any measure from that fact is
+projected.** The Site dimension has all 900 members and returns 900 on its own,
+but `SELECT "Site Code", "<any measure>"` returns 898. The missing two are
+SC5861 and SC6651, which exist in `sites` and have a scan each but zero
+`environment` and zero `conservation` rows. Sites that DO have fact rows with
+null contents still come back (73 of them, with a NULL measure), so this is
+specifically zero-fact-rows, not null-valued. Gold reaches all 900 by starting
+`FROM sites` and LEFT JOINing. Costs tasks 6 and 7 - both are exactly 898 where
+gold is 900.
+
+Tested how far preserving those members gets task 7: to the exact 900 x 8 shape,
+with 874 of 900 rows matching gold by site key. The 26 that differ do so only in
+average temperature and humidity, by one unit in the last place (18.5 vs 18.4,
+15.6 vs 15.7) - gold casts those to `::real`, so that is the float32 artifact
+`GRADING_RELATIVE_TOLERANCE` exists for, not a model error. So the join fix is
+necessary but not by itself sufficient; the residual is tie-order plus those 26.
+
+**3. Task 1 was a won task thrown away on one column** (agent-side, now
+mitigated). The submission had the right 648 rows and values correct to 15
+significant digits, and scored 0 because `"Site Scan Quality Rank"` was in the
+SELECT list purely so the ORDER BY could reference it. Dropping that one column
+and ordering by the SQS measure already projected grades **1**, verified live. A
+rank column is redundant with the measure it ranks, so it never needs to be
+projected. Added as a rule to the atscale instructions in
+`config/environment_backends.yaml`.
+
+**4. Task 2 - the grain IS reachable; the classification is not.** Correcting an
+earlier note here: gold's 926 rows are not beyond the model. They are 455
+conservation records plus the 471 sites that have none, and `Conservation Record
+ID` expresses exactly that grain - a query at that grain returns 455, and the
+column's own description states the 455/429/471 split. What is missing is the
+same spine problem as 2, one table over: `conservation_fact` has no row for a
+site without an assessment, so the 471 cannot appear.
+
+The harder half is the classification. Gold writes `c.structstate <> 'Stable'`,
+but all three values in the data are sentences ('Stable condition, structure
+secure for access', ...), so nothing equals `'Stable'` exactly and gold's
+predicate is TRUE for every record - its risk test collapses to `Preservation
+Status IN ('Poor','Critical')`. The model's `Degradation Risk Zone` uses
+`NOT LIKE '%Stable%'`, which is FALSE on the 142 stable-condition records:
+the two disagree on 142 of 455 (tracker M-11). The model's reading is the
+defensible one, so this should NOT be changed to match gold - it means an agent
+has to write a predicate that contradicts the model's own attribute to pass.
+
+Not model defects, for the record: `list_models` was healthy throughout, and the
+MCP server returned data on every well-formed call - the only errors were
+malformed calls of mine during this teardown.
+
+### site_equipment_fact spine, 2026-08-11 (M-10)
+
+`generator/sqls.py` only - the emitted YAML is generated, per SPEC.md. The
+`pairs` CTE that defines the fact's grain became `real_pairs` (the UNION over
+mesh/processing/features/environment, 998 rows) plus a spine row for every site
+present in none of them, carrying `equipref NULL` and `spine_row_count 0`; the
+SELECT's literal `1 AS row_count` now reads `p.spine_row_count`.
+
+The dataset goes from 998 rows to 1000 while still carrying 998 records, which
+is what keeps it inert: `Site Equipment Record Count` is `sum(row_count)` and
+stays 998, every `has_*_inputs` flag is a CASE that yields NULL on a spine row,
+and every measure is an AVG, which ignores them. Verified live - `dryrun.py`
+passes with `EXPECTED_ROWS` raised to 1000, every KB formula spot-check still
+agrees, and `sml-cli validate` is clean. NOT YET DEPLOYED.
+
+**It does not, on its own, convert task 7.** With the spine rows simulated in,
+the answer reaches the exact 900 x 8 shape and 874 of 900 rows match gold, but
+26 still differ in average temperature and humidity. Those are gold's `::real`
+float32 casts landing on an exact `.x5` rounding boundary - agreement to ~1 part
+in 10^8 that rounds apart at 1 decimal. Ordering is NOT the blocker: gold's own
+row order still fails.
+
+Three further levers were needed to make it pass, all in the harness:
+
+1. Strip gold's `ROUND()` on the semantic-layer path. The raw arm already does
+   (`test_case_default`); `ex_base_external_pred` executes gold verbatim. Until
+   it does, the tolerant fallback is useless here by construction - gold's
+   "pre-rounding" value IS the rounded one, so the fallback compares 18.4 to
+   18.45 rather than 18.4499998 to 18.45. Tracker B-19.
+2. `GRADING_RELATIVE_TOLERANCE=true`.
+3. The tolerance actually applied - `grading_rel_tolerance_value` is declared in
+   config and read nowhere, so the 1e-6 default in `_values_close` is fixed.
+   Tracker B-20.
+
+With all three and the tolerance at 1e-4, task 7 grades **1**. It still fails at
+1e-5, so the residual is wider than the ESI gaps (~1.3e-6) alone. 1e-4 is loose,
+and the honest caveat is that it rescues nothing wrong ON THIS TASK SET but has
+not been justified beyond it.
+
+**Collateral check.** Re-grading every archeology submission under these levers:
+no verdict changes on the atscale arm at all, and the RAW arm gains task 6
+(+0.70) from relative tolerance alone at the default 1e-6. So switching the
+tolerance on with the trajectories as recorded moves raw 1.00 -> 1.70 and
+atscale 1.40 -> 1.40. The task-7 gain is only reachable by re-running, because
+the arm never submitted the unfiltered query live.
+
+### Tasks 8 and 10 - closed out as unreachable
+
+Task 8: gold joins `processing` to `scans` on `zoneref` (SITE, not scan) and
+then to `pointcloud`, taking 821 processing rows to 1102. Its per-group averages
+and its `workflow_count` column are all over that fan-out. The group set itself
+is reachable - 122 distinct software x stage pairs, which the model has - but no
+aggregate over them is. Same family as B-17.
+
+Task 10: three independent blockers. Gold starts `FROM equipment` (944) and fans
+out through mesh to 987; 166 of those equipment have no processing row at all,
+which is M-10 one dimension over; and gold's sixth column is the raw
+`system_usage` jsonb projected whole, which no semantic-layer measure can
+return. The third is structural - task 10 is not winnable by this arm at any
+model quality.

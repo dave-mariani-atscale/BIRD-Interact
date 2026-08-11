@@ -567,7 +567,18 @@ def preprocess_results(results, decimal_places: int = 2):
             else:
                 pi = process_decimals_recursive(item, decimal_places)
                 if isinstance(pi, (dict, list)):
-                    processed_row.append(json.dumps(pi, sort_keys=True))
+                    # default=str because process_decimals_recursive has already
+                    # turned every numeric INSIDE the dict/list into a Decimal,
+                    # which json.dumps cannot serialize. Without it this raises
+                    # TypeError, which both grading paths swallow as "Your SQL is
+                    # not correct." — so a task whose gold projects a raw jsonb
+                    # column is unpassable on BOTH arms no matter what the agent
+                    # writes. Live: archeology_scan_10's gold selects
+                    # processing.system_usage whole, and 821 of its 987 rows carry
+                    # a dict. Safe because it is applied to gold and prediction
+                    # alike and both sides arrive quantized to the same
+                    # decimal_places, so str() renders them identically.
+                    processed_row.append(json.dumps(pi, sort_keys=True, default=str))
                 else:
                     processed_row.append(pi)
         processed.append(tuple(processed_row))
