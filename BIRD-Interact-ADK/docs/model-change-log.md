@@ -649,6 +649,87 @@ description no longer contains any of the three question quotes and carries the
 reworded text. An unpushed fix deploys the old model and is indistinguishable
 from success, so this check is worth the one call.
 
+### Read-the-submitted-SQL pass, 2026-08-12 (M-13 to M-16, Q-19)
+
+Dave's method, applied to archeology: read what the agent actually submitted for
+every failing task, then fix the model rather than the harness. Seven failing
+tasks, and the reading was done against agent SQL, tool errors and the knowledge
+base only - no gold SQL, so the answer-key firewall holds.
+
+**The biggest finding is one the score cannot show.** `archeology_scan_6` ended
+with ZERO submissions: five `explore_columns` calls, two `ask_user` calls, no
+`run_query` at all. It was asking the user to define "High-Fidelity Mesh" and
+"Mesh Quality" - and both are defined precisely in the knowledge base (KB 13 and
+KB 53), which this model had simply never implemented. The agent could not have
+found them because they were not there.
+
+That prompted a full KB audit rather than a spot fix. Of 54 KB entries, six were
+absent: **KB 10** High Resolution Scan, **KB 12** Premium Quality Scan, **KB 13**
+High Fidelity Mesh, **KB 16** Digital Conservation Priority, **KB 19** Full
+Archaeological Digital Twin, **KB 53** Mesh Quality Classification. All six now
+ship, with the supporting counts and shares (High-Fidelity Mesh Count and Share,
+High Resolution and Premium Quality Scan Count and Rate).
+
+**Gate A10 replaces the hand audit.** Every implementation is annotated `-- KB
+<n>` in the dataset SQL; A10 reads the KB and fails the build on any concept
+neither annotated nor listed in `KB_EXEMPT` with a written reason. It immediately
+found two more the hand pass had missed - KB 16, and KB 41 Texture-Critical
+Artifact - and it caught four concepts that were implemented but unannotated.
+Worth stating plainly: the mechanical gate beat the careful manual read.
+
+The exemption bar is that the DATA cannot express the concept, not that the
+concept selects nothing. KB 41 is exempt because the texture column never carries
+'Detailed' or 'Critical' and TDI peaks at 0.178 against a threshold of 8.0 - both
+conjuncts unreachable, so a flag would read 'No' for reasons unrelated to the
+artifacts. KB 48 is exempt because all 8 sites reaching DPQ > 80 already have
+ADC >= 70, so no project qualifies under either defensible reading of "combined";
+a third reading (summing an index that is already an average) selects one project
+and is not defensible. KB 19, by contrast, IS shipped even though all 900 sites
+come back 'No': its inputs are all present and in range, so an empty answer is a
+real answer. `dryrun.py` asserts all five zeros live.
+
+**The dialect cannot express quartiles (Q-19).** `archeology_scan_7` had `NTILE`
+rejected outright - "Don't understand function: ntile" - then spent five of its
+twelve `run_query` calls hand-rolling a quartile from `ROW_NUMBER`, ending with
+825 hardcoded as the denominator, which is wrong the moment a filter changes the
+row count. `ROW_NUMBER` and `RANK` are both accepted, so this is NTILE
+specifically. `dim_sites` now precomputes Environmental Suitability Quartile and
+its description says why it must be read rather than derived. This is precisely
+the "precompute whatever the query dialect cannot express" bullet that v2 of the
+build prompt dropped; it should go back.
+
+**Two more model defects, both visible only in the submitted SQL.** The Site Code
+description opened "USE THIS TO COUNT AND GROUP SITES" (M-14) - grouping advice
+correct, counting advice not, since `COUNT(Site Code)` returns a list of site
+codes on this engine rather than a number, which is exactly what task 5 got back
+and believed. And neither `flowregistry` nor `facetregistry` was published
+(M-15), so task 10 - explicitly asked for figures from each individual processing
+run - had no key but Equipment, which repeats across records and silently merges
+runs. Both identifiers are now attributes that say what they are for.
+
+**A stale profile was publishing wrong numbers (M-16).** Regenerating surfaced
+`profile.json` recording 998 site-equipment records and 898 sites against a true
+1000 and 900. Running the pre-change SQL from git HEAD returns 1000/900, so the
+profile was stale, not the SQL changed - a dozen deployed descriptions had been
+quoting 998, and seven more places hardcoded it in `spec.py`. Gate A11 now
+compares `profile.json` against `sqls.EXPECTED_ROWS` and fails the build on a
+mismatch; negative-tested, it reproduces this exact error. Note that
+`profile_live.py` writes relative to cwd, so it must be run from the generator
+directory - A11's message says so, because running it from the model root writes
+a stray file and leaves the real profile untouched.
+
+Surface went 94 metrics / 10 calcs / 126 attributes to 97 / 13 / 129. All audits
+A1-A11 pass, `dryrun.py` passes including the five unsatisfiability assertions,
+and `sml-cli validate` is clean. Row counts unchanged at 1000 / 1000 / 900, so
+nothing fanned out.
+
+**Not deployed, and not measured.** Held deliberately: the benchmark costs real
+API budget and the instruction is to batch model changes before spending it. What
+these fixes are worth is therefore unknown. The honest prior is modest - task 6
+is the one with a clear mechanical path from "could not see the concept" to "can",
+and tasks 2, 5, 8, 9 fail on grain and denominator questions (M-09, M-11, B-17)
+that none of this touches.
+
 ## Tie tolerance turned off, and B-20 wired, 2026-08-11
 
 Two grading-side changes; no model change.
