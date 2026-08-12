@@ -656,26 +656,44 @@ every failing task, then fix the model rather than the harness. Seven failing
 tasks, and the reading was done against agent SQL, tool errors and the knowledge
 base only - no gold SQL, so the answer-key firewall holds.
 
-**The biggest finding is one the score cannot show.** `archeology_scan_6` ended
-with ZERO submissions: five `explore_columns` calls, two `ask_user` calls, no
-`run_query` at all. It was asking the user to define "High-Fidelity Mesh" and
-"Mesh Quality" - and both are defined precisely in the knowledge base (KB 13 and
-KB 53), which this model had simply never implemented. The agent could not have
-found them because they were not there.
+**The headline finding was wrong, and correcting it is the useful part.**
+`archeology_scan_6` ended with ZERO submissions: five `explore_columns` calls,
+two `ask_user` calls, no `run_query` at all. It was asking the user to define
+"High-Fidelity Mesh" and "Mesh Quality". I read that as a model gap - both are
+defined in the KB (13 and 53) and neither was implemented - and shipped all six
+missing concepts (KB 10, 12, 13, 16, 19, 53) with their counts and shares.
 
-That prompted a full KB audit rather than a spot fix. Of 54 KB entries, six were
-absent: **KB 10** High Resolution Scan, **KB 12** Premium Quality Scan, **KB 13**
-High Fidelity Mesh, **KB 16** Digital Conservation Priority, **KB 19** Full
-Archaeological Digital Twin, **KB 53** Mesh Quality Classification. All six now
-ship, with the supporting counts and shares (High-Fidelity Mesh Count and Share,
-High Resolution and Premium Quality Scan Count and Rate).
+That was a misreading of a decision this log and `SPEC.md` had already recorded.
+`High Resolution Scan` (KB 10) and `High Fidelity Mesh` (KB 13) are
+`is_mask: true` in every task that uses them: the benchmark deliberately
+withholds those thresholds so the agent has to ask the user, and KB 12, 19 and 53
+depend on them. Task 6 spending its budget on `ask_user` is the firewall working
+as designed, not a discoverability failure. Baking the thresholds in would have
+handed the atscale arm an answer the raw arm has to ask for - the same
+teaching-to-the-test problem as M-12, in a more damaging form. All six were
+reverted and the model redeployed before anything ran against it.
 
-**Gate A10 replaces the hand audit.** Every implementation is annotated `-- KB
-<n>` in the dataset SQL; A10 reads the KB and fails the build on any concept
-neither annotated nor listed in `KB_EXEMPT` with a written reason. It immediately
-found two more the hand pass had missed - KB 16, and KB 41 Texture-Critical
-Artifact - and it caught four concepts that were implemented but unannotated.
-Worth stating plainly: the mechanical gate beat the careful manual read.
+KB 16 went too, and only the gate caught it. My reading was that the KB mentions
+Premium Quality Scans as the *remedy* for a conservation priority, not a
+condition of it - but the KB's own `children_knowledge` names KB 12 as a parent,
+so it inherits the mask. When the concept graph and my reading disagree, the
+graph wins.
+
+**Gate A10 now derives the firewall instead of trusting prose.** It reads
+`is_mask` from the allowlisted brief, closes over the KB's own dependency edges,
+and fails the build if any masked-or-dependent concept is implemented. It
+reproduces the `SPEC.md` table exactly - firewalled `[10, 12, 13, 16, 19, 53]`.
+The rule it encodes is not "never ship a masked term": masked KB-NAMED FORMULAS
+(ESI, FEE, DPQ) still ship under their own names via an explicit
+`MASKED_BUT_SHIPPABLE` list, because there the ambiguity is "which index did you
+mean", which competing named metrics answer honestly. What must not ship is a
+masked THRESHOLD.
+
+A10's other half still earns its keep: it requires every unmasked KB concept to
+be implemented or exemption-documented, and it found KB 41 Texture-Critical
+Artifact plus four concepts implemented but unannotated. The lesson runs both
+ways - the mechanical gate caught a concept the hand audit missed AND caught the
+hand audit shipping something it should not have.
 
 The exemption bar is that the DATA cannot express the concept, not that the
 concept selects nothing. KB 41 is exempt because the texture column never carries
@@ -718,17 +736,27 @@ mismatch; negative-tested, it reproduces this exact error. Note that
 directory - A11's message says so, because running it from the model root writes
 a stray file and leaves the real profile untouched.
 
-Surface went 94 metrics / 10 calcs / 126 attributes to 97 / 13 / 129. All audits
-A1-A11 pass, `dryrun.py` passes including the five unsatisfiability assertions,
-and `sml-cli validate` is clean. Row counts unchanged at 1000 / 1000 / 900, so
-nothing fanned out.
+**Net effect on the model surface: three attributes.** Metrics and calculations
+are back at 94 / 10, exactly where they started; attributes go 120 to 123 -
+Environmental Suitability Quartile, Processing Workflow ID, Mesh ID. Everything
+else in the diff is corrected description text and KB annotations in the dataset
+SQL. All audits A1-A11 pass, `dryrun.py` passes including the five
+unsatisfiability assertions, `sml-cli validate` is clean, and row counts are
+unchanged at 1000 / 1000 / 900.
 
-**Not deployed, and not measured.** Held deliberately: the benchmark costs real
-API budget and the instruction is to batch model changes before spending it. What
-these fixes are worth is therefore unknown. The honest prior is modest - task 6
-is the one with a clear mechanical path from "could not see the concept" to "can",
-and tasks 2, 5, 8, 9 fail on grain and denominator questions (M-09, M-11, B-17)
-that none of this touches.
+Deployed and verified live: the three new attributes resolve through
+`explore_columns` and `run_query`, and none of the six firewalled concepts
+appears as a `unique_name` anywhere in the model. (Two of them appear inside
+*other* objects' prose - ADC cites the KB 19 threshold, Site Type explains the
+dead rarity condition - which is pre-existing text and the honest way to
+reference a concept the model deliberately does not ship.)
+
+**Not measured.** No benchmark run: the instruction is to batch model changes
+before spending API budget. What the surviving fixes are worth is unknown, and
+the honest prior is now smaller than it looked an hour ago - task 6 was never
+convertible, so the remaining candidates are task 7 (quartile) and task 10
+(workflow grain). Tasks 2, 5, 8, 9 fail on grain and denominator questions
+(M-09, M-11, B-17) that none of this touches.
 
 ## Tie tolerance turned off, and B-20 wired, 2026-08-11
 
