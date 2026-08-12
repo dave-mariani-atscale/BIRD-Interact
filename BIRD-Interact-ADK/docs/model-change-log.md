@@ -19,6 +19,8 @@ still applies before carrying its workaround into a new model.
 | D-01 | The engine re-parses and re-emits derived-dataset SQL, and a `'|'` string literal does not survive the round trip: every query touching the dataset fails with a raw warehouse `syntax error at or near "'|'"`. Other literals (`'$'`, `','`, `' km'`, `'Yes'`) round-trip fine. Validation and deploy both pass - it only surfaces on a live query. | Never use `|` in derived SQL. For a composite key use a compound SML leaf key rather than concatenating a surrogate. | Yes - found and fixed in `cybermarket_pattern` 2026-08-10. |
 | E-01 | Bare `COUNT(<dimension attribute>)` is not evaluated: the engine drops the aggregate and returns the attribute's members. Re-confirmed live 2026-08-12. `COUNT(DISTINCT <attr>)` and a count measure are both correct. | Every identifier attribute's description must name the model's count measure and `COUNT(DISTINCT <attr>)`, and state that plain `COUNT` returns members rather than a number. | Yes - applied to `archeology_scan` Site Code (M-14) and `exchange_traded_funds` Fund. Carry into every new model's key attributes. |
 | Q-15 | `COUNT(DISTINCT <dim>)` - the one form E-01 says to trust - is itself unreliable in three ways: it returns **null** under some measure predicates; it returns the **unfiltered** count under others (the predicate degrades to "joins to any fact"); and when **co-projected** with a plain `COUNT(<dim>)` the whole query drops to the dimension's grain and the distinct count collapses to 1 per row. Alone and unfiltered it is correct. | Run the DISTINCT form alone, never beside a plain `COUNT`, and never trust it under a measure filter - wrap the filter in a derived table instead. | Yes - engine fix open. |
+| Q-20 | **A whole-population value cannot be shown beside detail rows by any obvious means, and three of the four failures are silent.** A scalar subquery in the SELECT list alongside detail rows returns each row's OWN value (a share measure came back 1.0 per row instead of 0.9397); `COUNT(m) OVER ()` likewise returns the row's own value; a `UNION ALL` totals row returns ZERO rows; `AVG(m) OVER ()` and a comma cross-join at least error. | `JOIN (SELECT <aggregate measure> AS total FROM <model> WHERE <population>) s ON 1=1` — confirmed live to repeat the true population value on every row. The scalar-subquery form stays correct only when the SELECT has no per-row grain. This buys a repeated COLUMN; where the answer needs a summary ROW (tracker B-04) the only route stays the FROM-less literal-values form. | Yes - found 2026-08-12 on ETF `_11` and `_12`. |
+| Q-21 | A bare SQL stat function (`MIN`/`MAX`/`AVG`) over a measure in a flat SELECT dies in query planning with `ExpandStatFunctions: assertion failed: We already handled attribute values`. | Force the natural row grain in an inner derived table, then aggregate outside it. Window aggregates are not an escape - `AVG(m) OVER ()` raises the same error. | Yes - 2026-08-12. |
 | Catalog-suffix | Deploying from Design Center appends the git branch to the catalog name (`_main`); `sml-cli atscale-deploy` uses the catalog name verbatim. The two paths publish to different schemas. | Read the schema back from `list_models` after any redeploy and make `config/environment_backends.yaml` match. | Yes - all models are published at `bird_atscale_models_catalog_main`. |
 
 ---
@@ -458,6 +460,72 @@ and per-task swing is a full point on its own.
 
 **This does not clear the ETF lift.** Only 3 of 19 tasks, one arm, n=1. Re-quote
 only after a full both-arm run on the deployed model.
+
+### Read-the-submitted-SQL pass, 2026-08-12
+
+Read every submission for all 13 failing/partial ETF tasks (10 at 0.000, 3 at 0.700)
+across the three most recent atscale runs, then probed each hypothesis live through
+MCP at no LLM cost. Agent SQL, tool errors and the KB only — no gold SQL, so the
+answer-key firewall holds. **Most of what the pass found is dialect, not model**, and
+that is itself the finding: this model is in better shape than the harness's account
+of how to query it was.
+
+**One model change (M-18, an instance of M-02): `Fund Category Scored Fund Count`.** M-02
+filed the general defect a year of runs ago — count measures ignore metric availability,
+so a count paired with a metric disagrees with gold — and asked for an audit of every
+count measure. This is that audit's first ETF result. KB 81 gates Category
+Dominator on "the category contains at least 10 funds", and the model published only
+one reading of that — `Category Fund Count` / `Fund Category Fund Count`, every fund in
+the category. The second reading, funds the composite comparison can actually rank, was
+not expressible at all: only 1142 of 2310 funds carry a Composite Score, and at a
+cut-off of 10 the two readings qualify **49 categories against 34**. Task `_7` used the
+only one on offer, three times, and failed all three. Shipped as a window count in
+`fund_analytics` mirroring `Alpha-Turnover Pair Count`'s "sample size, not group size"
+pattern, with both descriptions naming each other, quoting the 49-vs-34 divergence and
+telling the agent to confirm which population the question means. Note what this does
+NOT do: it does not pick the winning reading, it makes the ambiguity askable — which is
+what the model owes a question the KB left open. `sml-cli validate` clean, A8 clean.
+
+**Four harness-guidance defects, all read off submissions (see `config/environment_backends.yaml`).**
+
+- **The sort-key error hint gave actively wrong advice.** It ended "the outer SELECT must
+  not reference sortkey", conflating *ordering by* an unprojected column with *projecting*
+  one. Task `_19` had the correct two-column result in `run_query`, then submitted the
+  one-column version the hint described, then tried the two-column form using the
+  measure's pre-alias name and died on "column reference does not exist in sub selects".
+  A task lost to guidance, not to the engine.
+- **Q-20 was uncovered entirely** — the four broken shapes for a total beside detail rows
+  are now named alongside the one that works, with the warning that only one of them
+  announces itself. This does NOT reopen B-04: gold for `_11` and `_12` appends a summary
+  ROW with every value coerced to text, which no model query produces at all. What the
+  guidance now adds there is that the silent empty result IS that attempt failing, and
+  redirects to the FROM-less literal-values form rather than letting the agent read the
+  empty result as an empty answer.
+- **The grain rule was too weak.** It said to force the row grain in an inner derived
+  table without saying the grain column must be in that table's SELECT LIST. Task `_14`
+  wrote the derived table without it and got 0.013368 where the grain-forced value is
+  0.013270 — no error, just a different number.
+- **KB-walking is the largest single budget sink.** This model publishes each KB concept's
+  full test inside the implementing column's own description (`KB '<name>': ...`), so one
+  `explore_columns` returns the definition *and* the column. Task `_9` instead paid 29
+  `get_knowledge_definition` calls — 14.5 of 24 coins — for definitions the model was
+  giving away, and reached its first query broke. Guidance now says so.
+
+Plus two free error hints for the tool responses that were costing coins with no repair
+in them: `explore_columns`' "No columns matched" (14 of 90 calls across the three runs,
+one task burning 6 coins on 6 empty searches) and the `Column [X] not found` family,
+which covers both the invented-name case (`_8` phase 2 guessed "Fund Ticker") and the
+inner-alias case.
+
+**Checked and NOT changed, deliberately.** `Fund Turnover Ratio` and
+`Fund Price Position in 52-Week Range` looked like unit bugs (`< 0.3` against a column
+reaching 773.84; `< 25` against a 0-1-looking name) and are not — both descriptions
+already state their scale and which KB threshold applies on it. Task `_14`'s measure and
+a correctly grain-forced `AVG` agree to 15 digits, so `Average Consistency-Adjusted
+Information Ratio` is not a denominator defect. Task `_10` needs a median the dialect
+cannot compute (MDX-Median row) and the user simulator refuses to accept the mean twin;
+that is an engine gap, not a model gap, and precomputing a median per grouping the
+questions happen to use would be teaching to the test.
 
 ### Still leaking
 
