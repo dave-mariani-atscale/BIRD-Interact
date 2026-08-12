@@ -789,6 +789,50 @@ convertible, so the remaining candidates are task 7 (quartile) and task 10
 
 ## exchange_traded_funds
 
+### M-12 question-phrasing leakage removed, 2026-08-12
+
+Four phrases lifted verbatim from the evaluation questions were reworded out of
+six files. Same policy as archeology: the model may describe WHAT A THING IS,
+never HOW A QUESTION ASKS FOR IT.
+
+| phrase | from | lived in |
+|---|---|---|
+| "the relationship between trading and skill" | `_8` | `alpha_turnover_slope` |
+| "less sensitive to rate changes than category peers" | `_3` | `avg/max_duration_advantage`, `fund` |
+| "'Total excess fees for all closet funds' sums this." | `_20` | `max/total_wasted_fee_amount`, `fund` |
+
+Each was replaced with the quantity's own meaning rather than deleted — a
+regression slope became "how much alpha changes per unit of turnover", the
+duration gloss became "shorter duration than the category average", and the
+sum hint became a plain statement of what summing the measure produces. Seven
+lines changed, no reformatting; `sml-cli validate` clean.
+
+**The gate could not be ported as A8/A9.** ETF is a prompt-only build with no
+`generator/`, so there is no `generate.py` to hold a build gate and no
+`spec.DISCOVERY_PHRASES` for A9 to check — ETF carries zero "Ask for it as:"
+lists. A9 is therefore generator-only by construction and was not ported.
+A8 was lifted into `utilities/question_leakage_gate.py` in the models repo,
+which reads the published YAML instead of the generator's in-memory objects and
+so covers prompt-only models too. Cross-checked against archeology, where it
+agrees with generator A8 (both pass on the de-leaked model). Questions come
+from a firewalled `extract_brief.py` brief, now generated for ETF at
+`exchange_traded_funds/brief/`.
+
+**This does not yet clear the ETF lift.** The change is committed but NOT
+deployed, so a run today still measures the leaked model. Re-quote the ETF lift
+only after a deploy and a fresh run.
+
+**Two other models are still leaking**, measured with the same gate:
+cybermarket_pattern 23 phrases over 6 tasks, households 11 over 5. Both have
+generators and should get gate A8 wired in-build rather than this after-the-fact
+check. `solar_panel` could not be measured at all: `extract_brief.py`'s
+firewall audit refuses it, because `solar_panel_16` asks the user to "group by
+the panel technology" and the audit's `group\s+by` SQL-shape check fires on
+plain English. That regex guards against gold leaking into a brief, so it was
+left alone — narrowing it is a deliberate change to a firewall control, not a
+side effect of this work. solar_panel is the largest recorded lift (+0.370) and
+is currently ungatable.
+
 ### Fund attribute says how to count funds, 2026-08-12 (E-01)
 
 The Fund level attribute's description now points at the `Fund Count` measure
