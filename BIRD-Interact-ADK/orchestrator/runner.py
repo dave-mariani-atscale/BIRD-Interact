@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
 from shared.output_paths import timestamped_output_path
+from shared import usage as llm_usage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -37,6 +38,10 @@ async def run_parallel_evaluation(
     p1_count = 0
     p2_count = 0
     completed = 0
+    # Marks the start of this run's LLM-usage window. The services are
+    # long-lived and don't know about runs, so their usage rows are attributed
+    # to a run by timestamp — sound because runs are sequential (see --repeat).
+    run_started = time.time()
     # Stamped once here, not per _save(), so incremental saves keep
     # appending to this run's own file instead of starting a new one.
     output_path = timestamped_output_path(output_path)
@@ -67,6 +72,12 @@ async def run_parallel_evaluation(
                 # can DO, so two runs differing only here are not comparable.
                 "semantic_layer_knowledge_tools": settings.semantic_layer_knowledge_tools,
             },
+            # API spend for this run, split by role and model. Sits next to the
+            # scores on purpose: a score is only interesting alongside what it
+            # cost to get, and a cheaper agent model is only a saving if the
+            # score held. cache_read_tokens stays 0 until prompt caching is
+            # enabled — that field is how you check whether it took effect.
+            "llm_usage": llm_usage.aggregate(since=run_started),
             "metrics": {
                 "total_tasks": n,
                 "total_reward": total_reward,
@@ -105,6 +116,12 @@ async def run_parallel_evaluation(
                 await _save()
 
     await asyncio.gather(*[_run_one(i, td) for i, td in enumerate(tasks)])
+    if settings.llm_usage_path:
+        # litellm logs an async call from a background task in the calling
+        # service's event loop, so the last few rows can land just after the
+        # final task returns. Settle before the last aggregate, or a run's
+        # reported spend quietly omits its own tail.
+        await asyncio.sleep(2)
     await _save()
 
     n = len(tasks)
@@ -114,6 +131,18 @@ async def run_parallel_evaluation(
             n, total_reward / n, p1_count, n, p1_count / n * 100,
             p2_count, n, p2_count / n * 100,
         )
+        agg = llm_usage.aggregate(since=run_started)
+        if agg.get("calls"):
+            logger.info("%s", llm_usage.format_summary(agg))
+        elif settings.llm_usage_path:
+            # Silence here means the hook never fired, not that a run was free —
+            # most likely the services predate this change and need a restart
+            # (scripts/start_services.sh), since they register the callback at
+            # import time.
+            logger.warning(
+                "No LLM usage rows for this run in %s — restart the services to pick up "
+                "usage accounting (scripts/start_services.sh).", settings.llm_usage_path,
+            )
 
 
 def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, query_only: bool = False,

@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     litellm_api_base: str = ""
     litellm_api_key: str = ""
 
+    # COST, not a deviation. Anthropic prompt caching for the system agent.
+    # cache_control marks a prefix as reusable; it is not prompt content, so the
+    # agent sees the same bytes and decides the same things either way — the only
+    # difference is the bill. Every agent turn re-sends the whole conversation,
+    # so the fixed system+tools prefix and the history are paid for again on each
+    # call at full price with this off. Anthropic-family models only (the
+    # breakpoints are meaningless elsewhere and other providers reject them).
+    # Verify it actually landed via cache_read_tokens in llm_usage — see
+    # shared/llm.py and the "API spend" section of CLAUDE.md.
+    prompt_caching: bool = True
+
     # Dataset: "lite" or "full"
     dataset: str = "lite"
 
@@ -132,6 +143,18 @@ class Settings(BaseSettings):
     # but it is a real loosening, so it stays a deliberate choice rather than
     # the default.
     grading_rel_tolerance_value: float = 1e-6
+
+    # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
+    # JSONL file recording one row per LLM call (role, model, tokens, cache
+    # tokens, dollar cost). Appended to by all three services; the orchestrator
+    # aggregates the rows for a run's own time window into that run's results
+    # JSON under "llm_usage". Empty disables it.
+    #
+    # Roles are tagged from BIRD_LLM_ROLE, set per service in
+    # scripts/start_services.sh — without it every row reads role="unknown" and
+    # spend can only be split by model, which collapses when both roles use the
+    # same one. See shared/usage.py.
+    llm_usage_path: str = "results/llm_usage.jsonl"
 
     # AUDIT (not a deviation — grading is unaffected). Path to a JSONL file
     # recording each graded submission's predicted rows, gold SQL and verdict,

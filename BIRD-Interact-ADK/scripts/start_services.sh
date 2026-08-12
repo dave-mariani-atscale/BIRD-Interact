@@ -29,10 +29,15 @@ HOST="${SERVICE_HOST:-127.0.0.1}"
 pkill -f uvicorn 2>/dev/null || true
 sleep 1
 
-# Start all three microservices
-"$PYTHON_BIN" -m uvicorn system_agent.server:app --host "$HOST" --port 6000 --log-level warning &
-"$PYTHON_BIN" -m uvicorn user_simulator.server:app --host "$HOST" --port 6001 --log-level warning &
-"$PYTHON_BIN" -m uvicorn db_environment.server:app --host "$HOST" --port 6002 --log-level warning &
+# Start all three microservices.
+# BIRD_LLM_ROLE tags this process's rows in the LLM usage log
+# (settings.llm_usage_path) so a run's spend can be split between the agent
+# under test and the user simulator. Without it both read "unknown" and are only
+# separable by model name — which fails as soon as they share a model. Each
+# service makes calls in exactly one role, so the tag is per process.
+BIRD_LLM_ROLE=system_agent "$PYTHON_BIN" -m uvicorn system_agent.server:app --host "$HOST" --port 6000 --log-level warning &
+BIRD_LLM_ROLE=user_sim "$PYTHON_BIN" -m uvicorn user_simulator.server:app --host "$HOST" --port 6001 --log-level warning &
+BIRD_LLM_ROLE=db_environment "$PYTHON_BIN" -m uvicorn db_environment.server:app --host "$HOST" --port 6002 --log-level warning &
 
 # Wait for all three to be healthy
 for i in $(seq 1 30); do

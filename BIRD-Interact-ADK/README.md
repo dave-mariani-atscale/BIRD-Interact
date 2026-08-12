@@ -162,6 +162,58 @@ things it does deliberately:
 The always/never/flaky breakdown is usually the most informative part: a task
 that flips between runs can't support a conclusion in either direction.
 
+### 8. Token and cost accounting
+
+Every LLM call is logged with its tokens and dollar cost, so a run's score always
+comes with what it cost to produce. Each run's results JSON gains an `llm_usage`
+block and the runner prints a summary when it finishes:
+
+```
+LLM usage: 17 calls, $0.1306, in=179550 out=5702 cache_read=157166
+  system_agent: 15 calls, $0.1206, in=172021 out=5206
+  user_sim: 2 calls, $0.0100, in=7529 out=496
+```
+
+Spend splits by **role** (which service made the call) and by **model**, so a
+model change or a prompt change shows up as a number rather than a guess. Roles
+come from `BIRD_LLM_ROLE`, set per service in `scripts/start_services.sh` — model
+name alone can't separate them once two roles share a model.
+
+Raw rows land in `results/llm_usage.jsonl` (append-only, one JSON row per call);
+set `LLM_USAGE_PATH=` empty to disable. Runs are attributed to their own time
+window, which is sound because runs are sequential (see `--repeat` above).
+
+`cache_read_tokens` reports prompt-cache hits, and is how you confirm caching is
+still working — see below.
+
+> Services register the accounting hook at import time. Restart them after
+> changing `shared/usage.py` or `shared/llm.py`, or the run logs nothing and the
+> runner warns that it found no rows.
+
+### 9. Prompt caching
+
+Input tokens dominate spend in agentic runs: the whole conversation, plus a fixed
+instruction and tool block, is re-sent on every turn. `PROMPT_CACHING=true` (the
+default) marks that prefix as reusable so repeats bill at a tenth of the input
+rate. Measured on one task run both ways, identical reward and budget:
+**$0.331 → $0.131**, with 87% of input tokens served from cache.
+
+This is a billing change, not a protocol deviation. `cache_control` is metadata
+about which prefix to reuse — it is not prompt content, so the agent receives the
+same bytes and the score is unaffected.
+
+`shared.llm.cache_breakpoints` places three of Anthropic's four allowed
+breakpoints: one on the system message (which also covers the tool definitions,
+since Anthropic orders the prefix tools → system → messages) and a rolling pair
+at message indices `-1` and `-3`, so each turn's write is read back by the next.
+Applied to the system agent only, and only for Anthropic-family models — the user
+simulator is ~4% of spend and builds a fresh single-message prompt each call, so
+it has no reusable prefix to cache.
+
+Because the breakpoints are position-based, anything that reshapes the message
+list can silently stop them landing. `cache_read_tokens` reading 0 on a
+multi-turn run means caching broke, whatever the config says.
+
 ## LLM Configuration
 
 LLM calls use [LiteLlm](https://docs.litellm.ai/docs/providers), which supports 100+ providers. Set the API key and model name in `.env`:
