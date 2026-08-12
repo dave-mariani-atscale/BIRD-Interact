@@ -587,3 +587,70 @@ submission, so loosening to 2e-5 buys task 7 and nothing else.
 `GRADING_REL_TOLERANCE` itself stays **off**, and the config default stays
 1e-6. Wiring the knob is a defect fix; turning it on and loosening it is a
 scoring decision, and is left as one.
+
+## GRADING_REL_TOLERANCE stays off, 2026-08-12
+
+Revisiting yesterday's recommendation under a standing rule: err on the side of
+current benchmark behaviour unless the argument for deviating is a really good
+one, and expect all 22 databases in the run set eventually.
+
+The argument for the flag was that gold's float32 casts produce artefacts no
+correct semantic-layer answer can avoid. Measuring which arm it actually helps,
+on the 0811 audit at 2e-5, reward-weighted:
+
+| domain | arm | OFF | ON @2e-5 | delta |
+|---|---|---|---|---|
+| archeology_scan | raw | 1.000 | 1.700 | +0.700 |
+| archeology_scan | atscale | 1.400 | 1.400 | +0.000 |
+| | lift | +0.400 | -0.300 | -0.700 |
+| exchange_traded_funds | raw | 6.100 | 6.100 | +0.000 |
+| exchange_traded_funds | atscale | 6.800 | 6.800 | +0.000 |
+| | lift | +0.700 | +0.700 | +0.000 |
+
+Across all 95 atscale submissions in the audit it rescues **zero** at any value
+from 1e-6 to 1e-2. The only submission it rescues is `archeology_scan_6` on the
+RAW arm - a task the semantic layer cannot win anyway (B-12, masked KB term) -
+so switching it on today inverts the sign of archeology's lift.
+
+The future case does not save it either. If a re-run lands task 7 with the flag
+on: atscale 2.100, raw 1.700, lift +0.400 - identical to the lift with the flag
+off. It buys +0.7 absolute to each arm and nothing to the comparison. A grader
+change that can only turn 0 into 1, moves both arms equally, and leaves lift
+unchanged is just a larger number that is no longer comparable to published
+BIRD-Interact figures.
+
+Scale makes it worse rather than better: 183 golds across 11 of the 22
+databases carry `::real` casts, so this is the benchmark's house style, not a
+quirk of one task, and archeology says the inflation accrues to raw at least as
+much as to us.
+
+### Why task 7 diverges, and why the model is NOT being changed to match
+
+Gold casts the JSON sensor fields to `real` (float32), then subtracts near-equal
+magnitudes - `ABS(temp - 20)`, `ABS((hum - 50)/2)^1.5`. Cancellation amplifies
+float32's ~1e-7 representation error into the 1.13e-5 measured against the live
+model. The model casts the same fields to `::numeric`. That one choice is the
+entire gap, and the model is computing the MORE accurate value.
+
+Gold's convention is consistent enough to copy - every measure-like JSON field
+`::real`, every count-like field `::bigint`, with only `Facet_Faces` and
+`Facet_Verts` varying - so the model could match bit-for-bit with no grading
+deviation at all. Deliberately not doing it: nothing about the source justifies
+float32 (it is JSON text, there is no upstream type to mirror, and `double
+precision` would not close the gap - only `real` does), so choosing it is
+gold-derived tuning of the kind 824f90b stripped out of the instructions, and it
+makes the model less accurate to win one task. Same call as M-11.
+
+Task 7 therefore joins B-17's family: lost to a defect in gold, logged rather
+than worked around. Costs archeology 0.7 absolute and costs the lift nothing.
+
+**What would reopen this.** If, with the full database set in, atscale
+submissions start failing where a sub-1e-4 gap is the only thing between them
+and a pass, then exact comparison is measuring the grader rather than the
+semantic layer, and that is a good argument. `GRADING_AUDIT_PATH` makes counting
+it free and offline. Report it as a sensitivity number next to the headline,
+never inside it.
+
+B-20's wiring stands either way - a declared-but-unread config knob was a defect
+regardless of which value we choose. Default stays 1e-6, `GRADING_REL_TOLERANCE`
+stays off.
