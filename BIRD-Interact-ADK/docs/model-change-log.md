@@ -818,9 +818,35 @@ agrees with generator A8 (both pass on the de-leaked model). Questions come
 from a firewalled `extract_brief.py` brief, now generated for ETF at
 `exchange_traded_funds/brief/`.
 
-**This does not yet clear the ETF lift.** The change is committed but NOT
-deployed, so a run today still measures the leaked model. Re-quote the ETF lift
-only after a deploy and a fresh run.
+**Deployed 2026-08-12** with `sml-cli atscale-deploy . --catalog-name=
+"bird_atscale_models_catalog_main"`. Verified through the MCP layer, not just
+the repo: all three old phrases absent from the live descriptions, all three
+replacements present, catalog healthy with five models.
+
+**Measured on the three affected tasks only** (`_3`, `_8`, `_20`; n=1; $0.63):
+
+| task | was | now |
+|---|---:|---:|
+| `_20` | 1.00 | **1.00** |
+| `_8` | 0.00 | 0.70 |
+| `_3` | 0.00 | 0.00 |
+
+`_20` is the whole point of the check — it was the only affected task that
+already passed, and it leaned on the `Wasted Fee Amount` descriptions that were
+reworded. It held. So de-leaking ETF cost nothing, the same result archeology
+gave (0.270 either way), and the same argument applies: there is no reason to
+trade methodology for score.
+
+`_8`'s 0.00 -> 0.70 is NOT credit for de-leaking - removing the model's help
+cannot add a win. The baseline predates today's harness guidance (M-14 COUNT
+bullets, Q-19's NTILE bullet, the `COUNT(DISTINCT)`-alone clause), so this run
+moved two variables, and A-03's per-task swing is a full point on its own. It
+reached phase 1 on a clean `Alpha-Turnover Slope` query and still lost phase 2.
+Treat it as one sample, not an effect.
+
+**This still does not clear the ETF lift.** Only 3 of 19 tasks ran, one arm,
+n=1. Re-quote the ETF lift only after a full both-arm run on the deployed
+model.
 
 **Two other models are still leaking**, measured with the same gate:
 cybermarket_pattern 23 phrases over 6 tasks, households 11 over 5. Both have
