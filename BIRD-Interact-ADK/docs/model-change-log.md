@@ -505,11 +505,14 @@ what the model owes a question the KB left open. `sml-cli validate` clean, A8 cl
   table without saying the grain column must be in that table's SELECT LIST. Task `_14`
   wrote the derived table without it and got 0.013368 where the grain-forced value is
   0.013270 — no error, just a different number.
-- **KB-walking is the largest single budget sink.** This model publishes each KB concept's
-  full test inside the implementing column's own description (`KB '<name>': ...`), so one
-  `explore_columns` returns the definition *and* the column. Task `_9` instead paid 29
-  `get_knowledge_definition` calls — 14.5 of 24 coins — for definitions the model was
-  giving away, and reached its first query broke. Guidance now says so.
+- **The model is also the glossary, and the agent did not know it.** Each KB concept's full
+  test is published inside the implementing column's own description (`KB '<name>': ...`),
+  so `explore_columns` on a business term returns the definition *and* the column in one
+  1-coin call. Nothing said so. In the one run where the flag-gated knowledge tools were
+  exposed (`SEMANTIC_LAYER_KNOWLEDGE_TOOLS`, off by default — B-12's experiment), task `_9`
+  paid 29 lookups, 14.5 of 24 coins, for definitions the model was giving away, and reached
+  its first query broke. The bullet is written to hold either way: search the model first,
+  knowledge tools are the fallback where they exist at all.
 
 Plus two free error hints for the tool responses that were costing coins with no repair
 in them: `explore_columns`' "No columns matched" (14 of 90 calls across the three runs,
