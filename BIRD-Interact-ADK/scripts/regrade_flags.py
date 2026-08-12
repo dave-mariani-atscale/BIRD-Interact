@@ -15,8 +15,13 @@ Trajectory is held FIXED — this answers "what would the grader have said about
 the SQL the agent actually wrote", not "what would the agent have done".
 """
 import json, sys, os, pickle
-sys.path.insert(0, "/Users/dianne/go/src/github.com/BIRD-Interact/BIRD-Interact-ADK")
-os.chdir("/Users/dianne/go/src/github.com/BIRD-Interact/BIRD-Interact-ADK")
+# Repo root, derived from this file's own location rather than hardcoded: the
+# grader resolves dataset paths relative to the working directory, so this has
+# to chdir, but it must work on any checkout and not just the machine it was
+# written on.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
+os.chdir(_ROOT)
 from shared.config import settings
 from shared import db_utils as U
 
