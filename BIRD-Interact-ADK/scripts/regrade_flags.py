@@ -1,6 +1,10 @@
 """Re-grade a completed run under different grading-flag settings, offline.
 
 Usage:  python scripts/regrade_flags.py raw|atscale <results.json> [cache.pkl]
+                                       [--database NAME]
+
+--database defaults to exchange_traded_funds. The template DB and the task
+filter both follow it.
 
 
 Free (no LLM calls). Raw arm: pred SQL re-executes against the pristine
@@ -16,15 +20,22 @@ os.chdir("/Users/dianne/go/src/github.com/BIRD-Interact/BIRD-Interact-ADK")
 from shared.config import settings
 from shared import db_utils as U
 
-DB = "exchange_traded_funds_template"
-ARM = sys.argv[1]              # raw | atscale
-PATH = sys.argv[2]
-CACHE = sys.argv[3] if len(sys.argv) > 3 else f".regrade_cache_{ARM}.pkl"
+argv = sys.argv[1:]
+DATABASE = "exchange_traded_funds"
+if "--database" in argv:
+    i = argv.index("--database")
+    DATABASE = argv[i + 1]
+    del argv[i:i + 2]
+
+DB = f"{DATABASE}_template"
+ARM = argv[0]                  # raw | atscale
+PATH = argv[1]
+CACHE = argv[2] if len(argv) > 2 else f".regrade_cache_{DATABASE}_{ARM}.pkl"
 
 tasks = {}
 for line in open(settings.data_path):
     d = json.loads(line)
-    if d.get("selected_database") == "exchange_traded_funds":
+    if d.get("selected_database") == DATABASE:
         tasks[d["instance_id"]] = d
 
 res = json.load(open(PATH))
@@ -62,13 +73,16 @@ for i, (tid, phase, sql) in enumerate(subs):
         rows, err, to, _ = U.execute_queries([sql], DB, conn)
         cache[key] = None if (err or to) else rows
     else:
-        # The r1 run targeted the since-retired bird_etf_prompt_only deployment.
-        # Retarget at the current one; the 0810 model changes were additive
-        # (two new attributes, description text), so existing queries are
-        # unaffected — validated by the as-run total reproducing 9.10.
-        import re as _re
-        q = sql.replace("bird_etf_prompt_only_main", "bird_atscale_models_catalog_main")
-        q = _re.sub(r'"?exchange_traded_funds_test"?', '"Exchange Traded Funds"', q)
+        q = sql
+        if DATABASE == "exchange_traded_funds":
+            # The r1 run targeted the since-retired bird_etf_prompt_only
+            # deployment. Retarget at the current one; the 0810 model changes
+            # were additive (two new attributes, description text), so existing
+            # queries are unaffected — validated by the as-run total
+            # reproducing 9.10. Other databases were never on that deployment.
+            import re as _re
+            q = q.replace("bird_etf_prompt_only_main", "bird_atscale_models_catalog_main")
+            q = _re.sub(r'"?exchange_traded_funds_test"?', '"Exchange Traded Funds"', q)
         try:
             txt = cli.call_tool("run_query", {"query": q})
             cache[key] = U.parse_semantic_layer_rows(str(txt)) or None

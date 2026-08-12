@@ -525,6 +525,106 @@ superseded: the cause is removed rather than the symptom forgiven. The flag now
 only affects the RAW arm, which makes keeping it on a choice that slightly
 favours raw rather than one that rescues the semantic layer.
 
+### First valid benchmark measurement, 2026-08-12 (n=1, 10 Query tasks, both arms)
+
+**atscale 0.270 vs raw 0.100, lift +0.170.** Phase 1 3/10 against 1/10, phase 2
+2/10 against 1/10. Won tasks: `_4` (+1.00) and `_1` (+0.70); no raw wins. Files:
+`archeology_n1_atscale_20260812_094731.json`,
+`archeology_n1_raw_20260812_095452.json`.
+
+The lift does NOT depend on any deviation flag. An offline replay of the same
+submissions reproduces 2.70 under all four tie/decimal combinations, including
+upstream (`tie=F dec=F`). Raw reproduced 0.100 exactly across two runs a day
+apart (sd 0.000).
+
+This supersedes the earlier reading of the 2026-08-11 run. That run, and a
+second on 2026-08-12 at 09:25, both scored 0.000 - and neither was a model
+result. Both were graded by harness code held in memory since 2026-08-11 11:26,
+five hours before B-19 (16:28) and B-20 (17:10) landed. The signature was
+unambiguous once looked for: `_3` and `_4` graded FAIL live and PASS offline on
+byte-identical SQL under identical flags. After restarting the services the same
+configuration scored 0.270. Tracked as B-23 and gated by `scripts/gate_run.sh`,
+which refuses to run when the services predate the newest harness commit. The
+existing Q-17b `list_models` gate does not catch this - it inspects the catalog,
+not the code version - so both gates are needed.
+
+Note what this says about the earlier prediction of 1.40 from replaying the
+2026-08-11 trajectories: it was a floor, and a live re-run beat it (2.70).
+Re-grading recorded submissions answers "what would the grader say about this
+SQL", never "what would the agent do next time" - the void run's own agent
+resubmitted identical SQL to budget -1 because the stale grader kept telling it
+a correct answer was wrong.
+
+Of the seven remaining failures, five match their prior diagnosis: `_6` masked;
+`_2` M-11 plus a masked term; `_5` and `_9` M-09; `_10` unreachable (gold
+projects raw `jsonb`). Two do NOT, and the difference is worth recording rather
+than carrying the older reading forward:
+
+- **`_7` never submitted at all.** 9 `run_query` calls, 0 `submit_sql`, and 3.5
+  coins still unspent. The prior diagnosis - that it reaches gold's shape and
+  loses on the `::real` float32 residual - was established by simulating the
+  spine offline, and it did not describe this run. Whatever blocks `_7` live,
+  it is upstream of the residual, so turning on a relative tolerance would not
+  have converted it. Worth a look: this is the one failing task with unspent
+  budget and no submission.
+- **`_8` gave up early** - 1 submit, 11.0 of 20 coins used, 9.0 left. B-17's
+  join fan-out still caps it, but the arm is not spending its budget trying.
+
+The pattern in both is an arm stopping short rather than being blocked, which is
+a different problem from the modelling defects above and is not addressed by any
+of them.
+
+**Caveat carried with this number:** it measures the model as deployed, which
+still contains the M-12 question-phrasing leakage described below. The de-leaked
+build is not yet deployed, so 0.270 is an upper bound on the honest figure.
+
+### M-12 question-phrasing leakage removed, 2026-08-12
+
+`generator/` only; the emitted YAML is generated, per SPEC.md. NOT YET DEPLOYED.
+
+A cross-model scan found benchmark question wording copied verbatim into
+published descriptions in all five BIRD models - archeology worst at 17 phrases
+across 4 tasks. The leaked text is question grammar rather than business
+vocabulary ("in descending order of quality values", "how many sites fall into
+each ECCS category"), and one DPQ description quoted a benchmark question
+outright in order to steer the agent to itself. A model built for a real
+business would contain none of it, so it inflates the arm on exactly the
+questions being measured.
+
+Notably the leakage tracks the `DISCOVERY_PHRASES` build gate rather than the
+lift: `solar_panel` carries the largest lift of any model (+0.370), predates
+that gate, and has 2 phrases, while the two models built with the gate carry the
+most. The gate as inherited asks that every question wording match some
+published description, and the cheapest way to satisfy it is to paste the
+question in.
+
+Four changes, and the governing rule is that **the model may describe what a
+thing is, never how a question asks for it**:
+
+- **A8** - no published description may contain a verbatim 6-word run of any
+  task question.
+- **A9** - no `DISCOVERY_PHRASES` entry may be question-shaped: no question
+  grammar, no 4-word run of a task question. An aggregation prefix over a real
+  term is exempt, so `average Environmental Suitability Index` survives while
+  `how many sites fall into each ECCS category` does not.
+- The phrase list is pruned 78 to 75, dropping 14 question-shaped entries and
+  adding 11 replacements each verified present in the knowledge base, the column
+  meanings, the schema or a published object name.
+- An emit-time filter in `write()` strips question-shaped synonyms from every
+  `Ask for it as:` list. Applied there rather than in `spec.py` because there
+  are 181 such lists whose literals are line-wrapped in the source, and a policy
+  in one place stays true for synonyms added later.
+
+Questions are read from the allowlisted brief `extract_brief.py` emits, never
+from `bird_interact_data.jsonl`, so the answer-key firewall stays auditable - a
+negative guard is safe by construction, since it asserts absence rather than
+importing content. Independent verification (a scanner separate from the build
+gates) now reports 0 phrases and 0 tasks for archeology, down from 17 and 4.
+
+The trade is deliberate and worth stating: some question wordings are now less
+findable, which may cost score. That is the point - measured findability bought
+by copying the eval set is not findability a customer would ever have.
+
 ## Tie tolerance turned off, and B-20 wired, 2026-08-11
 
 Two grading-side changes; no model change.
