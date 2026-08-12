@@ -12,13 +12,16 @@ export PYTHONPATH="$PROJECT_DIR"
 export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost}"
 export no_proxy="${no_proxy:-127.0.0.1,localhost}"
 
+# Project-local environments win over an ambient conda env: CONDA_PREFIX stays set
+# even after `source .venv-adk/bin/activate`, so checking it first silently runs the
+# services on the base conda interpreter, which lacks this project's dependencies.
 PYTHON_BIN="python"
 if [ -x "$PROJECT_DIR/.conda-py310/bin/python" ]; then
     PYTHON_BIN="$PROJECT_DIR/.conda-py310/bin/python"
-elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/python" ]; then
-    PYTHON_BIN="${CONDA_PREFIX}/bin/python"
 elif [ -x "$PROJECT_DIR/.venv-adk/bin/python" ]; then
     PYTHON_BIN="$PROJECT_DIR/.venv-adk/bin/python"
+elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/python" ]; then
+    PYTHON_BIN="${CONDA_PREFIX}/bin/python"
 fi
 
 HOST="${SERVICE_HOST:-127.0.0.1}"
@@ -26,10 +29,15 @@ HOST="${SERVICE_HOST:-127.0.0.1}"
 pkill -f uvicorn 2>/dev/null || true
 sleep 1
 
-# Start all three microservices
-"$PYTHON_BIN" -m uvicorn system_agent.server:app --host "$HOST" --port 6000 --log-level warning &
-"$PYTHON_BIN" -m uvicorn user_simulator.server:app --host "$HOST" --port 6001 --log-level warning &
-"$PYTHON_BIN" -m uvicorn db_environment.server:app --host "$HOST" --port 6002 --log-level warning &
+# Start all three microservices.
+# BIRD_LLM_ROLE tags this process's rows in the LLM usage log
+# (settings.llm_usage_path) so a run's spend can be split between the agent
+# under test and the user simulator. Without it both read "unknown" and are only
+# separable by model name — which fails as soon as they share a model. Each
+# service makes calls in exactly one role, so the tag is per process.
+BIRD_LLM_ROLE=system_agent "$PYTHON_BIN" -m uvicorn system_agent.server:app --host "$HOST" --port 6000 --log-level warning &
+BIRD_LLM_ROLE=user_sim "$PYTHON_BIN" -m uvicorn user_simulator.server:app --host "$HOST" --port 6001 --log-level warning &
+BIRD_LLM_ROLE=db_environment "$PYTHON_BIN" -m uvicorn db_environment.server:app --host "$HOST" --port 6002 --log-level warning &
 
 # Wait for all three to be healthy
 for i in $(seq 1 30); do
