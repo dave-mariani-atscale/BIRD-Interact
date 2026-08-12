@@ -17,6 +17,7 @@ still applies before carrying its workaround into a new model.
 | Q-17b | **A published model is materialised as a real relation, and the code path that creates it is not idempotent.** The MCP server's `get_model_document` triggers `CREATE TABLE "<catalog_schema>"."<Model Name>" (...)` in the engine's own SQL store with no `IF NOT EXISTS` and no preceding drop, so once that relation exists from an earlier publish every metadata call dies with `ERROR: relation "<Model>" already exists`. Verified in the engine container log: `STATEMENT: CREATE TABLE "bird_atscale_models_catalog_main"."Cybermarket Pattern" ("Accepted Payment Type Code" TEXT, ...`, alongside the MCP server logging `validate_query_paths: get_model_document failed; skipping path validation`. **The failure is asymmetric and that is the dangerous part:** `list_models`, `explore_columns` and `focus_columns` hard-fail, while `run_query` catches the error, skips path validation and returns CORRECT results - so the deploy looks healthy while the agent is blind. Neither redeploying nor restarting the MCP server clears it (both tried); the error appears to "move" between model names only because the failing path touches a different model first. | Drop the stale materialised relations in the catalog schema inside the engine's SQL store so the path can recreate them; republishing alone does not. Before any run, gate on `list_models` succeeding AND returning the expected model count - a working `run_query` is NOT evidence the catalog is healthy, which is exactly the trap here. | Yes - 2026-08-10/11. Voided three atscale runs (every task 0.000, 81-84% of tool calls erroring). `scripts/summarize_runs.py` now flags such runs SUSPECT and excludes them rather than reporting a lift from them. |
 | MDX-Median | `Median()` is rejected at deploy as a `metric_calc`; must be `calculation_method: percentile` with `named_quantiles`. On the Postgres dialect the percentile sketch is then rejected at query time. Percentile metrics are exposed as `<name>_instance_<q>`; metadata is cached until `list_models force_refresh`. | Ship the percentile form anyway and record the dialect limitation. | Not exercised by `cybermarket_pattern` - no knowledge-base definition in that database requires a median. |
 | D-01 | The engine re-parses and re-emits derived-dataset SQL, and a `'|'` string literal does not survive the round trip: every query touching the dataset fails with a raw warehouse `syntax error at or near "'|'"`. Other literals (`'$'`, `','`, `' km'`, `'Yes'`, `'2FA'`) round-trip fine, so this is specific to the pipe character. Layer 1 validation and deploy both pass - it only surfaces on a live query. | Never use `|` in derived SQL. Where a composite key needs representing, use a compound SML leaf key (`sml-create-dimension` R5) rather than concatenating a surrogate. | Yes - found and fixed in `cybermarket_pattern` on 2026-08-10 (acceptance run 1). |
+| E-01 | Bare `COUNT(<dimension attribute>)` is not evaluated: the engine drops the aggregate and returns the attribute's members. Re-confirmed against the live engine 2026-08-12 - `COUNT("Preservation Status")` returns the five status strings, `COUNT("Fund Short Name")` returns the names including a `null` row. `COUNT(DISTINCT <attr>)` and a count measure are both correct. | Every identifier attribute's description must name the model's count measure and `COUNT(DISTINCT <attr>)`, and state that plain `COUNT` returns members rather than a number. | Yes - applied to `archeology_scan` Site Code (M-14) and `exchange_traded_funds` Fund (2026-08-12). Carry it into every new model's key attributes. |
 | Catalog-suffix | Deploying from Design Center appends the git branch to the catalog name (`_main`); `sml-cli atscale-deploy` uses the catalog name verbatim. The two paths publish to different schemas. | Read the schema back from `list_models` after any redeploy and make `config/environment_backends.yaml` match. | Yes - the two existing models are published at `bird_atscale_models_catalog_main`. |
 
 ---
@@ -785,6 +786,47 @@ the honest prior is now smaller than it looked an hour ago - task 6 was never
 convertible, so the remaining candidates are task 7 (quartile) and task 10
 (workflow grain). Tasks 2, 5, 8, 9 fail on grain and denominator questions
 (M-09, M-11, B-17) that none of this touches.
+
+## exchange_traded_funds
+
+### Fund attribute says how to count funds, 2026-08-12 (E-01)
+
+The Fund level attribute's description now points at the `Fund Count` measure
+and `COUNT(DISTINCT Fund)`, and states that plain `COUNT` over the attribute
+returns ticker symbols rather than a number. `archeology_scan` has carried the
+equivalent warning on Site Code since M-14; ETF carried nothing, which is the
+likely reason ETF agents keep walking into E-01 while `archeology_scan_1/3`
+stopped.
+
+**Why it was worth a commit.** A sweep of every atscale-backend run found the
+bare form in 2-6 tasks per 19-task ETF run continuously since 2026-08-06. In
+`rebase0811_atscale_r1` (the last full ETF run) it appears in 5 of 19 tasks -
+etf_6, 9, 11, 17, 18 - and 4 of those 5 scored 0.0. Paired raw arms show zero
+occurrences in every case, so this is purely a semantic-layer cost. No bad
+`COUNT` ever reached a `submit_sql`: agents always noticed the nonsense and
+retried, so the damage is budget, not a wrong submission. All four failing ETF
+tasks and all three failing archeology tasks ended at or below zero coins.
+
+**What the right answer actually is**, since it is not the same as raw SQL and
+the distinction matters when reading these results. A semantic model has no row
+grain until the query projects one, so with nothing but the aggregate in the
+SELECT, `COUNT(<attr>)` should equal `COUNT(DISTINCT <attr>)` less nulls -
+`COUNT("Preservation Status")` is 5, not 900. Project a key alongside and the
+grain pins, and the engine already gets that right through a derived table:
+`COUNT("Fund Short Name")` over `(SELECT "Fund","Fund Short Name" ...)` returns
+2216, correctly excluding the 94 nulls out of 2310.
+
+**The derived-table workaround is not a safe substitute for counting entities**,
+and agents in these runs reached for it repeatedly. `COUNT("Site Code")` over a
+subquery that also projects `"Structural Condition"` returns 129 for the
+Degradation Risk Zone, not 122 - the extra attribute fans each site out across
+its conservation records. Correct at that grain, wrong answer to "how many
+sites". Only the count measure and `COUNT(DISTINCT)` give 122.
+
+**Not deployed.** The generator was edited and re-run (a hand edit to
+`dimensions/fund.yml` reverts on the next generate); the change reaches agents
+only after a redeploy. Not measured - batching model changes before spending
+API budget, per the standing instruction.
 
 ## Tie tolerance turned off, and B-20 wired, 2026-08-11
 
