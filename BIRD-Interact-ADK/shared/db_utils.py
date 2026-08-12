@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import threading
+from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
@@ -228,8 +229,11 @@ def resolve_decimal_places(conditions) -> int:
 
     Honoring `decimal` at all is an ADK choice: upstream BIRD-Interact always
     preprocesses at 2, so scores for tasks declaring `decimal >= 0 and != 2` are
-    not directly comparable to published numbers.
+    not directly comparable to published numbers. Gated on
+    settings.grading_honor_decimal, which is off by default; see that field.
     """
+    if not settings.grading_honor_decimal:
+        return 2  # upstream: preprocess_results' default, conditions ignored
     dp = (conditions or {}).get("decimal")
     return dp if isinstance(dp, int) and dp >= 0 else 2
 
@@ -241,14 +245,14 @@ def canonical_cell(value) -> str:
     vs 186709472.0, Decimal('6.90') vs 6.9 — so str() alone reports equal values
     as unequal. Numerics collapse to one fixed-point form.
 
-    String values are case-folded. Gold SQL frequently wraps a text column in
-    LOWER(...) (e.g. `LOWER(pm.pnlkind)`) that the agent has no way to see or
-    replicate — a semantic layer's dimension attribute returns its own stored
-    display casing (e.g. "Bifacial"), not gold's ad-hoc lowercased form
-    ("bifacial"). Confirmed live: a submission with numerically-correct values
-    to ~10 significant digits failed outright on this alone. Case-folding only
-    matters for genuinely case-varying gold conventions the agent can't
-    predict; it doesn't paper over an actually-wrong answer.
+    String values are case-folded when settings.grading_casefold is on. Gold SQL
+    frequently wraps a text column in LOWER(...) (e.g. `LOWER(pm.pnlkind)`) that
+    the agent has no way to see or replicate — a semantic layer's dimension
+    attribute returns its own stored display casing (e.g. "Bifacial"), not gold's
+    ad-hoc lowercased form ("bifacial"). Confirmed live: a submission with
+    numerically-correct values to ~10 significant digits failed outright on this
+    alone. Case-folding only matters for genuinely case-varying gold conventions
+    the agent can't predict; it doesn't paper over an actually-wrong answer.
 
     Only reached via _compare_rows' `cell` hook, and only from the cross-source
     path: on the raw path Python's own numeric equality already ignores
@@ -260,7 +264,7 @@ def canonical_cell(value) -> str:
     if isinstance(value, (int, float, Decimal)):
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
-    return str(value).lower()
+    return str(value).lower() if settings.grading_casefold else str(value)
 
 
 def _cell_cmp(a, b) -> Optional[int]:
@@ -329,26 +333,34 @@ def _sort_key_indices(gt_res) -> List[int]:
 
 
 def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
-    """Ordered-list comparison that tolerates rows tied on the (assumed) sort
-    column landing in a different relative order between two engines.
+    """True when pred differs from gold only by reordering rows that TIE on the
+    (assumed) sort column.
 
     Gold SQL and a semantic layer are two different execution engines with no
     shared tie-breaking convention — SQL never guarantees a stable order among
     rows equal on the ORDER BY expression, and rounding to the task's decimal
     precision makes ties far more likely than the underlying raw data would
-    suggest. Confirmed live: gold's own 336-row result for one task had 8
-    tied pairs after rounding, with neither gold's nor the agent's query
-    supplying a secondary tiebreaker — an exact-order comparison fails on
-    these even when every value is correct.
+    suggest. Confirmed live: gold's own 336-row result for one task had 8 tied
+    pairs after rounding, with neither gold's nor the agent's query supplying a
+    secondary tiebreaker — an exact-order comparison fails on these even when
+    every value is correct.
 
     The sort key is inferred by _sort_key_indices (every column gold is
     monotonic in, excluding constants) rather than assumed to be the last
     column, which was wrong whenever the sorted measure was not last. Group
-    GOLD rows into consecutive runs sharing that key, then verify the PREDICTED rows occupying that same
-    index range form the identical set (order within the tied group doesn't
-    matter), and that groups appear in the same overall sequence. Falls back
-    to an exact match on any structural mismatch (row count, or a tie-group
-    heuristic that doesn't hold for this shape) rather than silently passing.
+    GOLD rows into consecutive runs sharing that key, then verify the PREDICTED
+    rows occupying that same index range form the identical set (order within
+    the tied group doesn't matter), and that groups appear in the same overall
+    sequence. Falls back to an exact match on any structural mismatch (row
+    count, or a tie-group heuristic that doesn't hold for this shape) rather
+    than silently passing.
+
+    Counter, not set(): a tie group holding the same row twice would compare
+    equal to one holding it once alongside a different row.
+
+    Called on canonical_cell output on the cross-source path, so 4.68 and
+    Decimal('4.68') group together. Only equality is used, never `<` — nothing
+    here breaks on strings the way an ordering comparison would.
     """
     if len(pred_res) != len(gt_res):
         return False
@@ -365,7 +377,7 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     idx = 0
     for _key, group_rows in groups:
         n = len(group_rows)
-        if set(pred_res[idx:idx + n]) != set(group_rows):
+        if Counter(pred_res[idx:idx + n]) != Counter(group_rows):
             return False
         idx += n
     return True
@@ -386,10 +398,19 @@ def _try_parse_number(value) -> Optional[float]:
     return None
 
 
-def _values_close(a, b, rel_tol: float = 1e-6, abs_tol: float = 1e-9) -> bool:
+def _values_close(a, b, rel_tol: Optional[float] = None, abs_tol: float = 1e-9) -> bool:
     """Numeric values within a tight relative tolerance count as equal;
     everything else falls back to case-folded string equality (same rule
-    canonical_cell applies to non-numerics)."""
+    canonical_cell applies to non-numerics).
+
+    rel_tol defaults to settings.grading_rel_tolerance_value rather than to a
+    literal, so the declared knob actually reaches the comparison. It used to
+    default to 1e-6 here while the setting was read nowhere, which made the
+    config field inert and silently un-tunable (tracker B-20). Callers may
+    still pass a tolerance explicitly to pin one independent of the setting.
+    """
+    if rel_tol is None:
+        rel_tol = settings.grading_rel_tolerance_value
     a_num, b_num = _try_parse_number(a), _try_parse_number(b)
     if a_num is not None and b_num is not None:
         return math.isclose(a_num, b_num, rel_tol=rel_tol, abs_tol=abs_tol)
@@ -480,21 +501,67 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     """Score two already-preprocessed row sets — 1 if they match, else 0.
 
     `cell` renders each value before comparing; None keeps the typed values.
-    That argument doubles as "are we on the cross-source (semantic-layer)
-    path", since it's the only place a tie-tolerant order comparison is
-    needed — the raw path executes both sides on the same engine, where ties
-    resolve identically for identical query text.
+    That argument is the only difference between the raw and semantic-layer
+    comparisons, so it stays one visible knob rather than two copies of this
+    tail that drift.
     """
+    pred_cells, gt_cells = pred_res, gt_res
+    if cell is not None:
+        pred_cells = [tuple(cell(v) for v in row) for row in pred_res]
+        gt_cells = [tuple(cell(v) for v in row) for row in gt_res]
+    if conditions and conditions.get("order", False):
+        if pred_cells == gt_cells:
+            return 1
+        # Same rows in a different order: only a tie permutation is forgiven,
+        # and only when settings.grading_tie_tolerance is on. Upstream stops at
+        # the strict compare above.
+        if not settings.grading_tie_tolerance:
+            return 0
+        return 1 if _ordered_match_tolerating_ties(pred_cells, gt_cells) else 0
+    return 1 if set(pred_cells) == set(gt_cells) else 0
+
+
+def diagnose_rows(pred_res, gt_res, conditions, cell=None) -> str:
+    """One sentence describing HOW a failed submission's rows differ from gold.
+
+    Shape only — counts, and whether the rows match but their order doesn't.
+    Never a value, a column name or a row, so it narrows the search without
+    handing over the answer. Callers must gate this on
+    settings.submit_feedback_level; see that field for the comparability
+    caveat. Returns "" when it has nothing useful to add.
+    """
+    if not pred_res:
+        return "Your query returned no rows."
+    p_rows, g_rows = len(pred_res), len(gt_res)
+    p_cols, g_cols = len(pred_res[0]), len(gt_res[0]) if gt_res else 0
+    if p_cols != g_cols:
+        return (f"Wrong number of columns: you returned {p_cols}, the expected answer has "
+                f"{g_cols}. Row count {'matches' if p_rows == g_rows else f'is {p_rows} vs {g_rows}'}.")
+    if p_rows != g_rows:
+        return (f"Wrong number of rows: you returned {p_rows}, the expected answer has {g_rows}. "
+                f"Column count matches ({p_cols}).")
     if cell is not None:
         pred_res = [tuple(cell(v) for v in row) for row in pred_res]
         gt_res = [tuple(cell(v) for v in row) for row in gt_res]
-    if conditions and conditions.get("order", False):
-        if pred_res == gt_res:
-            return 1
-        if cell is not None and _ordered_match_tolerating_ties(pred_res, gt_res):
-            return 1
-        return 0
-    return 1 if set(pred_res) == set(gt_res) else 0
+    if sorted(pred_res) == sorted(gt_res):
+        return (f"Right {p_rows} rows and right {p_cols} columns, but in the wrong ORDER — "
+                "add or correct the ORDER BY.")
+    # Same columns, permuted. Compared as whole column VECTORS, so this only
+    # fires when every column of gold is present exactly once and the rows line
+    # up — a permutation is then the only difference left. Worth its own message
+    # because the generic one below sends the agent back to the filter and the
+    # grain, when all it has to do is reorder the SELECT list. Nothing here
+    # names a column or a value, same as every other branch.
+    # Counter, not sorted(): on the raw path these are typed values, so two
+    # columns of different types (str ticker, float score) would raise TypeError
+    # under comparison. Multiset equality needs no ordering.
+    pred_cols = Counter(tuple(r[j] for r in pred_res) for j in range(p_cols))
+    gt_cols = Counter(tuple(r[j] for r in gt_res) for j in range(g_cols))
+    if pred_cols == gt_cols:
+        return (f"Right {p_rows} rows with the right values, but your {p_cols} COLUMNS are in the "
+                "wrong order — reorder the SELECT list.")
+    return (f"Right shape ({p_rows} rows x {p_cols} columns) but the values differ — "
+            "check the filter, the aggregation grain, and which columns you projected.")
 
 
 def preprocess_results(results, decimal_places: int = 2):
@@ -509,7 +576,18 @@ def preprocess_results(results, decimal_places: int = 2):
             else:
                 pi = process_decimals_recursive(item, decimal_places)
                 if isinstance(pi, (dict, list)):
-                    processed_row.append(json.dumps(pi, sort_keys=True))
+                    # default=str because process_decimals_recursive has already
+                    # turned every numeric INSIDE the dict/list into a Decimal,
+                    # which json.dumps cannot serialize. Without it this raises
+                    # TypeError, which both grading paths swallow as "Your SQL is
+                    # not correct." — so a task whose gold projects a raw jsonb
+                    # column is unpassable on BOTH arms no matter what the agent
+                    # writes. Live: archeology_scan_10's gold selects
+                    # processing.system_usage whole, and 821 of its 987 rows carry
+                    # a dict. Safe because it is applied to gold and prediction
+                    # alike and both sides arrive quantized to the same
+                    # decimal_places, so str() renders them identically.
+                    processed_row.append(json.dumps(pi, sort_keys=True, default=str))
                 else:
                     processed_row.append(pi)
         processed.append(tuple(processed_row))
@@ -576,11 +654,58 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     if any([pred_err, pred_to, gt_err, gt_to]):
         return 0
     decimal_places = resolve_decimal_places(conditions)
+    pred_raw, gt_raw = pred_res, gt_res
     pred_res = preprocess_results(pred_res, decimal_places)
     gt_res = preprocess_results(gt_res, decimal_places)
     if not pred_res or not gt_res:
         return 0
-    return _compare_rows(pred_res, gt_res, conditions)
+    score = _compare_rows(pred_res, gt_res, conditions)
+    # Same tolerant fallback as the semantic-layer path (ex_base_external_pred),
+    # deliberately the same function: grading must not differ by arm, or the
+    # lift number measures the grader instead of the semantic layer. The gap it
+    # tolerates comes from grading_rel_tolerance_value on both arms (B-20).
+    if score == 0 and settings.grading_rel_tolerance:
+        score = 1 if _compare_rows_numeric_tolerant(pred_raw, gt_raw, conditions) else 0
+    return score
+
+
+def _json_safe(value):
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def record_graded_submission(**entry) -> None:
+    """Append one graded submission to settings.grading_audit_path as JSONL.
+
+    Why this exists: the semantic-layer path grades ROWS returned by the MCP,
+    and those rows are not otherwise kept anywhere. That made every grader
+    change a re-run — and a re-run costs API budget and carries run-to-run
+    variance far larger than the change being measured, so a change worth less
+    than about 0.06 average reward could not be evaluated at all. With the rows
+    plus the gold SQL recorded, any later grading change can be re-scored
+    offline against local Postgres for free, and two arms graded under
+    different rules can be brought onto one grader after the fact.
+
+    Off unless a path is configured. Never raises into the submit path: a
+    failure to write an audit line must not fail the submission being audited.
+    """
+    path = settings.grading_audit_path
+    if not path:
+        return
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps(_json_safe(entry), sort_keys=True) + "\n")
+    except Exception:
+        logger.warning("grading audit write failed", exc_info=True)
 
 
 def parse_semantic_layer_rows(result_text: str) -> List[tuple]:
@@ -623,10 +748,35 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     values would defeat the point: two floats close enough to be the same
     answer can round to visibly different decimals (76022464.2857143 vs
     76022464.18488877 -> "76022464.29" vs "76022464.18"), which is exactly
-    the class of mismatch this fallback exists to see past.
+    the class of mismatch this fallback exists to see past. For that to hold,
+    gold has to reach the fallback unrounded too, which is why sol_sqls is put
+    through upstream's remove_comments/remove_distinct/remove_round first.
     """
     if not pred_res or not sol_sqls:
         return 0
+    # Gold gets the same cleanup upstream gives it, and that test_case_default
+    # already gives it on the raw path: remove_comments -> remove_distinct ->
+    # remove_round (evaluation/src/eval_bird_interact.py:258-263). Only the gold
+    # side is treated here because the prediction arrived as ROWS, not SQL.
+    #
+    # This is not a new deviation, it RETIRES one: until now the raw arm
+    # compared against gold stripped and this arm compared against gold
+    # verbatim, so the two arms graded differently and the lift measured the
+    # grader (the same concern ex_base's own comment raises). Hence no flag —
+    # the flags gate deviations FROM upstream, and this removes one.
+    #
+    # It also un-blocks the tolerant fallback below, which is documented to
+    # work on PRE-rounding values. That is true of the prediction but was false
+    # of gold whenever gold rounds inside its own SQL — 291 of the 600 tasks,
+    # and 10 of archeology_scan's 13. In those, gold's "pre-rounding" value was
+    # already rounded, so the fallback compared 18.4 against 18.45 instead of
+    # 18.4499998 against 18.45 and could never fire. It went unnoticed because
+    # the ETF golds it was built against don't round in SQL. See tracker B-19.
+    #
+    # Measured before adopting: 0 verdict changes either way across the 68
+    # recorded semantic-layer submissions whose gold rounds, and 0 of 82 golds
+    # across two domains change row count or fail to execute once stripped.
+    sol_sqls = remove_round(remove_distinct(remove_comments(sol_sqls)))
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
@@ -637,6 +787,16 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
         return 0
     if _compare_rows(pred_rounded, gt_rounded, conditions, cell=canonical_cell):
         return 1
+    # Merge 2026-08-11: the tolerant fallback arrived from
+    # feature/atscale-mcp-semantic-layer ungated, i.e. on for every run. Kept
+    # behind grading_rel_tolerance (default false, as it already was here)
+    # because it can only turn a 0 into a 1, so leaving it always-on silently
+    # raises scores on BOTH arms and makes a totals number non-comparable to
+    # every earlier run and to published BIRD-Interact numbers. The flag is
+    # recorded in the results deviations block; flip it to adopt the branch's
+    # behaviour deliberately rather than as a side effect of a merge.
+    if not settings.grading_rel_tolerance:
+        return 0
     return 1 if _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) else 0
 
 

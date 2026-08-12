@@ -4,6 +4,7 @@ import asyncio
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 import traceback
@@ -16,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
 from shared.output_paths import timestamped_output_path
+from shared import usage as llm_usage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -36,6 +38,10 @@ async def run_parallel_evaluation(
     p1_count = 0
     p2_count = 0
     completed = 0
+    # Marks the start of this run's LLM-usage window. The services are
+    # long-lived and don't know about runs, so their usage rows are attributed
+    # to a run by timestamp — sound because runs are sequential (see --repeat).
+    run_started = time.time()
     # Stamped once here, not per _save(), so incremental saves keep
     # appending to this run's own file instead of starting a new one.
     output_path = timestamped_output_path(output_path)
@@ -51,6 +57,27 @@ async def run_parallel_evaluation(
             # Run provenance so a summary tool can group runs without parsing
             # filenames -- which arm and which repetition this file is.
             **(meta or {}),
+            # Anything but "none" makes these scores non-comparable to published
+            # BIRD-Interact numbers, so the run records which regime produced it.
+            "submit_feedback_level": settings.submit_feedback_level,
+            # Deviations from upstream's protocol, all off by default. Recorded
+            # so a totals number always carries the regime that produced it.
+            "deviations": {
+                "grading_tie_tolerance": settings.grading_tie_tolerance,
+                "grading_honor_decimal": settings.grading_honor_decimal,
+                "grading_casefold": settings.grading_casefold,
+                "grading_rel_tolerance": settings.grading_rel_tolerance,
+                "free_wasted_actions": settings.free_wasted_actions,
+                # Not a grading change: it changes what the semantic-layer arm
+                # can DO, so two runs differing only here are not comparable.
+                "semantic_layer_knowledge_tools": settings.semantic_layer_knowledge_tools,
+            },
+            # API spend for this run, split by role and model. Sits next to the
+            # scores on purpose: a score is only interesting alongside what it
+            # cost to get, and a cheaper agent model is only a saving if the
+            # score held. cache_read_tokens stays 0 until prompt caching is
+            # enabled — that field is how you check whether it took effect.
+            "llm_usage": llm_usage.aggregate(since=run_started),
             "metrics": {
                 "total_tasks": n,
                 "total_reward": total_reward,
@@ -89,6 +116,12 @@ async def run_parallel_evaluation(
                 await _save()
 
     await asyncio.gather(*[_run_one(i, td) for i, td in enumerate(tasks)])
+    if settings.llm_usage_path:
+        # litellm logs an async call from a background task in the calling
+        # service's event loop, so the last few rows can land just after the
+        # final task returns. Settle before the last aggregate, or a run's
+        # reported spend quietly omits its own tail.
+        await asyncio.sleep(2)
     await _save()
 
     n = len(tasks)
@@ -98,14 +131,33 @@ async def run_parallel_evaluation(
             n, total_reward / n, p1_count, n, p1_count / n * 100,
             p2_count, n, p2_count / n * 100,
         )
+        agg = llm_usage.aggregate(since=run_started)
+        if agg.get("calls"):
+            logger.info("%s", llm_usage.format_summary(agg))
+        elif settings.llm_usage_path:
+            # Silence here means the hook never fired, not that a run was free —
+            # most likely the services predate this change and need a restart
+            # (scripts/start_services.sh), since they register the callback at
+            # import time.
+            logger.warning(
+                "No LLM usage rows for this run in %s — restart the services to pick up "
+                "usage accounting (scripts/start_services.sh).", settings.llm_usage_path,
+            )
 
 
-def load_tasks(data_path: str, limit: int = None, databases: List[str] = None) -> List[dict]:
+def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, query_only: bool = False,
+               tasks_filter: List[str] = None) -> List[dict]:
     tasks = []
     with open(data_path) as f:
         for line in f:
             if line.strip():
                 tasks.append(json.loads(line))
+
+    if query_only and settings.environment_backend == "raw":
+        before_count = len(tasks)
+        tasks = [t for t in tasks if t.get("category") == "Query"]
+        logger.warning("--query-only: excluded %d Management-category tasks (%d Query tasks remain)",
+                        before_count - len(tasks), len(tasks))
 
     if settings.environment_backend != "raw":
         # Semantic layers are read-only — Management-category (DDL/DML) tasks
@@ -136,6 +188,23 @@ def load_tasks(data_path: str, limit: int = None, databases: List[str] = None) -
         before_count = len(tasks)
         tasks = [t for t in tasks if t.get("selected_database") in wanted]
         logger.warning("--databases filter: %d -> %d tasks (databases: %s)", before_count, len(tasks), sorted(wanted & available))
+    if tasks_filter:
+        # Explicit instance_id list — the iteration lever. Most tasks in a
+        # database carry no signal about a given change (many score identically
+        # on every run), so a targeted subset buys the same information for a
+        # fraction of the API spend. Ordering follows the list given, not the
+        # file, so a cheap regression canary can run first.
+        wanted = [t.strip() for t in tasks_filter if t.strip()]
+        by_id = {t["instance_id"]: t for t in tasks}
+        missing = [w for w in wanted if w not in by_id]
+        if missing:
+            # Loud, because a typo'd id silently shrinking the set would look
+            # like a score change rather than a smaller denominator.
+            logger.warning("--tasks: %d requested id(s) not present after the other filters: %s",
+                           len(missing), missing)
+        before_count = len(tasks)
+        tasks = [by_id[w] for w in wanted if w in by_id]
+        logger.warning("--tasks filter: %d -> %d tasks", before_count, len(tasks))
     if limit:
         tasks = tasks[:limit]
     return tasks
@@ -248,6 +317,12 @@ def main():
                               "services. Use --concurrency for parallelism within a run.")
     parser.add_argument("--databases", type=str, default=None,
                          help="Comma-separated selected_database values to run (e.g. 'solar_panel,hulushows'). Default: all.")
+    parser.add_argument("--tasks", type=str, default=None,
+                        help="Comma-separated instance_ids, or a path to a file of them "
+                             "(one per line, # comments allowed). Runs only those, in the "
+                             "order given. Use for cheap iteration on a task subset.")
+    parser.add_argument("--query-only", action="store_true",
+                         help="Run only Query-category tasks on the raw backend (non-raw backends already exclude Management tasks).")
     parser.add_argument("--backend", type=str, default="raw",
                          help="Environment backend: 'raw' (original Postgres tools, default) or a named "
                               "backend from config/environment_backends.yaml (e.g. 'atscale'). Pushed to "
@@ -269,7 +344,17 @@ def main():
     _set_service_backend(args.backend)
 
     databases = [d.strip() for d in args.databases.split(",") if d.strip()] if args.databases else None
-    tasks = load_tasks(args.data, args.limit, databases)
+    tasks_filter = None
+    if args.tasks:
+        # Accept either a comma-separated list or a path to a file of ids
+        # (one per line, '#' comments allowed) so a saved subset is reusable.
+        if os.path.isfile(args.tasks):
+            with open(args.tasks) as f:
+                tasks_filter = [ln.split("#", 1)[0].strip() for ln in f]
+        else:
+            tasks_filter = args.tasks.split(",")
+        tasks_filter = [t for t in tasks_filter if t]
+    tasks = load_tasks(args.data, args.limit, databases, args.query_only, tasks_filter)
     logger.info("%s: Evaluating %d tasks with concurrency=%d", args.mode, len(tasks), args.concurrency)
 
     if args.repeat < 1:

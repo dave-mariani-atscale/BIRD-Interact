@@ -35,15 +35,103 @@
 # `instruction` is the full a-interact system prompt used for this backend
 # (system_agent/agent.py's build_agent() loads it via
 # shared.environment_backends.get_backend_instruction and appends the shared
-# RESULT_SHAPE_TIP). Backend-specific SQL-dialect quirks (unsupported syntax,
-# tool names/costs) belong here, in config, not hardcoded in agent.py.
+# RESULT_SHAPE_TIP and ASK_USER_TIP). Backend-specific SQL-dialect quirks
+# (unsupported syntax, tool names/costs) belong here, in config, not hardcoded
+# in agent.py. Rules about grading or about the user simulator are NOT
+# backend-specific — they live in agent.py so the backends cannot drift apart.
 
 backends:
-  atscale:
+  atscale: &atscale
     mcp_url_env: SEMANTIC_LAYER_MCP_URL
     mcp_token_env: SEMANTIC_LAYER_MCP_TOKEN
     tools_module: system_agent.tools_atscale
     tools_factory: get_ainteract_tools_atscale
+    # Appended to any tool response containing `match` (case-insensitive), by
+    # system_agent.callbacks.after_tool_callback — which stays backend-agnostic
+    # by reading these from config rather than knowing any engine's error text.
+    # Use for errors whose own message points the wrong way: the semantic
+    # layer's sort-by failure ends with a generic "check column names with
+    # explore_columns" block, which is not the repair and costs a submit to
+    # discover. Free — no coins, the response is already paid for.
+    error_hints:
+      - match: could not find correct column to sort by
+        hint: >-
+          The sort key is not in your SELECT list. Do NOT just add it — that makes the answer one
+          column wider than asked for and fails on column count. Wrap instead: SELECT <only the
+          columns asked for> FROM (SELECT <those columns>, <sort expr> AS sortkey FROM <model>
+          WHERE ... ORDER BY sortkey DESC LIMIT <n>) t — the inner LIMIT is required or the
+          ordering is silently dropped, and the outer SELECT must not reference sortkey.
+      - match: have been incorrectly constructed
+        hint: >-
+          You referenced an alias computed in a subquery from an outer WHERE/ORDER BY. A
+          window-function alias in WHERE cannot be rescued by ANY wrapping (double-wrapping fails
+          identically) — restructure instead: aggregate filter → HAVING inside the derived table
+          that computes the aggregate, repeating the full expression (never the alias); per-group
+          top-1 → self-join-on-MAX; global top-n → ORDER BY + LIMIT inside a derived table, with
+          an outer SELECT that trims to only the asked-for columns.
+      - match: don't understand function
+        hint: >-
+          This dialect has no percentile_cont/percentile_disc/median, no percent_rank, and no
+          string_agg/listagg/group_concat/array_to_string (ARRAY_AGG is accepted but returns
+          broken results) — one rejection means the whole family is absent, NEVER retry a synonym
+          spelling. Percentiles/medians cannot be computed here at all; reinterpret the question
+          or ask_user. For string aggregation, fetch the member rows with run_query, concatenate
+          them yourself, and submit a FROM-less literal-values query instead:
+          SELECT 'A' AS grp, 'X, Y, Z' AS members UNION ALL SELECT 'B', 'P, Q'.
+      - match: aggregate functions are not allowed
+        hint: >-
+          Move the condition into a HAVING clause inside the derived table that computes the
+          aggregate, repeating the full aggregate expression — never the alias, and never an
+          outer WHERE.
+      # The five below were each read off a submit that died on them in
+      # results/rebase0810_atscale_r1.json — every one was the task's LAST
+      # action, so the agent never learned what the repair was. Their own
+      # message either names an internal AST node or points at explore_columns,
+      # which is not the fix in any of these cases.
+      - match: unmatched physical type
+        hint: >-
+          An outer query referenced a column its own SELECT list does not project — nearly always
+          ORDER BY on a sortkey or measure that only the inner derived table projects. No amount of
+          extra wrapping fixes it, and adding the column to the outer SELECT changes your column
+          count. Put the ORDER BY *and* its LIMIT inside the derived table that projects the sort
+          column, and leave the outer SELECT with NO ORDER BY at all, projecting only the columns
+          the answer needs. If the query text is already that shape and unchanged, this error is
+          also an intermittent engine fault on calculated metrics — one identical retry is worth
+          more than a restructure.
+      - match: 'unexpected value node: minmaxexpr'
+        hint: >-
+          GREATEST and LEAST are not supported by this dialect. Rewrite as
+          CASE WHEN <a> > <b> THEN <a> ELSE <b> END, spelling out both operands in full every time
+          — a CASE over aliases fails for the separate reason that inner aliases are unreferencable.
+      - match: does not conform to dimension
+        hint: >-
+          That measure's fact table has no relationship to that dimension, so the two can NEVER
+          appear in one query, whatever the syntax — do not retry with quoting, aliasing, or an
+          inner derived table, all of which fail identically. The error text names the fact groups
+          that DO conform: either switch to a measure from one of those, or run the two halves as
+          separate queries and combine the rows yourself. Check this before you build a big query:
+          focus_columns' column_group field tells you which fact a measure lives on.
+      - match: column reference does not exist in sub selects
+        hint: >-
+          A derived table must itself project every column the outer query names, and every outer
+          reference must be qualified with that derived table's alias (t."Col", not bare "Col").
+          Add the missing column to the inner SELECT list and qualify all outer references. A
+          correlated reference from a scalar subquery out to an enclosing derived table is not
+          supported at all — restructure as a JOIN to a derived table instead.
+      - match: projectcontext
+        hint: >-
+          You combined a branch that reads the model with a branch that does not (a literal-only
+          SELECT, or one whose only model access is a scalar subquery) — UNION ALL across that
+          boundary is unsupported. Either make every branch read the model, or fetch the parts with
+          run_query and submit ONE fully FROM-less literal-values query holding the assembled rows
+          (that form does work on its own; it just cannot be mixed with a model query).
+      - match: quantile function
+        hint: >-
+          Percentile/median metrics are deployed but cannot execute on this engine's dialect. The
+          whole family is blocked, so never retry another percentile metric, another quantile
+          instance, or a different spelling. Each such metric names its mean twin in its
+          description — use that, or ask_user which reading they want. Computing the median
+          yourself with window functions also fails here (correlated subqueries are unsupported).
     tool_costs:
       list_models: 1.0
       explore_columns: 1.0
@@ -76,13 +164,22 @@ backends:
       - ASKING IS CHEAPER THAN GUESSING. ask_user costs 2 coins; getting a resolvable ambiguity wrong costs the entire task (1.0 reward). You will typically reach your first submission with coins still unspent, so budget for one or two asks per task as the normal case, not the exception. When a term admits more than one defensible reading, ASK — do not pick the likelier one and hope.
       - THE MODEL FLAGS ITS OWN AMBIGUITIES — TREAT THAT AS A TRIGGER TO ASK. Column descriptions in this semantic model deliberately name their competing readings. If a description says "confirm which the question means", "may instead mean", "are not interchangeable", "this model's convention", or otherwise names a rival column for the same concept, that is a signal to call ask_user — not a menu for you to choose from silently. The recurring triggers are: a named concept with two definitions in play (e.g. a knowledge-base test vs a stored status column), an unstated threshold or cut-off, an unstated denominator for a share or rate, and vague scope words ("status", "risk level", "highest priority", "how long", "how secure") that map to several candidate columns.
       - Resolve the question to exact column names with list_models, explore_columns, and focus_columns before querying — don't guess a name you haven't seen.
+      - explore_columns matches literal substrings, not keywords: a term must appear verbatim and IN ORDER in a column's name or description. "fund years" matches "Fund Years With Return Data"; "years fund" and "return years" match nothing. Every word you add can only narrow the match towards zero, so search two-word fragments, never a descriptive phrase — and on an empty term drop a word, never add one.
+      - One explore_columns call costs 1 coin however many terms you pass, and the terms are OR'd: a term matching nothing does not suppress the ones that do, and the results come back as one union. So BATCH — put every wording of every concept you still need into a single call (4-6 terms is normal) rather than paying a coin per guess. Searching one term per call is the most expensive habit available here and the most common way to arrive at your first query with no budget left.
+      - Budget your discovery. You have ~18-20 coins for the whole task and a submit costs 3, so discovery that runs long is the most common way to lose a task you had already solved. list_models (1 coin) names every dimension and metric in the model — read it FIRST, and then search only for a concept you did not already see there. explore_columns costs a full coin per call, exactly as much as running a real query. Aim to be done with discovery inside about 4 coins.
+      - Two batches that come back empty for the same concept mean the model does not carry it under any name — absent, not mis-spelled. Stop generating synonyms and either ask_user for the concept's definition in terms of columns that DO exist, or build it from components you already found.
       - Use focus_columns' sampled_values to confirm filter literals instead of guessing or running an exploratory query for that purpose.
+      - A measure can only be grouped or filtered by dimensions its own fact table relates to. focus_columns' column_group field tells you which fact a measure lives on; if the measure and the dimension you want to slice it by sit on different facts, that single query is impossible no matter how it is written, and you must run the two halves separately and combine the rows yourself. Check this before building a large query, not after it is rejected.
+      - Before a column goes into a submitted query, read its description. If you have not seen one, focus_columns it — at 0.5 coins it is the cheapest tool here and a failed submit costs 3. This matters most for columns named "Rank", "Flag", "Top", "Average" or "Per <something>": each one bakes in a population and a grain chosen by the modeler, which is often NOT the rows your WHERE clause selects, and the name alone will not tell you.
       - Reference models as "<schema>"."<table>" (the 2-part form). Prefer this over the fully-qualified "<catalog>"."<schema>"."<table>" form, especially if you reference the table more than once in one query (in subqueries, etc.) — repeating the 3-part form causes "cross-database references are not implemented", even though the same query with the 2-part form works fine.
       - The FROM clause must always be the fully-qualified "<schema>"."<table>" pair exactly as list_models returned it (its catalog/schema/table fields) — never a bare table/model name on its own, and never a schema name you're inferring or guessing (e.g. from the model's own label). A single-part or wrongly-paired reference fails with "Couldn't find schema named ...". You can only query the model itself (the "table" list_models returns), never an underlying dataset's own physical table name directly.
       - This SQL dialect does NOT support CTEs (WITH ... AS (...)) — rewrite multi-step logic as a derived table instead: SELECT ... FROM (SELECT ... FROM ...) alias WHERE/GROUP BY ...
       - A CAST to a numeric type MUST carry an explicit precision and scale. Bare `CAST(x AS numeric)` and `x::numeric` are both rejected with "Numeric values are only accepted with specified precision and scale" — write `CAST(x AS numeric(18,6))` (or `DECIMAL(18,6)`) instead. This is the most frequent engine error observed and it costs a full submission when it happens on submit_sql, so write the parameterized form from the start rather than discovering it on a retry. Keep the cast's own scale generous (6 or so) — it is there to satisfy the engine, NOT to set your answer's precision.
       - Do NOT round in SQL unless the question states a precision, and when it does, round to exactly that many places and no other number. Grading normalizes both sides to the task's own precision before comparing, so returning full precision is always safe, while rounding to the wrong number of places is not recoverable: rounding to more places than asked can still mismatch through double-rounding (round to 4 then to 2 is not always round to 2), and rounding to fewer destroys digits the comparison needs. "Round to a whole number" means ROUND(x) with no second argument, not ROUND(x, 2). Do not carry a decimal count over from an example, another question, or a previous task — read it off THIS question every time.
-      - COUNT(*) is rejected by this engine — use COUNT(<column>) instead (e.g. COUNT("Plant Record") or COUNT(DISTINCT "Plants Sitelabel") at the correct grain, not COUNT(*)).
+      - COUNT(*) is rejected by this engine. Always count a named column.
+      - To count dimension members, use COUNT(DISTINCT "<dim>") — this is the ONLY form that returns a number, and it must be ALONE in its SELECT. Plain COUNT("<dim>") is silently wrong: it returns the member values themselves, one row each, and ignores GROUP BY. Never read a count off it. Worse, the two forms POISON each other: SELECT COUNT(DISTINCT "<dim>") AS a, COUNT("<dim>") AS b resolves the whole query at the dimension's grain, so the correct expression collapses to a=1 on every row instead of the total. Confirmed live: COUNT(DISTINCT "Equipment") alone returns 944; the same expression beside a plain COUNT returns 944 rows of a=1. If you are sanity-checking a count, run the DISTINCT form on its own — never pair it with the broken form to "compare" them.
+      - To count rows that carry a measure, use COUNT("<measure>") — it counts non-null rows only, so it answers "how many rows have this value", not "how many rows are there". COUNT(DISTINCT "<measure>") is unsupported.
+      - If the model publishes a count measure (e.g. "<Thing> Count"), prefer it over writing any COUNT yourself: it already carries the intended grain and population.
       - Do NOT cross-join two aggregated derived tables in the FROM clause (e.g. FROM (SELECT ...) a, (SELECT ...) b) to combine two independently-computed values — this fails with "Unsupported data selection". Instead use scalar subqueries directly in the SELECT list: SELECT (SELECT ... FROM ... WHERE ...) - (SELECT AVG(...) FROM (SELECT ... FROM ... WHERE ...) t) AS diff FROM "<schema>"."<table>" LIMIT 1.
       - Do NOT wrap a CASE expression (or other compound expression) inside an aggregate function, e.g. AVG(CASE WHEN ... THEN "Some Measure" END) — this fails with "Can only take an average of an attribute, not a compound expression". Move the condition into the WHERE clause of an inner derived table instead, and aggregate the plain measure (by its original name, not an alias) in the outer query: SELECT AVG("Some Measure") FROM (SELECT "Some Measure" FROM "<schema>"."<table>" WHERE <condition>) t.
       - Do NOT rename/alias a measure column in an inner derived table if you plan to aggregate it again in an outer query — keep its original name, or the outer aggregate will fail with "Column [alias] not found".
@@ -90,12 +187,20 @@ backends:
       - When applying a SQL aggregate function (AVG, MAX, MIN, SUM...) to ANY measure or calculated metric with a WHERE filter but no explicit grain column in the SELECT, do NOT trust the result — the engine resolves the measure at whatever grain the query implies, so with no grain column that can mean "aggregate of the already-pre-aggregated inputs across the whole filtered set", not "aggregate across each individual row". This is silently wrong, not an error, and applies even when your SQL aggregate matches the measure's own default aggregation (materially, not just by rounding). Always force the natural row grain (typically "Plant Record" or similar) in an inner derived table first, then apply your aggregate outside: SELECT MAX("Some Measure") FROM (SELECT "Some Grain Level", "Some Measure" FROM "<schema>"."<table>" WHERE <filters>) t. This is especially easy to miss for measures whose own default aggregation isn't SUM/COUNT (e.g. Avg or Max) since the ungrained query still returns a plausible-looking number.
       - A measure that has no value for a given entity still comes back as a row with a NULL in it — the engine returns one row per grouping key regardless of whether the measures have any data at that key, so a no-value entity is silently included rather than omitted. A NULL here means "no such value", not zero. When a question is about the entities that actually have the value (or asks to rank/list them by it), those no-value rows are not part of the answer and must be excluded explicitly — leaving them in inflates the row count and mismatches the expected answer even though every value you did return is correct. Don't assume missing data is a rare edge case: check the measure's own description, since for some measures the no-value rows are the majority of all rows. This point is only about excluding rows that carry no value for a measure you are already using — it is NOT a reason to narrow a question to any particular snapshot, date, or time period. Decide the grain separately, from the question's own wording and the measure descriptions.
       - This evaluation's grading can be order-sensitive on any multi-row result, whether or not the question's wording obviously asks for ranking or sorting — don't rely on the question text alone to decide whether to sort, and don't rely on GROUP BY producing a useful order on its own. As a default habit, include an explicit ORDER BY on every multi-row (non-scalar) final submission: sort DESC by the primary computed metric when there is one, or by the label/identifying column otherwise if the question gives no other cue. ORDER BY may only reference a column present in that same query's SELECT list — not an arbitrary expression, a different query's measure, or a column merely carried up through an inner derived table; that fails with "Could not find correct column to sort by", and when the sort column is a calculated metric the same shape can instead fail intermittently with "Unmatched physical type AttributeValue(FlatAttribute(...)) when rendering sql" (an engine reliability issue specific to this shape, so a retry succeeding does not mean the shape is safe). When your final answer must NOT include the sort column (adding it changes your column count and mismatches the expected answer shape), apply the ORDER BY and LIMIT inside a derived table that DOES select the sort column, then wrap that in one more outer SELECT trimming to just the columns you need: SELECT "Group", "X" FROM (SELECT "Group", "X", "Y" FROM (SELECT "Group", "X", "Y" FROM "<schema>"."<table>") t ORDER BY "Y" DESC LIMIT 1) f.
+      - That inner LIMIT is required — an inner ORDER BY without one is silently dropped (use a large n if the question has no cutoff). Never reference a column in the outer ORDER BY/WHERE that the outer SELECT does not project ("Unmatched physical type").
+      - Window functions compute fine and may be projected and ORDER BY'd within the same flat SELECT: SELECT <cols>, RANK() OVER (ORDER BY <measure> DESC) AS <alias>, <measure> FROM <model> WHERE ... ORDER BY <alias>. But the alias can NEVER be filtered on — not in an outer WHERE, not via double-wrapping, not by dropping it from an outer SELECT; all fail with "One or more constraints [alias] have been incorrectly constructed". Therefore never write rank-then-filter. Global top-n → the ORDER BY + LIMIT inside-a-derived-table pattern above; per-group top-1 → the self-join-on-MAX pattern below, which also keeps ties the way RANK does. When the question only wants the rank shown (not filtered on), compute it in the flat SELECT over the rows your own WHERE clause selects. Prefer that to a pre-built "... Rank" column, which is ranked over whatever population the modeler chose and will show gaps once you filter.
+      - NEVER ADD A COLUMN JUST TO SORT BY IT. A pre-built "... Rank" column is redundant with the measure it ranks — ordering by the rank and ordering by the measure produce the same row order — so if the measure is already in your SELECT, ORDER BY the measure and do not project the rank at all. Adding the rank makes your answer one column wider than expected and fails the whole submission even when every row and every value is right. Confirmed live: a submission with the correct 648 rows and correct values to 15 significant digits scored 0 solely because "Site Scan Quality Rank" rode along in the SELECT to satisfy the ORDER BY; the identical query with that one column dropped grades correct. Before every submit, count your SELECT columns against the things the question actually names and delete anything that is only there to make the sort work.
+      - Same for a pre-built classification/flag attribute: it fixes the condition, but its label text is the modeler's convention, not the wording your answer must show. When the user has specified wording, use the attribute as the test and emit their text: SELECT <cols>, CASE WHEN "<Flag>" = 'Yes' THEN '<their text>' ELSE '<their other text>' END AS <alias> FROM "<schema>"."<table>". Project it raw only when they haven't.
       - For "the latest/current/most recent snapshot per plant" (or any greatest-n-per-group), join the base rows to a derived table computing MAX(<timestamp>) GROUP BY <group key>, matching on both the group key and the max value — this works and needs no CTE: SELECT t."Group", t."X" FROM (SELECT "Group", "Plant Record Snapts", "X" FROM "<schema>"."<table>") t JOIN (SELECT "Group" AS g, MAX("Plant Record Snapts") AS max_ts FROM "<schema>"."<table>" GROUP BY "Group") m ON t."Group" = m.g AND t."Plant Record Snapts" = m.max_ts.
       - This engine does NOT support `IN (subquery)`, `EXISTS`, or `= ALL` set-membership tests — this fails with "Subqueries are not supported inside an IN predicate. Rewrite it with an explicit value list". An explicit value list is usually impractical (the matching set is unknown/large), so instead JOIN to a derived table computing the matching set, then aggregate on the OUTER (unfiltered-by-the-membership-condition) side to get the full/true aggregate over all rows for each matching group: SELECT f."Group", SUM(f."Some Measure") FROM "<schema>"."<table>" f INNER JOIN (SELECT DISTINCT "Group" AS g FROM "<schema>"."<table>" WHERE <membership condition>) s ON f."Group" = s.g GROUP BY f."Group". Note this join form does NOT auto-aggregate the way referencing a bare measure normally does — always wrap the measure in an explicit aggregate function on the outer side, or it fails with a missing-aggregation error.
+      - Not in this dialect: percentile_cont, percentile_disc, median, percent_rank, string_agg, listagg, group_concat, array_to_string — all fail with "Don't understand function"; ARRAY_AGG is accepted but returns broken results, so treat it as unavailable too. One rejection means the whole family is absent — NEVER retry a synonym spelling. Percentiles/medians cannot be computed on this engine at all: reinterpret the question or ask_user rather than spend submits. For string aggregation, fetch the member rows with run_query, concatenate them yourself, and submit a FROM-less literal-values query: SELECT 'A' AS grp, 'X, Y, Z' AS members UNION ALL SELECT 'B', 'P, Q'.
       - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
-      - Ask one clarification question at a time.
-      - Test with run_query before submit_sql when useful.
+      - Be efficient with your actions to conserve budget.
+      - Run every candidate answer through run_query before submit_sql — always, not only when it seems useful. run_query costs 1 and a submit costs 3, and this engine rejects a lot of legal-looking SQL (see the constraints above), so submitting is the most expensive possible way to find a syntax problem. If run_query errors you are out 1 coin and still hold the submit; if the submit errors you are out 3 and have learned exactly the same thing. Measured: 7 of 49 submits in the last run never executed at all — 21 coins for zero verdicts, and four tasks whose final action was an engine error they could no longer afford to fix.
       - If a submission fails and budget remains, debug and try again.
+      - ask_user takes exactly ONE question. No "or", no "and if so", no parenthetical list of alternatives to pick from — the user answers a single thing per turn and everything else comes back as vague filler. Ask the one question whose answer most changes your query, and ask the next one next turn.
+      - A rejection that says your COLUMNS are in the wrong order is telling you the values are already correct. Do not re-derive anything, do not re-explore, and do not change the filter: permute the SELECT list and resubmit. Keep 3 coins in reserve so you can afford to — this is the cheapest failure to recover from and the easiest one to be too broke to fix. Note also that the user's own enumeration of which columns they want is not evidence of what order they go in.
+      - Never guess your way through two submits in a row. If a submit is rejected and you are unsure which columns the answer should contain or what order they go in, ask_user — it costs 2 against a submit's 3, and the user will tell you. A question the user's phrasing left open (a rank number they never named, a tiebreak, which of two similar name fields) is exactly what they are there to answer; re-submitting a variation is the expensive way to ask.
       - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
     domains:
       # solar_panel, exchange_traded_funds and cybermarket_pattern have real
@@ -111,6 +216,13 @@ backends:
         schema: bird_atscale_models_catalog_main
         table: Solar Panel
       exchange_traded_funds:
+        # The schema name is NOT stable across redeploys — the suffix follows
+        # how the model was deployed (`_main` from the branch-based path, the
+        # catalog name verbatim from `sml-cli atscale-deploy`). A stale entry
+        # fails every task in the domain with no hint that config is the cause,
+        # so after ANY redeploy read the schema back from list_models and match
+        # it here. This applies to solar_panel above too — both models ship from
+        # the same repo, so one redeploy can invalidate both entries at once.
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Exchange Traded Funds
@@ -118,3 +230,12 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Cybermarket Pattern
+      archeology_scan:
+        # Built with `sml-cli atscale-deploy`, which publishes to the catalog
+        # name verbatim, so this model first landed in the UNSUFFIXED
+        # bird_atscale_models_catalog. It has since been republished from
+        # Design Center (2026-08-11), which appends the branch — list_models
+        # now reports all four BIRD models in _main and no unsuffixed copies.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Archeology Scan

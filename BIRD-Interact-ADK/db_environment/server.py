@@ -16,7 +16,10 @@ from shared.db_utils import (
     ex_base, ex_base_external_pred, parse_semantic_layer_rows,
     remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
+    diagnose_rows, canonical_cell, preprocess_results, resolve_decimal_places,
+    record_graded_submission,
 )
+from shared.environment_backends import get_domain_config, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
 from shared.models import (
     ExecuteSQLRequest, ExecuteSQLResponse, InitTaskRequest,
@@ -180,6 +183,33 @@ def _run_query_via_semantic_layer(query: str) -> str:
         return f"Error: {type(e).__name__}: {e}"
 
 
+_INCORRECT = "Your SQL is not correct."
+
+
+def _incorrect_message(pred_res, sol_sqls, db_name, conn, conditions, cell=None) -> str:
+    """The rejection an agent sees for a wrong-but-executable submission.
+
+    Plain `_INCORRECT` unless settings.submit_feedback_level asks for more —
+    see that field: anything above "none" makes scores non-comparable to
+    published BIRD-Interact numbers, so it is off by default. Gold is executed
+    only on this failure path, never on the happy path. Any problem producing
+    the diagnosis degrades to the plain message rather than failing the submit.
+    """
+    if settings.submit_feedback_level == "none":
+        return _INCORRECT
+    try:
+        gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
+        if gt_err or gt_to:
+            return _INCORRECT
+        dp = resolve_decimal_places(conditions)
+        detail = diagnose_rows(preprocess_results(pred_res, dp),
+                               preprocess_results(gt_res, dp), conditions, cell=cell)
+        return f"{_INCORRECT} {detail}" if detail else _INCORRECT
+    except Exception:
+        logger.warning("submit diagnosis failed", exc_info=True)
+        return _INCORRECT
+
+
 def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_phase1_sql) -> SubmitSQLResponse:
     """Blocking submit logic — runs in thread pool."""
     base_db = td["selected_database"]
@@ -237,20 +267,43 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                 # tasks are filtered out upstream (orchestrator/runner.py) for
                 # non-raw backends since a semantic layer can't perform writes.
                 pred_sql_text = pred_sqls[0] if pred_sqls else ""
-                result_text = _run_query_via_semantic_layer(pred_sql_text)
-                if result_text.startswith("Error"):
-                    message = f"[exec_err_flg] Error executing submitted query via semantic layer: {result_text}"
+                # Refuse to grade a submission aimed at a different semantic model.
+                # run_query carries no scope of its own, so without this a task can be
+                # scored on rows from a model that merely shares this one's label.
+                domain = get_domain_config(settings.environment_backend, base_db)
+                violation = query_domain_violation(pred_sql_text, domain) if domain else None
+                if violation:
+                    # Scores 0 like any non-executable submit rather than aborting the
+                    # run. Logged because a hit here means model isolation leaked.
+                    logger.warning("submit rejected for task %s (wrong model): %s",
+                                   req_task_id, pred_sql_text)
+                    message = f"[exec_err_flg] {violation}"
                 else:
-                    pred_res = parse_semantic_layer_rows(result_text)
-                    try:
-                        result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
-                        if result == 1:
-                            passed = True
-                            message = "SQL passed test case."
-                        else:
+                    result_text = _run_query_via_semantic_layer(pred_sql_text)
+                    if result_text.startswith("Error"):
+                        message = f"[exec_err_flg] Error executing submitted query via semantic layer: {result_text}"
+                    else:
+                        pred_res = parse_semantic_layer_rows(result_text)
+                        try:
+                            result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
+                            if result == 1:
+                                passed = True
+                                message = "SQL passed test case."
+                            else:
+                                message = _incorrect_message(
+                                    pred_res, sol_sqls, task_db, conn, conditions, cell=canonical_cell)
+                        except Exception:
                             message = "Your SQL is not correct."
-                    except Exception:
-                        message = "Your SQL is not correct."
+                        # These rows exist nowhere else — the MCP response is not
+                        # retained. Recorded so a grading change can be re-scored
+                        # offline instead of by spending a re-run. No-op unless
+                        # settings.grading_audit_path is set.
+                        record_graded_submission(
+                            task_id=req_task_id, phase=current_phase,
+                            attempt=_submit_attempts[req_task_id][current_phase],
+                            backend=settings.environment_backend, passed=passed,
+                            conditions=conditions, sol_sql=sol_sqls,
+                            pred_sql=pred_sql_text, pred_rows=pred_res)
             elif sol_sqls:
                 # Execute pred SQL (also serves as executability check)
                 pred_query_result, pred_err, pred_to, _ = execute_queries(pred_sqls, task_db, conn)
@@ -264,9 +317,21 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                         passed = True
                         message = "SQL passed test case."
                     except AssertionError:
-                        message = "Your SQL is not correct."
+                        # pred_query_result is the same rows ex_base compared, so
+                        # the raw path needs no re-execution of the submitted SQL.
+                        message = _incorrect_message(
+                            pred_query_result, sol_sqls, task_db, conn, conditions)
                     except Exception:
                         message = "Your SQL is not correct."
+                    # Recorded on the raw path too, so both arms can be brought
+                    # onto one grader after the fact — a raw baseline graded under
+                    # older rules is otherwise not comparable to a new arm.
+                    record_graded_submission(
+                        task_id=req_task_id, phase=current_phase,
+                        attempt=_submit_attempts[req_task_id][current_phase],
+                        backend=settings.environment_backend, passed=passed,
+                        conditions=conditions, sol_sql=sol_sqls,
+                        pred_sql=pred_sqls, pred_rows=pred_query_result)
                 else:
                     # Compat wrapper: custom test cases expect 3-value return (result, error, timeout)
                     def _execute_queries_compat(queries, db_name, conn=None):

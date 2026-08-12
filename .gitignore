@@ -11,3 +11,6 @@ bird_interact_agent/data/
 bird_interact_agent/outputs/
 bird_interact_conv/data/
 bird_interact_conv/results/
+
+# Local key-rotation helper
+update-api-key-anthropic.sh

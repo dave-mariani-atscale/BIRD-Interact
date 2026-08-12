@@ -12,7 +12,10 @@ python-dotenv>=1.0.0
 psycopg2-binary>=2.9.9
 
 # LLM
-litellm>=1.0.0
+# Cap below 1.92: from that release litellm ships source-only, and building it
+# needs a Rust toolchain new enough for edition2024 crates (Homebrew's cargo 1.83
+# is not). 1.91.x still publishes wheels.
+litellm>=1.0.0,<1.92
 
 # Utilities
 sqlglot>=23.0.0

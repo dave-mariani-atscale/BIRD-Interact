@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     litellm_api_base: str = ""
     litellm_api_key: str = ""
 
+    # COST, not a deviation. Anthropic prompt caching for the system agent.
+    # cache_control marks a prefix as reusable; it is not prompt content, so the
+    # agent sees the same bytes and decides the same things either way — the only
+    # difference is the bill. Every agent turn re-sends the whole conversation,
+    # so the fixed system+tools prefix and the history are paid for again on each
+    # call at full price with this off. Anthropic-family models only (the
+    # breakpoints are meaningless elsewhere and other providers reject them).
+    # Verify it actually landed via cache_read_tokens in llm_usage — see
+    # shared/llm.py and the "API spend" section of CLAUDE.md.
+    prompt_caching: bool = True
+
     # Dataset: "lite" or "full"
     dataset: str = "lite"
 
@@ -66,6 +77,119 @@ class Settings(BaseSettings):
     environment_backend: str = "raw"
     semantic_layer_mcp_url: str = ""
     semantic_layer_mcp_token: str = ""
+
+    # What a failed submit_sql tells the agent.
+    #   "none"  - "Your SQL is not correct." and nothing else. Upstream
+    #             BIRD-Interact's protocol: the 3-coin charge IS the penalty for
+    #             guessing, so this is the default and the only setting whose
+    #             scores are comparable to published BIRD-Interact numbers.
+    #   "shape" - adds row/column counts and whether the rows match but the
+    #             order doesn't. Never reveals a value, a column name or a row.
+    # Applies to BOTH backends (raw and semantic-layer) — they share
+    # _compare_rows — so a run's level is recorded in the results JSON to keep
+    # scores self-describing.
+    submit_feedback_level: str = "none"
+
+    # ── Deviations from upstream BIRD-Interact's protocol ──
+    # Each defaults to upstream behaviour, so a clean checkout reproduces
+    # published numbers. Turning any of them on makes a run non-comparable, so
+    # all four are recorded in the results JSON next to submit_feedback_level.
+    # Verified against the reference implementation checked out beside this repo
+    # (bird_interact_agent/, evaluation/) on 2026-08-04 — see the tracker's
+    # B-06, B-09 and B-10.
+
+    # GRADING. Upstream compares ordered results with a bare
+    # `predicted_res == ground_res` (test_case_utils/test_utils.py). When gold's
+    # ORDER BY key has duplicate values, the order within a tied block is
+    # arbitrary and the two sources legitimately disagree. True forgives a
+    # permutation confined to ties; False keeps upstream's strict compare.
+    grading_tie_tolerance: bool = False
+
+    # GRADING. Upstream never reads conditions["decimal"] — it always rounds to
+    # 2 (preprocess_results' default). True honours each task's declared
+    # precision, which differs from upstream on the 125 of 600 tasks that
+    # declare `decimal >= 0 and != 2`. Note -1 means "unspecified" and resolves
+    # to 2 either way, so 377 tasks are unaffected by this flag.
+    grading_honor_decimal: bool = False
+
+    # GRADING (semantic-layer path only). Gold SQL often wraps a text column in
+    # LOWER(...) the agent cannot see, while a semantic layer returns its stored
+    # display casing ("Bifacial" vs gold's "bifacial") — a numerically-correct
+    # submission can fail on casing alone. True case-folds string cells in
+    # canonical_cell; False compares them as-is. No effect on the raw path,
+    # which never passes a `cell` hook to _compare_rows.
+    grading_casefold: bool = False
+
+    # GRADING. Upstream compares numerics only after rounding to a fixed
+    # precision, with no tolerance. True adds a relative-tolerance retry on the
+    # RAW pre-rounding rows, applied only after the exact comparison has already
+    # failed — so it can turn a 0 into a 1 and never the reverse. It exists for
+    # gold SQL that casts an operand to ::real (float32), which shifts an
+    # otherwise-correct answer by ~1 part in 7.6e8; rounding cannot fix that,
+    # because two values either side of a decimal boundary round apart. See
+    # db_utils._rows_close. False keeps upstream's exact compare.
+    grading_rel_tolerance: bool = False
+    # The relative gap tolerated when the flag above is on. Read by
+    # db_utils._values_close; until 2026-08-11 that function hardcoded 1e-6 and
+    # this field was declared but never read, so the knob was inert (B-20).
+    #
+    # 1e-6 is ~700x looser than the float32 artefact it was chosen for, but it
+    # is NOT loose enough for every real artefact: archeology_scan_7 asks for a
+    # composite index summed over per-site groups, where float64 accumulation
+    # order alone puts the two engines up to 1.13e-5 apart on the worst of 3298
+    # cells (median 2.8e-8, p99 1.6e-6). That task needs >=1.5e-5. Raising this
+    # to 2e-5 rescues it and nothing else — swept over the whole 0811 audit,
+    # every value from 1e-6 to 1e-2 rescues exactly the same one submission —
+    # but it is a real loosening, so it stays a deliberate choice rather than
+    # the default.
+    grading_rel_tolerance_value: float = 1e-6
+
+    # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
+    # JSONL file recording one row per LLM call (role, model, tokens, cache
+    # tokens, dollar cost). Appended to by all three services; the orchestrator
+    # aggregates the rows for a run's own time window into that run's results
+    # JSON under "llm_usage". Empty disables it.
+    #
+    # Roles are tagged from BIRD_LLM_ROLE, set per service in
+    # scripts/start_services.sh — without it every row reads role="unknown" and
+    # spend can only be split by model, which collapses when both roles use the
+    # same one. See shared/usage.py.
+    llm_usage_path: str = "results/llm_usage.jsonl"
+
+    # AUDIT (not a deviation — grading is unaffected). Path to a JSONL file
+    # recording each graded submission's predicted rows, gold SQL and verdict,
+    # so a later grading change can be re-scored offline against Postgres
+    # instead of by re-running the benchmark. Empty disables it. The
+    # semantic-layer path is the reason it exists: its predicted rows live only
+    # in the MCP response and were previously discarded after scoring.
+    grading_audit_path: str = ""
+
+    # BUDGET (a-interact only). Upstream's update_budget deducts a cost by
+    # action TYPE and never inspects the outcome, so a duplicate submit and a
+    # bundled question both cost full price. True refuses those two at no charge
+    # instead; False charges for them as upstream does.
+    free_wasted_actions: bool = False
+
+    # CAPABILITY (semantic-layer backends only). The raw backend gets three
+    # tools over the task's external_knowledge — the benchmark's glossary of
+    # domain terms — while the semantic-layer backends get none:
+    # system_agent/tools_atscale.py maps get_all_knowledge_definitions to
+    # get_sml_skills, which returns query-construction guidance, not
+    # definitions. Measured on the 19-task 0806/0810 ETF pair, the raw arm
+    # spent 80.5 coins there (4.24 per task of an 18-coin budget) and the
+    # semantic-layer arm 0, because it had no route to the same content. True
+    # gives the semantic-layer backends the same three tools at the same
+    # prices; False keeps them raw-only. Masked entries are unaffected either
+    # way — db_environment/server.py's _filter_knowledge strips every id named
+    # in knowledge_ambiguity.deleted_knowledge before the endpoints answer, so
+    # the entries the agent is meant to ask the user about stay hidden.
+    #
+    # Whether this SHOULD be on is a scope question, not a bug: if a semantic
+    # model is meant to replace the glossary, off is right and the handicap is
+    # the point. If the comparison is meant to hold knowledge constant while
+    # varying the schema layer, off understates the model. Recorded per run in
+    # the results JSON either way. See tracker B-12.
+    semantic_layer_knowledge_tools: bool = False
 
     @property
     def data_dir(self) -> Path:
