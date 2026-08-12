@@ -478,11 +478,14 @@ Dominator on "the category contains at least 10 funds", and the model published 
 one reading of that — `Category Fund Count` / `Fund Category Fund Count`, every fund in
 the category. The second reading, funds the composite comparison can actually rank, was
 not expressible at all: only 1142 of 2310 funds carry a Composite Score, and at a
-cut-off of 10 the two readings qualify **49 categories against 34**. Task `_7` used the
+cut-off of 10 the two readings qualify **48 real categories against 34** (35 and 49 with
+the Uncategorized placeholder left in). Task `_7` used the
 only one on offer, three times, and failed all three. Shipped as a window count in
 `fund_analytics` mirroring `Alpha-Turnover Pair Count`'s "sample size, not group size"
-pattern, with both descriptions naming each other, quoting the 49-vs-34 divergence and
-telling the agent to confirm which population the question means. Note what this does
+pattern, with both descriptions naming each other, quoting the 48-vs-34 divergence and
+telling the agent to confirm which population the question means. **Deployed and verified
+live 2026-08-12**; the first pass quoted 49-vs-34, which paired two different populations
+(one counting Uncategorized in, the other out), and the descriptions were corrected. Note what this does
 NOT do: it does not pick the winning reading, it makes the ambiguity askable — which is
 what the model owes a question the KB left open. `sml-cli validate` clean, A8 clean.
 
