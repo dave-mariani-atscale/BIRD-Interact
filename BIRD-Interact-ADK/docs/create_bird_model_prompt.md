@@ -232,10 +232,19 @@ in BIRD-Interact-ADK's `docs/model-change-log.md` for whether each still applies
   execute. Any concept the questions need that the dialect cannot say is a model object,
   not a caller problem — move the computation into a measure or attribute so that SQL is
   never written. Currently inexpressible on this engine: percentile/median (see below),
-  string aggregation (`string_agg`/`listagg`/`group_concat` rejected, `ARRAY_AGG` accepted
-  but silently does not aggregate), `GREATEST`/`LEAST`, `IN (subquery)`/`EXISTS`, CTEs,
-  and `COUNT(*)`. Re-probe the list against the live engine before each build; a
-  workaround that stops being needed is dead weight, and a new gap is a silent failure.
+  quantile bucketing (`NTILE` rejected — so quartile/decile/percentile-band questions are
+  unanswerable unless the band ships as an attribute; `ROW_NUMBER` and `RANK` are both
+  accepted, so it is `NTILE` specifically), string aggregation (`string_agg`/`listagg`/
+  `group_concat` rejected, `ARRAY_AGG` accepted but silently does not aggregate),
+  `GREATEST`/`LEAST`, `IN (subquery)`/`EXISTS`, CTEs, and `COUNT(*)`. Re-probe the list
+  against the live engine before each build; a workaround that stops being needed is dead
+  weight, and a new gap is a silent failure.
+
+  > **Do not drop this bullet.** v2 of this prompt removed it along with the inventory
+  > above, and the cost showed up immediately: `archeology_scan_7` had `NTILE` rejected,
+  > then spent five of its twelve `run_query` calls hand-rolling a quartile from
+  > `ROW_NUMBER` and hardcoding the row count as the denominator. A caller cannot discover
+  > a missing language feature except by paying for it (Q-19).
 - **Schema-qualify derived-dataset SQL** with the connection's declared schema —
   `public.<table>` for all current BIRD connections. The engine executes derived SQL
   without that schema on the `search_path`; bare references deploy clean and then fail
