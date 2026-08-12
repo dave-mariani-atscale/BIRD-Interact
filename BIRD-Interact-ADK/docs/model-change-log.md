@@ -625,6 +625,30 @@ The trade is deliberate and worth stating: some question wordings are now less
 findable, which may cost score. That is the point - measured findability bought
 by copying the eval set is not findability a customer would ever have.
 
+**Deployed 2026-08-12 (`af2709f`), and it cost nothing.** Re-run on the
+de-leaked model: **0.270, identical to the leaky baseline** - same three tasks
+pass (`_1`, `_3`, `_4`), same per-task rewards, same phase-1 and phase-2 counts.
+File `archeology_deleaked_atscale_20260812_103552.json`.
+
+So the leakage was not buying score here, and the +0.170 lift stands on a model
+with zero question-phrasing leakage. The reason is visible in the overlap: of
+the four tasks that carried leaked phrasing (`_2`, `_3`, `_5`, `_8`), three fail
+for structural reasons that no phrasing could fix - `_2` is M-11 plus a masked
+term, `_5` is M-09, `_8` is B-17 fan-out. Only `_3` both carried leakage and
+passes, and it passes either way.
+
+Two cautions against over-reading this. It is n=1 on each side, and the clean
+result is partly luck of where the leakage happened to sit on this database -
+concentrated on already-broken tasks. It does NOT license leaving leakage in the
+other four models: on a database where a leaked phrase sits on a winnable task,
+the same experiment would come out differently. What it does establish is that
+removing leakage is cheap, so there is no reason to trade methodology for score.
+
+Verified live before re-running rather than trusting the deploy: DPQ's published
+description no longer contains any of the three question quotes and carries the
+reworded text. An unpushed fix deploys the old model and is indistinguishable
+from success, so this check is worth the one call.
+
 ## Tie tolerance turned off, and B-20 wired, 2026-08-11
 
 Two grading-side changes; no model change.
