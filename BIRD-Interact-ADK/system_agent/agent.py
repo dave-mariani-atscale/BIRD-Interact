@@ -50,7 +50,32 @@ Strategy:
 # of sync — the grading function (shared/db_utils.py ex_base/ex_base_external_pred)
 # compares result ROWS as exact tuples against a reference answer for BOTH
 # backends, so this applies identically regardless of which one is active.
-RESULT_SHAPE_TIP = "- Match the exact output shape the grading expects: return the column(s) the question actually asks for, in the order asked, with no extra descriptive or ID columns (e.g. don't add a plant name or snapshot ID column unless the question asks to see it). Your submission is graded by comparing result rows to a reference answer as exact tuples, so a wrong column count fails even when the requested value itself is correct — and this cuts BOTH ways: an unrequested extra column and a missing implied column are equally fatal. Before submitting, ask what a person would expect to see, not just the literal nouns in the sentence: a request to identify or list the entities that qualify on some quantity (worst offenders, biggest claims, top spenders) usually expects that quantity shown next to the identifier, and a request to rank or sort implies the value being ranked by is part of the answer. When a pre-computed Yes/No flag encodes the qualifying condition, it tells you WHICH rows qualify but does not supply the underlying number — include that number too if the question is about how much or how many."
+RESULT_SHAPE_TIP = (
+    "- Match the exact output shape the grading expects: return the column(s) the question actually asks for, in the order asked, with no extra descriptive or ID columns (e.g. don't add a plant name or snapshot ID column unless the question asks to see it). Your submission is graded by comparing result rows to a reference answer as exact tuples, so a wrong column count fails even when the requested value itself is correct — and this cuts BOTH ways: an unrequested extra column and a missing implied column are equally fatal. Before submitting, ask what a person would expect to see, not just the literal nouns in the sentence: a request to identify or list the entities that qualify on some quantity (worst offenders, biggest claims, top spenders) usually expects that quantity shown next to the identifier, and a request to rank or sort implies the value being ranked by is part of the answer. When a pre-computed Yes/No flag encodes the qualifying condition, it tells you WHICH rows qualify but does not supply the underlying number — include that number too if the question is about how much or how many.\n"
+    "- Row ORDER is part of that comparison for many questions. Whenever the question implies a ranking — 'top', 'best/worst', 'highest/lowest', 'most/least' — always add an explicit ORDER BY on the measure being ranked, even if the question does not say 'sorted by'. When no ranking is implied, order is ignored, so a sensible ORDER BY never costs you anything and its absence can fail an otherwise correct answer."
+)
+
+# Backend-agnostic for the same reason as RESULT_SHAPE_TIP: the user simulator
+# is one service shared by every backend, so how to interrogate it must not live
+# in a per-backend config. Keyed off the same trigger words as the ORDER BY tip
+# above — a ranking word implies both a sort and, usually, an unstated cutoff.
+ASK_USER_TIP = (
+    "- Ask about exactly ONE ambiguity per ask_user call. The user answers one thing per turn: a bundled question gets its first part answered and the rest comes back as filler, and you still paid 2 coins. Ask the question whose answer most changes the query, then ask the next.\n"
+    "- When the question implies a cutoff but never names it — 'highest', 'top', 'some', 'enough', 'sufficient', 'significant' — that number is something the user knows and you cannot derive. Ask for it outright ('exactly how many rows should the result contain?'). If the answer is qualitative ('a reasonable sample', 'the top ones'), ask again offering explicit options ('10, 25, 50, or 100?'). That second ask is worth 2 coins: a wrong cutoff fails the exact-tuple comparison however correct everything else is.\n"
+    "- When the answer needs a classification, status or summary COLUMN — 'show whether each one has drifted', 'add a summary', 'label each as X or Y' — the exact wording that column prints is the user's to decide and you cannot derive it. Ask for the literal text of every case ('what exact text should that column show for each one?'), and use their spelling verbatim. Those labels are compared as cell values, so correct rows under wording you invented score zero.\n"
+)
+
+# Appended to a semantic-layer backend's instruction ONLY when
+# settings.semantic_layer_knowledge_tools is on, because that is the same flag
+# that puts the three tools in the tool list (system_agent/tools_atscale.py).
+# Advertising them unconditionally would have the agent spend turns calling
+# tools it does not have. Not needed for the raw backend, whose static
+# AINTERACT_INSTRUCTION has always listed them.
+KNOWLEDGE_TOOLS_TIP = (
+    "- get_all_external_knowledge_names (0.5) lists the task's glossary of defined domain terms; get_knowledge_definition (0.5) returns one entry's formula and thresholds; get_all_knowledge_definitions (1) returns every entry at once and can be long.\n"
+    "- Call get_all_external_knowledge_names FIRST, before any column search. The user's question is written in this glossary's vocabulary, and an entry states the exact thresholds a phrase like 'bargain-bin', 'beaten down' or 'patient, cheap strategy' stands for. Reading the definition tells you which columns to look for, so it makes the model search shorter rather than adding to it — and the numbers in it are not derivable from the model or recoverable by asking the user.\n"
+    "- A term absent from that list has no official definition: that is when to ask_user. Do not ask the user to define a term the glossary already defines, and do not infer a threshold from a column description when the glossary states one — where they disagree, the glossary is what the answer is graded against."
+)
 
 # ── a-interact instruction ──
 AINTERACT_INSTRUCTION = """You are a helpful PostgreSQL agent that interacts with a user and a database to solve the user's question.
@@ -78,7 +103,6 @@ Available tools and costs:
 Important strategy tips:
 - First explore the database schema, column meanings, and relevant external knowledge to understand the task.
 - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to SQL.
-- Ask one clarification question at a time.
 - Be efficient with your actions to conserve budget.
 - Make sure the submitted SQL is valid and addresses all aspects of the question.
 - Keep track of the remaining budget and prioritize actions accordingly.
@@ -86,7 +110,7 @@ Important strategy tips:
 - Test SQL with execute_sql before submit_sql when useful.
 - If a submission fails and budget remains, debug and try again.
 - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
-""" + RESULT_SHAPE_TIP + "\n"
+""" + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP
 
 
 def build_agent(mode: str = "c-interact") -> Agent:
@@ -110,7 +134,10 @@ def build_agent(mode: str = "c-interact") -> Agent:
         else:
             from shared.environment_backends import get_backend_instruction, get_backend_tools_factory
             tools = get_backend_tools_factory(settings.environment_backend)()
-            instruction = get_backend_instruction(settings.environment_backend) + RESULT_SHAPE_TIP + "\n"
+            instruction = (get_backend_instruction(settings.environment_backend)
+                           + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP)
+            if settings.semantic_layer_knowledge_tools:
+                instruction += "\n" + KNOWLEDGE_TOOLS_TIP
         return Agent(
             model=model,
             name="bird_interact_agent",

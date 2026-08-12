@@ -20,14 +20,16 @@ keyed by the task's `db_name` (set in session state at init — see
 orchestrator/ainteract.py's `init_agent_session`).
 """
 
+import json
 import logging
+import re
 from typing import List, Optional
 
 from google.adk.tools import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 
 from shared.config import settings
-from shared.environment_backends import get_domain_config
+from shared.environment_backends import get_domain_config, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
 
 logger = logging.getLogger(__name__)
@@ -73,25 +75,80 @@ async def _call(tool_name: str, arguments: dict) -> str:
 # a sync wrapper that calls asyncio.run() (which raises "cannot be called
 # from a running event loop").
 
+def _scope_to_domain(raw: str, domain: dict) -> str:
+    """Trim list_models' output to the single model configured for this domain.
+
+    The MCP tool takes no scope (ParamsListModels has only force_refresh), so it
+    returns every model in the catalog. Its `## <Model>` headings carry only the
+    model name — when two schemas hold a same-named model (the two ETF builds),
+    they are indistinguishable, and the agent explores the configured schema but
+    writes the other one into run_query, so every query fails "Column not found".
+    Sections do carry `catalog.schema.table:`, so scope on that.
+
+    Scope on schema ONLY — keep every section for the configured model. The
+    server renders each model twice and the two passes disagree, each leaking a
+    different field from the other build: pass 2 labelled bird_etf_prompt_only
+    lists dimensions that model does not have, while pass 1 labelled
+    bird_atscale_models_catalog carries a correct header but prompt_only's
+    column_groups. Neither pass is authoritative, so dropping either one hides
+    real structure — keeping only the first cost the catalog model its true
+    (dataset-named) column_groups and the agent queried them as tables,
+    "relation \"funds\" does not exist", 0.0 across all 5 tasks. See Q-17.
+    """
+    fq = f"{domain['catalog']}.{domain['schema']}.{domain['table']}"
+    head, _, rest = raw.partition("\n")
+    try:
+        entries = [
+            e for e in json.loads(head)
+            if (e.get("table_catalog"), e.get("table_schema"), e.get("table_name"))
+            == (domain["catalog"], domain["schema"], domain["table"])
+        ]
+        head = json.dumps(entries[:1])
+    except (ValueError, TypeError):
+        logger.warning("list_models: could not parse header JSON; passing through unscoped")
+    kept, tail, seen = [], [], set()
+    for sec in re.split(r"(?m)^## ", rest):
+        if not sec.strip() or sec in seen:
+            continue
+        seen.add(sec)
+        if f"catalog.schema.table: {fq}" in sec:
+            kept.append("## " + sec.rstrip())
+        elif sec.startswith("Next Steps"):
+            tail = ["## " + sec.rstrip()]
+    if not kept:
+        logger.warning("list_models: no section matched %s; passing through unscoped", fq)
+        return raw
+    return "\n".join([head, *kept, *tail])
+
+
 async def list_models(tool_context: ToolContext) -> str:
-    """List the semantic models (dimensions, hierarchies, metrics) available.
-    Use this first to see what models exist before exploring columns.
+    """List the semantic model available for this task (dimensions, hierarchies,
+    metrics). Use this first to see the model's shape before exploring columns.
     Cost: 1 bird-coin.
 
     Returns:
-        The available models as text.
+        The model as text. Query it under exactly the schema/table shown here.
     """
-    return await _call("list_models", {})
+    domain, err = _domain_or_error(tool_context)
+    if err:
+        return err
+    return _scope_to_domain(await _call("list_models", {}), domain)
 
 
 async def explore_columns(search_terms: List[str], tool_context: ToolContext) -> str:
-    """Fuzzy-search the semantic model's columns (dimensions/metrics) by keyword.
+    """Search the semantic model's columns (dimensions/metrics) by keyword.
     Call repeatedly with different search terms as needed — this does not
     return everything at once. Returns descriptions grouped by column_group.
     Cost: 1 bird-coin.
 
+    Not fuzzy: a term must appear verbatim and in order in a column's name or
+    description. "fund years" matches "Fund Years With Return Data"; "years
+    fund" and "return years" match nothing. Pass several one- or two-word terms
+    rather than one long phrase, and on an empty result drop a word, never add
+    one.
+
     Args:
-        search_terms: Keywords to search for, e.g. ["sales price", "state", "year"].
+        search_terms: Short keywords, e.g. ["sales price", "state", "year"].
 
     Returns:
         Matching columns with descriptions, grouped by column_group.
@@ -99,6 +156,13 @@ async def explore_columns(search_terms: List[str], tool_context: ToolContext) ->
     domain, err = _domain_or_error(tool_context)
     if err:
         return err
+    # Models often emit a bare string here despite the List[str] signature. The
+    # MCP server tokenises a bare string on whitespace and ORs the terms, so a
+    # multi-word string matches far too much: "premium fund" returns 86,794
+    # chars of unranked catalog where ["premium fund"], searched as one phrase,
+    # returns 1,335 with the right column first. Coerce to a single phrase.
+    if isinstance(search_terms, str):
+        search_terms = [search_terms]
     return await _call("explore_columns", {**domain, "search_terms": search_terms})
 
 
@@ -144,6 +208,13 @@ async def run_query(query: str, tool_context: ToolContext) -> str:
     Returns:
         The query results, or an error message.
     """
+    domain, err = _domain_or_error(tool_context)
+    if err:
+        return err
+    violation = query_domain_violation(query, domain)
+    if violation:
+        logger.warning("run_query blocked (wrong model): %s", query)
+        return violation
     return await _call("run_query", {"query": query})
 
 
@@ -154,7 +225,7 @@ def get_ainteract_tools_atscale():
     'atscale' environment backend."""
     from system_agent.tools import ask_user, submit_sql  # backend-agnostic
 
-    return [
+    tools = [
         FunctionTool(list_models),
         FunctionTool(explore_columns),
         FunctionTool(focus_columns),
@@ -163,3 +234,27 @@ def get_ainteract_tools_atscale():
         FunctionTool(ask_user),
         FunctionTool(submit_sql),
     ]
+
+    # The task's external-knowledge glossary, off by default — see
+    # settings.semantic_layer_knowledge_tools for why this is a scope choice
+    # rather than a fix, and tracker B-12. These three are backend-agnostic
+    # already: they POST only a task_id to the db environment's
+    # /knowledge_names and /knowledge, which resolve the database from task
+    # data and never inspect the active backend. Their costs need no wiring —
+    # callbacks._tool_cost consults its own TOOL_COSTS table first, and all
+    # three are in it (0.5 / 0.5 / 1.0). The matching instruction text is
+    # appended by system_agent.agent.build_agent under the same flag, so the
+    # agent is never told about a tool it has not been given.
+    if settings.semantic_layer_knowledge_tools:
+        from system_agent.tools import (
+            get_all_external_knowledge_names,
+            get_knowledge_definition,
+            get_all_knowledge_definitions,
+        )
+        tools += [
+            FunctionTool(get_all_external_knowledge_names),
+            FunctionTool(get_knowledge_definition),
+            FunctionTool(get_all_knowledge_definitions),
+        ]
+
+    return tools

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from google.adk.agents.callback_context import CallbackContext
@@ -45,6 +46,17 @@ def _tool_cost(tool_name: str):
         return None
     from shared.environment_backends import get_backend_tool_costs
     return get_backend_tool_costs(settings.environment_backend).get(tool_name)
+
+
+def _normalize_sql(sql: str) -> str:
+    """Collapse a submitted query to a form that ignores differences the engine
+    ignores too — whitespace, case, a trailing semicolon, and the optional
+    leading catalog qualifier — so a resubmission that only re-spells the table
+    name is recognised as the same query. Used solely to refuse duplicate
+    submissions (see before_tool_callback); never to rewrite what is executed.
+    """
+    s = re.sub(r'"atscale_catalogs"\s*\.\s*', "", sql)
+    return re.sub(r"\s+", " ", s).strip().rstrip(";").lower()
 
 
 def _preview(value: Any, limit: int = 2000) -> Any:
@@ -103,6 +115,41 @@ async def before_tool_callback(
 
     budget = tool_context.state.get("budget_remaining", 0)
 
+    # Refuse a submission identical to one that already failed. The verdict is
+    # deterministic, so re-running it can only burn 3 coins for no information —
+    # observed 7 times across the 2026-07-31..08-03 etf runs (21 coins), always
+    # as the agent re-spelling the table name after an uninformative rejection.
+    if tool_name == "submit_sql" and settings.free_wasted_actions:
+        normalized = _normalize_sql(args.get("sql", ""))
+        if normalized and normalized in tool_context.state.get("_failed_submits", []):
+            tool_context.state["_budget_before"] = budget
+            tool_context.state["_free_call"] = True
+            return {
+                "error": "Identical to a submission that already failed (ignoring "
+                "whitespace, case and the optional catalog prefix), so it would "
+                "fail the same way. Not charged. Change something that affects the "
+                "result — the projected columns, their order, the row ordering, or "
+                "the filter — before submitting again."
+            }
+
+    # Refuse a bundled clarification. The user simulator's action parser resolves
+    # exactly one labeled ambiguity per turn (user_simulator/server.py's
+    # _parse_action), so a multi-part question gets its first part answered and
+    # the rest comes back as filler — etf_5 asked "how many funds?" and "what
+    # info?" together and got gold's exact column list plus "a reasonable sample
+    # size" in place of the LIMIT 100 it needed. Not charged; the agent re-asks
+    # one thing. A single question carrying a parenthetical example keeps one "?"
+    # and passes; a false positive only costs a free re-ask.
+    if (tool_name == "ask_user" and settings.free_wasted_actions
+            and args.get("question", "").count("?") > 1):
+        tool_context.state["_budget_before"] = budget
+        tool_context.state["_free_call"] = True
+        return {
+            "error": "That asks more than one question. The user answers one at a "
+            "time, so the extra parts come back vague. Not charged. Re-ask only "
+            "the single question whose answer most changes your query."
+        }
+
     if budget < cost:
         tool_context.state["_budget_before"] = budget
         if tool_name == "submit_sql":
@@ -128,6 +175,14 @@ async def after_tool_callback(
     """Record tool event in trajectory and append budget note to response."""
     tool_name = tool.name if hasattr(tool, "name") else str(tool)
     cost = _tool_cost(tool_name) or 0
+    if tool_context.state.get("_free_call", False):
+        cost = 0  # short-circuited by before_tool_callback, budget untouched
+        tool_context.state["_free_call"] = False
+    elif tool_name == "submit_sql" and "failed" in str(tool_response).lower():
+        failed = tool_context.state.get("_failed_submits", [])
+        normalized = _normalize_sql(args.get("sql", ""))
+        if normalized and normalized not in failed:
+            tool_context.state["_failed_submits"] = failed + [normalized]
     budget_before = tool_context.state.get("_budget_before")
     budget_after = tool_context.state.get("budget_remaining")
     initial = tool_context.state.get("initial_budget", 0)
@@ -155,5 +210,23 @@ async def after_tool_callback(
     # Append budget note to agent-visible response (matches reference implementation)
     if budget_after is not None and budget_after >= 0:
         budget_note = f"\n\n[SYSTEM NOTE: Remaining budget: {budget_after:.1f}/{initial:.1f}]"
-        return str(tool_response) + budget_note
+        return str(tool_response) + _error_hints(tool_response) + budget_note
     return None
+
+
+def _error_hints(tool_response) -> str:
+    """Hints the ACTIVE backend declares for errors whose own message misleads —
+    config/environment_backends.yaml's `error_hints`, matched case-insensitively
+    against the response text. Costs nothing: the response is already paid for.
+    Kept config-driven so this file never learns a specific engine's error
+    strings; "raw" has no backend config and so never gets any."""
+    if settings.environment_backend == "raw":
+        return ""
+    try:
+        from shared.environment_backends import get_backend_error_hints
+        hints = get_backend_error_hints(settings.environment_backend)
+    except Exception:
+        return ""
+    text = str(tool_response).lower()
+    matched = [h["hint"] for h in hints if h.get("match", "").lower() in text and h.get("hint")]
+    return "".join(f"\n\n[SYSTEM NOTE: {h.strip()}]" for h in matched)
