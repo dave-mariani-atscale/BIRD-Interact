@@ -398,10 +398,19 @@ def _try_parse_number(value) -> Optional[float]:
     return None
 
 
-def _values_close(a, b, rel_tol: float = 1e-6, abs_tol: float = 1e-9) -> bool:
+def _values_close(a, b, rel_tol: Optional[float] = None, abs_tol: float = 1e-9) -> bool:
     """Numeric values within a tight relative tolerance count as equal;
     everything else falls back to case-folded string equality (same rule
-    canonical_cell applies to non-numerics)."""
+    canonical_cell applies to non-numerics).
+
+    rel_tol defaults to settings.grading_rel_tolerance_value rather than to a
+    literal, so the declared knob actually reaches the comparison. It used to
+    default to 1e-6 here while the setting was read nowhere, which made the
+    config field inert and silently un-tunable (tracker B-20). Callers may
+    still pass a tolerance explicitly to pin one independent of the setting.
+    """
+    if rel_tol is None:
+        rel_tol = settings.grading_rel_tolerance_value
     a_num, b_num = _try_parse_number(a), _try_parse_number(b)
     if a_num is not None and b_num is not None:
         return math.isclose(a_num, b_num, rel_tol=rel_tol, abs_tol=abs_tol)
@@ -653,9 +662,8 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     score = _compare_rows(pred_res, gt_res, conditions)
     # Same tolerant fallback as the semantic-layer path (ex_base_external_pred),
     # deliberately the same function: grading must not differ by arm, or the
-    # lift number measures the grader instead of the semantic layer. The merge
-    # replaced this path's private helper with the branch's shared one, whose
-    # tolerance is fixed rather than read from grading_rel_tolerance_value.
+    # lift number measures the grader instead of the semantic layer. The gap it
+    # tolerates comes from grading_rel_tolerance_value on both arms (B-20).
     if score == 0 and settings.grading_rel_tolerance:
         score = 1 if _compare_rows_numeric_tolerant(pred_raw, gt_raw, conditions) else 0
     return score

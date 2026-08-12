@@ -524,3 +524,66 @@ So the archeology lift no longer depends on a deviation flag, and B-15 is
 superseded: the cause is removed rather than the symptom forgiven. The flag now
 only affects the RAW arm, which makes keeping it on a choice that slightly
 favours raw rather than one that rescues the semantic layer.
+
+## Tie tolerance turned off, and B-20 wired, 2026-08-11
+
+Two grading-side changes; no model change.
+
+**`GRADING_TIE_TOLERANCE` is now `false` (upstream).** The open question left by
+B-19 was whether the flag still earned its keep. It does not. Re-grading the
+whole 0811 audit both ways - 168 submissions, both domains, both arms - changes
+**zero** verdicts. Since B-19 it rescues nothing on the semantic-layer arm, so
+keeping it on would only be a deviation that slightly favours raw.
+
+The flag is global, so the two databases we happen to run are not enough to
+clear it. Every order-sensitive gold in the dataset was executed - 505 of them
+across all 22 databases - with gold put through the same
+`remove_round`/`remove_distinct`/`remove_comments` B-19 now applies, so the ties
+counted are real data ties and not rounding artefacts:
+
+| | count |
+|---|---|
+| order-sensitive golds, all 22 dbs | 505 |
+| whose gold has a genuinely tied sort key (flag can matter) | 168 |
+| no ties, so the flag is provably a no-op | 306 |
+| gold would not execute standalone (Management phase-2 DDL) | 31 |
+
+None of the 168 sit in `archeology_scan` or `exchange_traded_funds` submissions
+today, so turning the flag off costs nothing measurable now. It is not
+risk-free forever: `hulushows` (24 exposed golds),
+`labor_certification_applications` (13), `mental_health` (12), `cross_border`
+(11) and `polar_equipment` (10) would each put correct-but-differently-tied
+answers at risk, and that risk falls harder on the semantic-layer arm, which
+runs on a different engine than gold. Revisit the flag before adding any of
+those databases to the run set.
+
+Turning it off also retires an over-reach found while checking the above
+(tracker B-22). `_sort_key_indices` falls back to the last column when no
+column of gold's result is monotonic and non-constant. On 11 of the 168 that
+fallback column is constant, so the whole result becomes ONE tie group and the
+ordered comparison silently degrades into an unordered set comparison -
+`hulushows_16` and `_19` are 1000-row results compared with no order constraint
+at all. That is much more permissive than the flag's documented behaviour, and
+it should be fixed before the flag is ever turned back on.
+
+**B-20: `grading_rel_tolerance_value` now actually reaches the comparison.** It
+was declared in config, documented as configurable, and read nowhere;
+`_values_close` hardcoded `rel_tol=1e-6` as a default argument. It now defaults
+that argument to the setting, leaving explicit callers able to pin a value.
+
+Verified end-to-end against the deployed model rather than in isolation: task 7
+graded through `ex_base_external_pred` with the knob driven only through
+settings scores 0 at 1e-5 and 1 at 1.5e-5 and looser, identically with tie
+tolerance on or off.
+
+The value task 7 needs is **tighter than the 1e-4 first reported**. Comparing
+the live model against gold cell by cell, the worst of 3298 numeric cells is
+1.13e-5 apart, with a median of 2.8e-8 and a p99 of 1.6e-6 - float64
+accumulation-order noise on a summed composite index, not a modelling
+difference. 2e-5 covers it with about 1.8x headroom. Swept across the whole
+0811 audit, every tolerance from 1e-6 to 1e-2 rescues exactly the same single
+submission, so loosening to 2e-5 buys task 7 and nothing else.
+
+`GRADING_REL_TOLERANCE` itself stays **off**, and the config default stays
+1e-6. Wiring the knob is a defect fix; turning it on and loosening it is a
+scoring decision, and is left as one.

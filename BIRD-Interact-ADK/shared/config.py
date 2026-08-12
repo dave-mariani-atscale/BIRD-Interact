@@ -118,9 +118,19 @@ class Settings(BaseSettings):
     # because two values either side of a decimal boundary round apart. See
     # db_utils._rows_close. False keeps upstream's exact compare.
     grading_rel_tolerance: bool = False
-    # The relative gap tolerated when the flag above is on. 1e-6 is ~700x
-    # looser than the float32 artefact it targets and ~4 orders tighter than any
-    # real disagreement seen in these runs, so it does not rescue wrong answers.
+    # The relative gap tolerated when the flag above is on. Read by
+    # db_utils._values_close; until 2026-08-11 that function hardcoded 1e-6 and
+    # this field was declared but never read, so the knob was inert (B-20).
+    #
+    # 1e-6 is ~700x looser than the float32 artefact it was chosen for, but it
+    # is NOT loose enough for every real artefact: archeology_scan_7 asks for a
+    # composite index summed over per-site groups, where float64 accumulation
+    # order alone puts the two engines up to 1.13e-5 apart on the worst of 3298
+    # cells (median 2.8e-8, p99 1.6e-6). That task needs >=1.5e-5. Raising this
+    # to 2e-5 rescues it and nothing else — swept over the whole 0811 audit,
+    # every value from 1e-6 to 1e-2 rescues exactly the same one submission —
+    # but it is a real loosening, so it stays a deliberate choice rather than
+    # the default.
     grading_rel_tolerance_value: float = 1e-6
 
     # AUDIT (not a deviation — grading is unaffected). Path to a JSONL file
