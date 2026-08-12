@@ -63,3 +63,6 @@ reference_code_paper/
 # OS
 .DS_Store
 Thumbs.db
+
+# offline re-grade row caches (large, regenerable)
+.regrade_cache_*.pkl
