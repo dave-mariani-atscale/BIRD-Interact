@@ -51,6 +51,22 @@ Two working rules that keep the build honest:
   before filtering. Observed failure otherwise: the agent anchors its clarifying question
   on the one component it found, gets a partial yes, and never learns the rest.
 
+  **The operational test is the KB entry's `type`, not your reading of the word
+  "threshold."** Verified 2026-08-12 across `solar_panel`, `households` and
+  `archeology_scan`: masked `calculation_knowledge` entries — KB-NAMED FORMULAS — ship
+  under their own names in every model, 7 of 7 (Effective Power Output, Annual Degradation
+  Rate, Temperature-Corrected Performance, System Unavailability, Infrastructure Quality
+  Score, Household Density, Bathroom Ratio), because there the ambiguity is "which index
+  did you mean", which competing named metrics answer honestly. Masked `domain_knowledge`
+  entries that state a numeric cutoff do NOT ship, 0 of 17. The single apparent exception,
+  `Accelerated Aging Asset`, is `domain_knowledge` whose definition states no number at all
+  ("a high Annual Degradation Rate and signs of Major Module Degradation"), so there is
+  nothing precise to hand over. Apply the same split rather than re-deciding per model, and
+  enforce it mechanically: derive the masked set from `is_mask` in the brief, close it over
+  the KB's own `children_knowledge` edges (a concept that depends on a masked one leaks the
+  same cutoff), and fail the build if any member is implemented. `archeology_scan`'s
+  generator gate A10 does this and reproduces its hand-written omission list exactly.
+
 ## Sources — and only these
 
 Verify everything against the live database; the metadata files drift, so live wins.

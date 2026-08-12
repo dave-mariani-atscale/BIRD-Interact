@@ -695,6 +695,34 @@ Artifact plus four concepts implemented but unannotated. The lesson runs both
 ways - the mechanical gate caught a concept the hand audit missed AND caught the
 hand audit shipping something it should not have.
 
+**The rule was re-examined and upheld, 2026-08-12.** The challenge was
+reasonable: a real business semantic layer WOULD encode "High Fidelity Mesh", and
+the benchmark is meant to test the layer more than the agent, so masking looks
+like an artifact of the a-interact protocol rather than a fact about semantic
+layers. Two things settled it. First, the rule is not ours and not incidental -
+v2 of the build prompt states it directly and its own change list records that it
+was STRENGTHENED off cybermarket evidence ("on `cybermarket_pattern` every one of
+the four tasks that failed on every run of both backends turned on a masked term,
+and no honest model change would have moved any of them"). Second, practice
+matches the doc, which a spot check of every masked term against every object
+name in `solar_panel` and `households` confirmed:
+
+| KB `type` | Masked terms | Shipped |
+|---|---|---|
+| `calculation_knowledge` (named formulas) | Effective Power Output, Annual Degradation Rate, Temperature-Corrected Performance, System Unavailability, Infrastructure Quality Score, Household Density, Bathroom Ratio | 7 of 7 |
+| `domain_knowledge` (numeric cutoffs) | Underperforming Asset, Critical Alert, Severe Soiling Condition, Affluent / Crowded / Compact / Urban Household, Modern Dwelling, and 9 more | 0 of 17 |
+
+The one apparent exception, `Accelerated Aging Asset`, is `domain_knowledge` whose
+definition states no number ("a high Annual Degradation Rate and signs of Major
+Module Degradation"), so nothing precise is handed over. That split - named
+formula ships, numeric cutoff does not - is what `MASKED_BUT_SHIPPABLE` encodes,
+and it is why ESI, FEE and DPQ ship here while KB 10 and KB 13 do not. The build
+prompt now carries the `type`-based test so it is applied rather than re-decided
+per model. The remaining measurement caveat stands and is worth repeating when
+quoting any lift: on a masked task the raw arm must spend a turn asking, so a
+model that skipped that would be banking a protocol artifact, not semantic-layer
+value.
+
 The exemption bar is that the DATA cannot express the concept, not that the
 concept selects nothing. KB 41 is exempt because the texture column never carries
 'Detailed' or 'Critical' and TDI peaks at 0.178 against a threshold of 8.0 - both
