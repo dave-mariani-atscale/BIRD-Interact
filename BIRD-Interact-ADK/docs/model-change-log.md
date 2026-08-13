@@ -819,3 +819,42 @@ right; the point is that the agent should ASK, which costs 2 coins and is what t
 ambiguity machinery is for. If it asks and the user says Full Name, the model has done
 its job. Measuring the effect needs repeats — a single run cannot separate this from
 the +/-0.70-point noise floor recorded in A-03.
+
+## M-24, 2026-08-13 — 'Uncategorized' is our own invention and never said so
+
+`Uncategorized` does not exist in the source. `funds.productclass` is simply NULL for
+623 of 2310 funds; the model manufactures the member with a `COALESCE` in
+`categories.yml` and `fund_analytics.yml` so category rollups keep every fund. The
+description stated that fact plainly but in descriptive language, so nothing told the
+agent it was looking at a synthetic member rather than a real peer group — and every
+peer comparison in the model runs through `Category`.
+
+The description now says the member is the model's own placeholder, that any
+per-category aggregate over it (Category Average Duration above all) averages an
+arbitrary mixture rather than peers, and that whether those 623 funds belong in an
+answer is a question for the user. It deliberately does NOT say to exclude them: the
+model has no basis for that call, and making it would be fitting to an answer key.
+
+**Evidence.** Five repeats of `etf_3` after M-23, trajectories read individually. The
+Uncategorized filter is the largest single discriminator: present -> 1.00, absent ->
+0.00, in 4 of 5 runs. The fifth had the filter right and lost on column set instead,
+so this is one of at least three independent coin flips in that task, not the only one.
+
+**The second half of the bullet is the more transferable finding.** Asking about
+Uncategorized is not enough — HOW it is asked decides the answer. A run that asked
+about it cleanly and on its own ("should these be excluded since they don't have a
+genuine peer group?") was told to exclude them and scored 1.00. A run that bundled it
+with a second question ("categories like Uncategorized OR equity-allocation categories,
+not pure bond categories such as Corporate Bond...") was told to "restrict to
+bond-focused categories only ... Corporate Bond, High Yield Bond, Government Bond and
+similar" — a category whitelist nothing in the task asks for — and scored 0.00. The
+bundled question did not merely fail to inform, it manufactured a wrong specification.
+Hence the instruction to ask it alone. Third confirmation of A-07 (etf_3, etf_8, now
+this), and an instance of B-02's known two-part-question hole.
+
+**Measurement note.** M-23 shipped an hour earlier and its own check illustrates why
+this log should not quote a score: `etf_3` went 0.00, 1.00, 1.00, 0.00, 0.00 = 0.40
+mean against 0.63 before, while the mechanism it targeted worked perfectly (0 of 5
+runs chose the wrong name column, against a run that had). Score fell, fix worked.
+Judge M-24 the same way — on whether the Uncategorized question gets asked on its own,
+not on the next total.
