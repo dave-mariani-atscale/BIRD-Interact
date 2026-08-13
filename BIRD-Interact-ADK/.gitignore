@@ -36,16 +36,25 @@ shared/_legacy_*.py
 
 # Local-only run scripts (personal task subsets, local endpoints)
 scripts/[0-9]*run.sh
+scripts/run_*.sh
 
 # Holds a live Apps Script deployment URL + write token
 scripts/sheet.py
 
 # Working notes from the ETF/AtScale evaluation — investigation records and a
 # per-model change log, not documentation of this harness. Kept locally.
+# NOTE: docs/model-change-log.md is listed here but is actually TRACKED — it was
+# committed before this rule existed and CLAUDE.md requires it in the same commit
+# as any model change. The entry below is inert; don't read it as "untracked".
 docs/model-change-log.md
 docs/bird-interact-etf-atscale-log.md
 docs/q16-explore-columns-investigation.md
 docs/result-shape-tip-proposal.md
+docs/engine-tickets.md
+docs/outbound-followups.md
+docs/etf-investigation-plan.md
+docs/bird-database-testing-prompt.md
+docs/sheet-retry-patch.md
 
 # Personal / development files
 Bird_ADK_plan.md
