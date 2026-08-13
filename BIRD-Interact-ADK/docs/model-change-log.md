@@ -686,6 +686,38 @@ Concentration) are the no-number `domain_knowledge` exception; the masked
 that has been through several careful passes, and one of them was introduced by the previous
 pass. A mechanical `is_mask` check is the only thing that keeps this closed.
 
+### Fourth pass, 2026-08-13: the read is complete
+
+Read the last four unmined failing tasks (`_9`, `_10`, `_11`, `_12`). **No model change came
+out of it** — three were already accounted for by changes made earlier in this sweep, and the
+fourth is an engine limit.
+
+- **`_9`** is the same KB 47 Contrarian Value Play screen as `_18`, so **M-21** (the two price
+  bases) already covers it. Its second submit also dropped to `turnover < 30`, the percent-scale
+  reading the model explicitly warns against — the model's text was right and the agent
+  second-guessed it after a rejection.
+- **`_11` and `_12`** are the Q-20/B-04 family and unchanged: `_11` hard-coded `63 AS
+  total_count` as a literal rather than computing it, `_12` answered only the ranking half and
+  dropped "what portion have a positive score". Both already covered by the Q-20 guidance.
+- **`_10`** needs KB 85 Median 1-Year Return. This produced the one new finding, **Q-22**.
+
+**Q-22: OFFSET is silently ignored.** With no percentile functions, the obvious route to a
+median is "sort and skip to the middle" — `ORDER BY x LIMIT 1 OFFSET n`. It does not work, and
+it does not fail either: OFFSET 0, 1, 5, 100 and 335 all return the identical first row.
+Ordering and LIMIT are applied correctly and the group sizes are exactly right (Opaque 671,
+Transparent 1246, both matching Postgres), so the answer looks entirely plausible. True medians
+from source — Opaque 0.0569, Transparent 0.4099 — are simply unreachable through the layer.
+
+Swept every recorded run: **no agent has ever written OFFSET**, so this has cost nothing to
+date. It is written down because the median route looked like the obvious fix for `_10` right
+up until it was tested, and without a record a later pass would rediscover it and trust it.
+Guidance now says never to use OFFSET; no error hint is possible because there is no error.
+
+**`_10` stays unwinnable for the semantic-layer arm**, alongside `_11`/`_12` (B-04) and `_14`
+(B-24). Precomputing a median per the grouping the questions happen to use would be teaching to
+the test — KB 85 defines the median "for a specified group", with no fixed grain, so there is no
+honest grain to precompute at.
+
 ### Still leaking
 
 Measured with the same gate: `cybermarket_pattern` 23 phrases over 6 tasks,
