@@ -583,6 +583,49 @@ contradicts phase 1 passing. Not resolvable without the answer key; filed rather
 guessed at, because every available fix here would be fitting the model to an unseen
 number.
 
+### Third pass, 2026-08-12: two composite concepts the model was not carrying
+
+**M-20: the Premier Income Fund screen was invisible (`etf_1`).** "Premium funds" is
+KB 42, a **two-condition** screen — High-Quality Credit Portfolio AND KB 14
+Efficient Income Generator (a minimum on YTER). The model published both input columns
+and the SIES score but never named the composite, so the agent applied the credit half
+alone and submitted **136 funds' worth of rows where the screen yields 27**. The user
+simulator did say "both criteria"; nothing in the model corroborated it, and the agent
+had already had its one-condition reading enthusiastically confirmed.
+
+Fixed by naming the two-condition structure in the three descriptions an agent actually
+lands on (High-Quality Credit Portfolio, YTER, SIES) and stating the YTER minimum is
+deliberately absent — ask the user. **Firewall reasoning, since this is a masked-adjacent
+concept:** KB 42 is `domain_knowledge` stating *no number* and is not masked in any ETF
+task, so it ships under the same exception as `Accelerated Aging Asset`. KB 14 **is**
+masked and its cutoff is shipped nowhere — verified by grep. This gives the atscale arm
+only what the raw arm can already buy from `get_knowledge_definition` for 0.5 coins (KB 42
+is not in `deleted_knowledge`, KB 14 is and is filtered server-side for both arms), so it
+is parity, not a leak. Also relabels SIES as *a score, not a screen*.
+
+A sweep for the general case found no others: **every unmasked KB concept used by any ETF
+task is published**; the only unpublished one is KB 47, which is masked and correctly absent.
+
+**M-21: KB 4 has two price bases in this data, and the model silently picked one
+(`etf_18`).** The source never stores the recent price — only offsets from each end of the
+52-week range — and the two ends **disagree for 60 of 2310 funds**
+(`low_52w + Low_Delta <> high_52w + High_Delta`). The model reconstructed from the low end.
+That is not neutral: 566 funds fall below 25 on the low basis against **582** on the high
+basis, and on the KB 47 Contrarian Value Play screen it is **52 against 53**.
+
+Found by comparing arms rather than reading gold: `etf_18` **passed phase 1 in raw and
+failed in atscale**, and the raw agent's own SQL used the high-end basis. The denominator
+was ruled out — stored `Range_Move` equals `high - low` on every row. Shipped
+`price_position_52w_high_basis` as a published twin, both descriptions quoting the
+divergence and telling the agent to confirm which basis a screen means. **The primary was
+deliberately NOT switched** — publishing both is the honest fix; switching to the one that
+happens to match would be fitting the model to an answer it cannot see. Verified live:
+the twin returns 582 and 53.
+
+Also confirmed NOT defects while here: the turnover scale (model says `< 0.3` on the stored
+ratio scale, Yes=556 — correct, and the agent used it correctly) and the price-position
+0-100 scale.
+
 ### Still leaking
 
 Measured with the same gate: `cybermarket_pattern` 23 phrases over 6 tasks,
