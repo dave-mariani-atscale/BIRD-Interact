@@ -626,6 +626,47 @@ Also confirmed NOT defects while here: the turnover scale (model says `< 0.3` on
 ratio scale, Yes=556 — correct, and the agent used it correctly) and the price-position
 0-100 scale.
 
+### M-22: the ETF model ships masked thresholds (2026-08-12) — PARTLY FIXED
+
+ETF is prompt-only, so it has **no A10 gate** — archeology's firewall gate reads `is_mask`
+from the brief and fails the build on any masked-or-dependent concept, and nothing
+equivalent runs here. Auditing ETF by hand against the same rule found **three masked
+numeric thresholds published in the deployed model**:
+
+| KB | Concept | Masked on | Threshold shipped | Status |
+|---|---|---|---|---|
+| 81 | Category Dominator | `etf_7` | "at least 10 funds" | **FIXED** 2026-08-12 |
+| 15 | Consistent Outperformer | `etf_3` | consistency `> 80` | open |
+| 79 | Style Drift | `etf_8` | `\|beta\| > 0.15` OR `\|R²\| > 10` | open |
+
+This matters for the measurement, not just for tidiness: a masked threshold in the model
+hands the atscale arm a number the raw arm has to spend a turn asking for, so any lift on
+`etf_3`, `_7` and `_8` is partly a protocol artifact — the exact effect the "Masked terms"
+section warns about.
+
+**KB 81 was my own leak, one day old.** M-18 quoted "at a cut-off of 10 … 48 against 34" in
+three descriptions to demonstrate that the two category-count populations diverge, and 10 is
+precisely the number `etf_7` withholds. Fixed by keeping M-18's point — two defensible
+populations, ask which — and dropping the number: the descriptions now say only that the
+populations differ materially (1142 of 2310 funds scored) and that the model states neither
+the population nor the minimum. Verified absent from the live model, not just the repo.
+
+**KB 15 and KB 79 are left open deliberately.** Both are baked into flag COLUMNS
+(`consistent_outperformer_flag`, `style_drift_flag_3y_vs_10y/_5y`), and
+`consistent_outperformer_flag` feeds four downstream composites. Removing them is real
+surgery that will lower recorded ETF scores on the affected tasks. That is the correct
+direction — the current numbers are inflated — but it changes measured results, so it is
+raised for a decision rather than done silently at the end of a pass.
+
+Checked and cleared while auditing: KB 47 (Contrarian Value Play) and KB 14 (Efficient
+Income Generator) ship no threshold anywhere; KB 17 (Golden Cross) and KB 87 (Family Sector
+Concentration) are the no-number `domain_knowledge` exception; the masked
+`calculation_knowledge` entries (39, 50, 72, 73, 74, 83) are named formulas and ship by rule.
+
+**Recommendation: build the A10 gate for ETF.** The hand audit found three leaks in a model
+that has been through several careful passes, and one of them was introduced by the previous
+pass. A mechanical `is_mask` check is the only thing that keeps this closed.
+
 ### Still leaking
 
 Measured with the same gate: `cybermarket_pattern` 23 phrases over 6 tasks,
