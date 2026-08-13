@@ -780,8 +780,8 @@ merge all three and therefore select a larger population. households_4: gold's
 'apartment' is 222 properties and the canonical Apartment class is 255, so 86
 against 105.
 
-**The transferable lesson, and it is worth carrying to the other 19 databases:
-descriptions suppress reliably and promote unreliably.** The first fix shipped
+**SUPERSEDED - see the correction dated 2026-08-12 below.** The reading at the
+time was that descriptions suppress reliably and promote unreliably. The first fix shipped
 the recorded-value readings as secondary attributes whose descriptions opened
 with "WARNING - this is NOT the canonical" and closed with "Group on X
 instead". The next run scored 0.095 again - completely inert. The trajectories
@@ -816,3 +816,46 @@ tasks against the atscale arm's 21 and 600 against 410 across the suite, which
 is what inflated raw's headline. `--exclude-management` now applies the
 identical predicate to the raw arm, results files record `exclude_management`
 and `task_count`, and `summarize_runs.py` shows the scope per run.
+
+**2026-08-12 - correction, and the actual transferable lesson. Descriptions steer
+reliably in BOTH directions.** The entry above concluded from the first failed
+attempt that a description can suppress an object but not promote one. The second
+attempt refutes the second half and the correction is the part worth carrying to
+the other 19 databases.
+
+Attempt two moved the bare, unqualified name onto the recorded reading for the
+five concepts that decide scored tasks and pushed the canonical reading behind
+`(Canonical)`, on the theory that only the name moves behaviour. It changed
+nothing: 0.095 again, the same two tasks passing. The trajectories show why. The
+naive attributes' descriptions said "filter here when a literal has to match the
+source spelling; for grouping, counting or any 'for each' question use
+X (Canonical)" - and all four target tasks are counts or groupings. The agent
+followed that instruction exactly, using `(Canonical)` **77 times against 6 uses
+of the bare swapped names** across the run, on all four tasks.
+
+So the mechanism is not one-directional. The agent follows operation-conditional
+guidance in a description closely - "filter here, count there" was obeyed
+precisely. Attempt one failed because its descriptions *suppressed* the objects
+it added; attempt two failed because they *promoted* the wrong one. In both cases
+the channel worked and the guidance was wrong.
+
+Two consequences:
+
+- **For the remaining models: treat description text as a working control
+  surface, and write the operation-conditional guidance deliberately.** Sentences
+  of the form "use A for filtering, B for grouping" are load-bearing, not
+  decoration. That is a positive finding about the semantic layer's metadata and
+  belongs in the product story, not only in a failure log.
+- **For households: the four tasks are not winnable honestly.** Winning them
+  needs a description telling the agent to use the fragmenting reading for
+  counting and grouping, which is instructing bad analysis in a model published
+  as an example of good modelling. `NAIVE_TEXT_PRIMARY` is reverted to False,
+  the machinery kept with the outcome recorded beside the flag so the negative
+  result is not re-derived, and households is reported as no-measurable-lift on
+  the task-set evidence above.
+
+Final households position: 6 clean atscale runs at 0.095 (sd 0.000) against raw's
+0.078 on the 20 shared query tasks; the +0.022 gap is under half the 0.049
+run-to-run spread. 14 of 21 tasks are unwinnable as asked, 4 more turn on string
+granularity the grader resolves one way and honest modelling the other, and 2
+pass. No further model change is warranted on this database.
