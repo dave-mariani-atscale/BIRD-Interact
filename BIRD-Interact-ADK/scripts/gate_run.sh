@@ -67,4 +67,11 @@ if len(models) < expected:
 print("  OK - catalog healthy")
 PY
 echo
+echo "=== gate 3: template DB integrity (B-25) ==="
+python3 "$(dirname "$0")/db_integrity_gate.py" || {
+  echo "FAIL: a template database has drifted - gold would be graded against the wrong data."
+  exit 1
+}
+
+echo
 echo "GATE PASSED - safe to run"

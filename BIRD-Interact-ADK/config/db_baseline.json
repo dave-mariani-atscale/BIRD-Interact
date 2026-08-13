@@ -1,0 +1,26 @@
+{
+ "_comment": "Known-good shape of each benchmark TEMPLATE database, checked by scripts/db_integrity_gate.py before a run. Only the 15 SOURCE tables are listed: Management-task DML leaves extra tables behind (annual_returns_archive, style_drift_log, ...) and those come and go legitimately. non_null exists because B-25 kept its row count intact per-table and still lost every categoryperf VALUE.",
+ "exchange_traded_funds_template": {
+  "non_null": {
+   "annual_returns.categoryperf": 20744,
+   "annual_returns.fundperf": 12450
+  },
+  "row_counts": {
+   "annual_returns": 28748,
+   "bond_allocations": 3438,
+   "bond_ratings": 9,
+   "categories": 83,
+   "exchanges": 4,
+   "families": 150,
+   "family_categories": 923,
+   "family_exchanges": 280,
+   "funds": 2310,
+   "holdings": 21887,
+   "performance": 2310,
+   "risk_metrics": 1507,
+   "sector_allocations": 17776,
+   "sectors": 11,
+   "securities": 3342
+  }
+ }
+}
