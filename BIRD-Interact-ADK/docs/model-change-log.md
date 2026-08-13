@@ -893,3 +893,27 @@ spend, rather than handing the semantic-layer arm a free answer.
 which was 0.63 before M-23/M-24 and 0.54 after, both inside the +/-0.70-point noise
 floor in A-03. If the ask appears and the count-column and ordering questions stop
 consuming asks, the redirect worked whatever the score does.
+
+### M-26 measured, same day
+
+Five etf_8 repeats after deploying: **1.00, 1.00, 1.00, 1.00, 1.00**, against
+0.70, 1.00, 0.00, 0.00, 1.00 immediately before. The mechanism it targeted moved as
+intended — a threshold question was asked in 5 of 5 runs (2,1,1,1,1) against 2,1,0,0,1
+before, and the two runs that previously asked nothing about the cut-off and scored 0.00
+have no counterpart here.
+
+**The cost it introduced, recorded because it is real.** M-26 also tells the agent not
+to spend a question on which count column to use, since the description already answers
+it. That stopped the wasted ask — and in 2 of 5 runs the agent then picked `Fund Count`
+silently and burned a 3-coin submit discovering it. Before M-26 that condition never
+failed, because agents were asking about it. So the change trades a guaranteed wasted
+ask for an occasional failed submit. It nets out strongly positive: a wrong count column
+is recoverable and was recovered every time, while an unasked threshold is fatal. But
+"settled, do not ask" is not free, and a future edit that closes a question this way
+should expect the same trade.
+
+**On M-25's design rule.** This is its first test and it holds: the redirect added no
+new trigger, and the ask it repurposed was already firing. Trigger count went 12 -> 20
+across today's four description changes, which is the number to watch — the cost of the
+technique is bounded by the roughly three questions a task can afford, and only tasks
+not re-run today would show it.
