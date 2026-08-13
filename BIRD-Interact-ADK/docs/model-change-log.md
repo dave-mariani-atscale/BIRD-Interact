@@ -858,3 +858,38 @@ mean against 0.63 before, while the mechanism it targeted worked perfectly (0 of
 runs chose the wrong name column, against a run that had). Score fell, fix worked.
 Judge M-24 the same way — on whether the Uncategorized question gets asked on its own,
 not on the next total.
+
+## M-26, 2026-08-13 — redirect an existing trigger instead of adding a new one
+
+`Alpha-Turnover Pair Count` told the agent to filter on it and never said where the
+cut-off comes from. The number is a masked KB constant, so the model must not carry it
+— but "ask the user for it" is not a leak, and that sentence was missing. The
+description now says the cut-off is absent from the model, that no value can be derived
+from the data, that the agent should ask for it as its own candidate-free question, and
+that omitting the filter is not the safe fallback (unfiltered, the ranking is topped by
+two-pair categories whose slopes are the largest numbers in the result).
+
+It also closes a question the description already answered: which of the two count
+columns to use. That was stated plainly and the agent kept spending an ask on it anyway,
+so the text now says explicitly not to.
+
+**Why this shape rather than a new trigger.** See M-25. Five etf_8 repeats after M-23
+and M-24: total asks held (3.14 -> 3.20) but threshold asks fell 1.57 -> 0.80, and
+threshold-ask count predicted the outcome perfectly — asks 2,1,0,0,1 gave rewards 0.70,
+1.00, 0.00, 0.00, 1.00. The two runs that asked nothing about the threshold spent all
+three of their asks on the count column, the Uncategorized placeholder (M-24's own
+trigger) and row ordering — every one of which was correct in every submission of all
+five runs. The ask budget is about three questions and triggers compete for it, so a
+trigger that fires on a settled question is not free; it costs the one that decides the
+task. Adding a fourth trigger here would have taken another. Amending the trigger that
+already fires takes none.
+
+**A10 note.** The cut-off is deliberately absent and the gate was run to prove it, plus
+an explicit assertion that "25" does not appear in the description. Telling the agent to
+ask for a number is the opposite of leaking it: it restores the turn the raw arm has to
+spend, rather than handing the semantic-layer arm a free answer.
+
+**How to judge it.** On whether a threshold question gets asked, not on etf_8's mean —
+which was 0.63 before M-23/M-24 and 0.54 after, both inside the +/-0.70-point noise
+floor in A-03. If the ask appears and the count-column and ordering questions stop
+consuming asks, the redirect worked whatever the score does.
