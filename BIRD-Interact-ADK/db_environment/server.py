@@ -383,7 +383,10 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                     finally:
                         p_pool.putconn(p_conn)
                     close_pool(task_db)  # must close connections before using as template
-                    snapshot_db = create_task_db(task_db, "p1snap", template=task_db)
+                    # reserve=0: the snapshot is the end of the chain, nothing is
+                    # appended to it. task_db already left room for "__p1snap".
+                    snapshot_db = create_task_db(task_db, "p1snap", template=task_db,
+                                                 reserve=0)
                     td["_snapshot_db"] = snapshot_db
 
                     has_follow_up = bool(td.get("follow_up") and td["follow_up"].get("sol_sql"))
