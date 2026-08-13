@@ -25,6 +25,19 @@ sized to be run one per fresh context. Start there; this doc is the evidence beh
 > Re-runnable tooling added: `scripts/key_projection_audit.py` (Q-24 exposure per run) and
 > `scripts/guidance_compliance.py` (per-bullet violation rates). Both encode detector bugs
 > that produced confident wrong answers first — read their comments before trusting a rate.
+>
+> **Then the follow-up work found the biggest thing in the whole exercise — B-25.** Chasing
+> "why does `_4` fail" led to the grading data, not the agent: a Management task had run an
+> archive-and-delete against `exchange_traded_funds_template` itself on 2026-08-12, moving
+> every non-NULL `categoryperf` out of `annual_returns`. Gold for `_2` and `_4` therefore
+> returned **zero rows**, making both unwinnable by any submission in either arm since
+> 2026-08-11. Restored and verified: `_2` now 1.00 mean and `_4` 0.94 mean over 5 repeats
+> each, **+1.94 points on a 19-task arm that had been reading ~9.10**. Two of Item 1's six
+> unexplained failures were never model or agent faults at all.
+>
+> Any number quoted from a run dated 2026-08-12 or 2026-08-13 is understated by those two
+> tasks. `scripts/db_integrity_gate.py` (gate 3 in `gate_run.sh`) now blocks a run on a
+> drifted template, but the cause — Management DML reaching `*_template` — is still open.
 
 **Status: all five items in THIS doc are worked through.** Items 1–4 are kept below as findings, not
 as instructions. Item 5's tickets are drafted in `docs/engine-tickets.md` and are
