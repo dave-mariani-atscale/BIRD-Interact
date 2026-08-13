@@ -534,6 +534,55 @@ cannot compute (MDX-Median row) and the user simulator refuses to accept the mea
 that is an engine gap, not a model gap, and precomputing a median per grouping the
 questions happen to use would be teaching to the test.
 
+### Second pass, 2026-08-12: false ambiguities and the phase-2 budget cliff
+
+Same method, second sweep — this time over the phase-2 halves, which the first pass
+had not read. Two changes, one open item.
+
+**Model (M-19): three published "alternate readings" that are not.** The ETF model
+carries nine PRIMARY/ALTERNATE column pairs. Tested all nine live: six genuinely
+diverge (Information Ratio 1005 of 1005 funds, Liquidity Pressure 1359, Composite
+Score 1142, Beta Drift, R-Squared Drift, Style Drift, Global Alpha Specialist, MA50
+value-traded). **Three never diverge at all** — `Fund Positive Years`,
+`Fund Negative Years` and `Positive Return Consistency`, each Reported-vs-From-Annual-
+Returns, agree on **0 of 1829** funds differing, confirmed against Postgres as well as
+through MCP. `fund.yml` asserted outright that the year pair "disagree for some funds";
+it does not. The year pair differs only in *coverage* (2080 vs 1829); the consistency
+pair is identical outright.
+
+This matters because the agent instruction makes rival-reading language a **trigger to
+`ask_user`** (2 coins) — so a false ambiguity buys a wasted ask and casts doubt on a
+column that had none. Fixed in descriptions only: state the measured agreement, name
+the column to use, say the choice cannot change an answer's values. No SQL, no new
+objects, so nothing downstream moves. Deployed and verified live.
+
+**Guidance: phase 2 is paid for out of what phase 1 leaves behind.** Nothing told the
+agent to reserve for it. Measured over `rebase0811_atscale_r1`: every task that finished
+at **1.0 entered phase 2 with ≥9 coins**; the three that stalled at 0.7 entered with
+6.0, 4.0 and 1.5. The 1.5-coin case (`_8`, de-leaked run) is the clean demonstration —
+the follow-up asked for ticker, name, alpha and turnover, none of which phase 1 had
+looked up; the agent could not afford a 1-coin `explore_columns`, guessed six names,
+got **all four measures right and both identity columns wrong**, and lost the phase to
+`Column [Fund Ticker] not found` holding correct values. Two bullets added: reserve ~6
+coins (explore + run_query + submit) before submitting phase 1, and never let phase 2's
+first action be `submit_sql`. Written domain-neutrally — that instruction is shared by
+every atscale domain — so it names the identity-column *pattern*, not ETF's columns.
+
+**`_14` phase 2: the model is right and gold still rejects it. Open, no change made.**
+The follow-up wants the average CAIR for funds with consistency ≤ 50. Recomputed the KB
+formula straight from Postgres: **0.01326990** over the 136 of 351 such funds that carry
+the ratio — matching the model's `Average Consistency-Adjusted Information Ratio` exactly.
+The agent submitted that value and was rejected. Phase 1 (unfiltered CAIR average, 0.0456)
+*passed*, which pins both the CAIR definition and its `/100` as correct, and the two
+consistency columns are the identical pair above, so the filter is not the variable.
+At `decimal: 2` every defensible reading collapses to 0.01 — including the
+COALESCE-nulls-to-zero denominator (0.00514). The only readings that land elsewhere are
+`≤ 0.5` on a 0-1 scale (0.00), IR with no consistency adjustment (0.03), and CAIR with
+the `/100` dropped (**1.32699 — exactly 100× ours**). That last one is suggestive but
+contradicts phase 1 passing. Not resolvable without the answer key; filed rather than
+guessed at, because every available fix here would be fitting the model to an unseen
+number.
+
 ### Still leaking
 
 Measured with the same gate: `cybermarket_pattern` 23 phrases over 6 tasks,
