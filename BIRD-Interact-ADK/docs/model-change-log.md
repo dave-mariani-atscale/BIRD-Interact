@@ -791,3 +791,31 @@ start failing where a sub-1e-4 gap is the only thing between them and a pass, th
 exact comparison is measuring the grader rather than the semantic layer, and that is
 a good argument. `GRADING_AUDIT_PATH` makes counting it free and offline. Report it
 as a sensitivity number next to the headline, never inside it.
+
+## M-23, 2026-08-13 — "fund name" has two answers and the model never said so
+
+`Fund Short Name` (`shortlabel`) and `Fund Full Name` (`fulldescription`) both answer
+"fund name" and return a different string for every one of the 2310 funds. The
+descriptions cross-referenced each other passively ("Sibling: Fund Full Name"), which
+is not the language the atscale instruction treats as an ask-trigger — that bullet
+looks for "confirm which the question means", "are not interchangeable", "this model's
+convention". So the agent read two plausible columns, picked one, and never asked.
+
+Both descriptions now state the rivalry in trigger language, note that a wrong pick
+makes every row wrong while looking plausible, and add that "identify the fund" has a
+third answer again (the leaf `Fund` member, the ticker). Deliberately NOT stating a
+preference: the model has no basis for one, and inventing a convention here would be
+fitting to an answer key rather than describing the data. Same shape as M-19.
+
+**Why it was worth a change.** `etf_3` is the most volatile task in the set — scored
+1.00, 0.70, 0.00, 0.00, 0.70, 1.00, 1.00 across seven runs under identical current
+grading. Reading the trajectories, the outcome tracks exactly which name column the
+agent happened to project: the 0.00 runs used Full Name, the 1.00 runs used Short Name.
+That is a coin flip inside the benchmark, and it costs twice over — the task itself,
+and the variance it injects into every arm total that includes it.
+
+**This is variance reduction, not a score fix.** The point is not that Short Name is
+right; the point is that the agent should ASK, which costs 2 coins and is what the
+ambiguity machinery is for. If it asks and the user says Full Name, the model has done
+its job. Measuring the effect needs repeats — a single run cannot separate this from
+the +/-0.70-point noise floor recorded in A-03.
