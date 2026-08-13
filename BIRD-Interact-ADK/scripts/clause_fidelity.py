@@ -47,6 +47,17 @@ FEATURES = [
     ("UNION",        re.compile(r"\bUNION\b", re.I)),
     ("ASC",          re.compile(r"\bASC\b", re.I)),
     ("DESC",         re.compile(r"\bDESC\b", re.I)),
+    # Added for the date / join / window probes: without these, a dropped EXTRACT or a
+    # vanished OVER() clause reads as CLEAN because no tracked feature changed.
+    ("JOIN",         re.compile(r"\bJOIN\b", re.I)),
+    ("OVER",         re.compile(r"\bOVER\s*\(", re.I)),
+    ("PARTITION BY", re.compile(r"\bPARTITION\s+BY\b", re.I)),
+    ("EXTRACT",      re.compile(r"\bEXTRACT\s*\(", re.I)),
+    ("DATE literal", re.compile(r"\bDATE\s*'", re.I)),
+    ("ROW_NUMBER",   re.compile(r"\bROW_NUMBER\s*\(", re.I)),
+    ("DENSE_RANK",   re.compile(r"\bDENSE_RANK\s*\(", re.I)),
+    ("LAG",          re.compile(r"\bLAG\s*\(", re.I)),
+    ("NTILE",        re.compile(r"\bNTILE\s*\(", re.I)),
 ]
 
 # Each probe: name, inbound SQL, and what we already believe. `expect` is prose for the
@@ -152,6 +163,94 @@ PROBES = [
      f'GROUP BY "Exchange", "Category" ORDER BY "Exchange", "Category" LIMIT 5',
      "unknown - grouping on two dimensions that reach the fact through different "
      "joins is where a fan-out would show up"),
+
+    # ---- gap 1: dates and EXTRACT -------------------------------------------------
+    # "Fund Launch Date" is a real date dimension (1993-01-22 .. 2021-07-22, non-null
+    # for all 2310 funds), so these have something to operate on.
+    ("extract-year-from-date",
+     f'SELECT "Fund", EXTRACT(YEAR FROM "Fund Launch Date") AS y FROM {M} LIMIT 5',
+     "unknown - EXTRACT may be absent like the percentile family, pushed down, or "
+     "silently dropped leaving the raw date"),
+
+    ("date-literal-filter",
+     f'SELECT "Fund Count" FROM {M} WHERE "Fund Launch Date" >= DATE \'2015-01-01\'',
+     "unknown - does a DATE literal comparison reach the dispatch and filter? Count "
+     "is checkable against source Postgres funds.launchdate"),
+
+    ("extract-in-groupby",
+     f'SELECT EXTRACT(YEAR FROM "Fund Launch Date") AS y, "Fund Count" FROM {M} '
+     f'GROUP BY EXTRACT(YEAR FROM "Fund Launch Date") ORDER BY y LIMIT 5',
+     "unknown - grouping by a derived date part. If EXTRACT is dropped this silently "
+     "groups by the full date instead, giving one row per distinct date"),
+
+    # ---- gap 2: correlated subqueries ---------------------------------------------
+    ("correlated-subquery-in-where",
+     f'SELECT t."Fund", t."Fund 3-Year Alpha" FROM {M} t WHERE t."Fund 3-Year Alpha" > '
+     f'(SELECT AVG(s."Fund 3-Year Alpha") FROM {M} s WHERE s."Category" = t."Category") LIMIT 5',
+     "guidance says correlated references are unsupported - expect an error, or the "
+     "Q-26 splice that silently compares the row against itself"),
+
+    ("correlated-subquery-in-select",
+     f'SELECT t."Fund", (SELECT MAX(s."Fund 3-Year Alpha") FROM {M} s '
+     f'WHERE s."Category" = t."Category") AS cat_max FROM {M} t LIMIT 5',
+     "same defect family in the SELECT list - expect an error or each row's own value "
+     "rather than its category maximum"),
+
+    # ---- gap 3: hand-written multi-dataset joins ----------------------------------
+    ("self-join-on-key",
+     f'SELECT a."Fund", a."Fund 3-Year Alpha", b."Fund Turnover Ratio" '
+     f'FROM (SELECT "Fund", "Fund 3-Year Alpha" FROM {M}) a '
+     f'JOIN (SELECT "Fund", "Fund Turnover Ratio" FROM {M}) b ON a."Fund" = b."Fund" LIMIT 5',
+     "unknown - two independent model reads joined on the key. Checkable: the same two "
+     "columns in one flat SELECT must give identical pairs and no fan-out"),
+
+    ("self-join-on-max",
+     f'SELECT t."Category", t."Fund", t."Fund 3-Year Alpha" '
+     f'FROM (SELECT "Category", "Fund", "Fund 3-Year Alpha" FROM {M}) t '
+     f'JOIN (SELECT "Category" AS g, MAX("Fund 3-Year Alpha") AS mx FROM {M} '
+     f'GROUP BY "Category") m ON t."Category" = m.g AND t."Fund 3-Year Alpha" = m.mx LIMIT 5',
+     "the greatest-n-per-group shape guidance PRESCRIBES - if this is rewritten the "
+     "guidance is recommending a broken pattern, so a defect here is high-value"),
+
+    ("join-on-1-1-totals",
+     f'SELECT t."Fund", t."Fund Active Manager Value", s.share '
+     f'FROM (SELECT "Fund", "Fund Active Manager Value" FROM {M} '
+     f'WHERE "Fund Active Manager Value" IS NOT NULL) t '
+     f'JOIN (SELECT "Share of Funds With Positive AMV" AS share FROM {M}) s ON 1=1 '
+     f'ORDER BY t."Fund Active Manager Value" DESC LIMIT 3',
+     "the totals-beside-detail shape guidance PRESCRIBES as the only working one. "
+     "share must be the population value repeated, not each row's own"),
+
+    # ---- gap 4: window functions beyond RANK -------------------------------------
+    ("row-number-window",
+     f'SELECT "Fund", ROW_NUMBER() OVER (ORDER BY "Fund 3-Year Alpha" DESC) AS rn, '
+     f'"Fund 3-Year Alpha" FROM {M} WHERE "Fund 3-Year Alpha" IS NOT NULL LIMIT 5',
+     "unknown - RANK is documented to work; ROW_NUMBER is not covered anywhere"),
+
+    ("dense-rank-window",
+     f'SELECT "Fund", DENSE_RANK() OVER (ORDER BY "Fund 3-Year Alpha" DESC) AS dr, '
+     f'"Fund 3-Year Alpha" FROM {M} WHERE "Fund 3-Year Alpha" IS NOT NULL LIMIT 5',
+     "unknown - the model publishes its own dense-rank column, so the SQL form has "
+     "never been tested"),
+
+    ("sum-over-partition",
+     f'SELECT "Fund", "Category", SUM("Fund Net Assets (AUM)") OVER (PARTITION BY "Category") '
+     f'AS cat_total FROM {M} LIMIT 5',
+     "expect the COUNT(...) OVER () defect family: cat_total silently returning each "
+     "row's own AUM rather than the category total. Checkable against a GROUP BY total"),
+
+    ("lag-window",
+     f'SELECT "Year", "Average Yearly Outperformance", '
+     f'LAG("Average Yearly Outperformance") OVER (ORDER BY "Year") AS prev '
+     f'FROM {M} WHERE "Fund" = \'AADR\' GROUP BY "Year", "Average Yearly Outperformance" '
+     f'ORDER BY "Year" LIMIT 5',
+     "unknown - LAG is the natural year-over-year shape and etf_2 needs exactly it"),
+
+    ("ntile-window",
+     f'SELECT "Fund", NTILE(4) OVER (ORDER BY "Fund 3-Year Alpha" DESC) AS q '
+     f'FROM {M} WHERE "Fund 3-Year Alpha" IS NOT NULL LIMIT 5',
+     "M-14/Q-19 touched NTILE as a percentile substitute - confirm whether the SQL "
+     "form errors or silently mis-buckets"),
 ]
 
 
