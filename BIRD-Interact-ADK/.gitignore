@@ -75,3 +75,4 @@ Thumbs.db
 
 # offline re-grade row caches (large, regenerable)
 .regrade_cache_*.pkl
+docs/etf-baseline-and-followups-plan.md
