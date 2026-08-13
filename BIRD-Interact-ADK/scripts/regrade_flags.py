@@ -14,7 +14,7 @@ once per submission and the rows cached, so flag toggling is in-memory.
 Trajectory is held FIXED — this answers "what would the grader have said about
 the SQL the agent actually wrote", not "what would the agent have done".
 """
-import json, sys, os, pickle
+import atexit, json, sys, os, pickle
 # Repo root, derived from this file's own location rather than hardcoded: the
 # grader resolves dataset paths relative to the working directory, so this has
 # to chdir, but it must work on any checkout and not just the machine it was
@@ -32,7 +32,15 @@ if "--database" in argv:
     DATABASE = argv[i + 1]
     del argv[i:i + 2]
 
-DB = f"{DATABASE}_template"
+# Execution happens on a DISPOSABLE COPY of the template, never the template itself.
+# ex_base runs the GOLD sql as well as the prediction, and a Management-category gold is
+# DML - pointing this at `*_template` is how B-25 happened: an archive-and-delete ran
+# into the template on 2026-08-12, stripped every non-NULL categoryperf out of
+# annual_returns, and silently made etf_2 and etf_4 unwinnable for two days. The template
+# is the clone source for every per-task DB and the reference gold is graded against, so
+# it has to stay pristine. shared.db_utils now refuses non-read-only statements against a
+# *_template database outright; this keeps re-grades working rather than merely blocked.
+TEMPLATE = f"{DATABASE}_template"
 ARM = argv[0]                  # raw | atscale
 PATH = argv[1]
 CACHE = argv[2] if len(argv) > 2 else f".regrade_cache_{DATABASE}_{ARM}.pkl"
@@ -44,6 +52,10 @@ for line in open(settings.data_path):
         tasks[d["instance_id"]] = d
 
 res = json.load(open(PATH))
+
+DB = U.create_task_db(DATABASE, f"regrade_{ARM}")
+atexit.register(lambda: U.drop_task_db(DB))
+print(f"grading on scratch copy {DB} (template {TEMPLATE} untouched)")
 conn = U.get_connection_for_phase(DB)
 
 # ---- collect (task, phase, attempt, pred_sql) in trajectory order -----------
@@ -129,6 +141,12 @@ for name, (tie, dec) in COMBOS.items():
             sol = [sol]
         try:
             if ARM == "raw":
+                # The live grader resets the task DB before every submission
+                # (db_environment/server.py). Without this, a DML prediction or gold
+                # changes the state the NEXT submission is graded against, which is
+                # both wrong and order-dependent.
+                U.reset_task_db(DB, TEMPLATE)
+                conn = U.get_connection_for_phase(DB)
                 v[(tid, phase, sql)] = U.ex_base([sql], sol, DB, conn, cond)
             else:
                 v[(tid, phase, sql)] = U.ex_base_external_pred(pred, sol, DB, conn, cond)

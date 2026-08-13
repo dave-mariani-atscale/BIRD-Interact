@@ -43,8 +43,74 @@ def close_pool(db_name: str):
             pool.closeall()
 
 
+class TemplateWriteBlocked(RuntimeError):
+    """Raised when something tries to modify a *_template database."""
+
+
+def _is_read_only(sql: str) -> bool:
+    """True only if every statement in `sql` is a plain read.
+
+    Parsed with sqlglot rather than matched with a prefix test: the existing
+    `startswith("select")` check two functions down is exactly the kind of thing that
+    misses `WITH x AS (...) DELETE ...`, a leading comment, or a second statement after
+    a semicolon. Anything that fails to parse counts as a write — this guard fails
+    closed, because being wrong in that direction only costs an error message.
+    """
+    try:
+        import sqlglot
+        from sqlglot import expressions as exp
+    except Exception:                                            # noqa: BLE001
+        return False
+    try:
+        statements = [s for s in sqlglot.parse(sql) if s is not None]
+    except Exception:                                            # noqa: BLE001
+        return False
+    if not statements:
+        return False
+    for st in statements:
+        if isinstance(st, (exp.Select, exp.Union)):
+            continue
+        # WITH ... SELECT parses as a Select carrying a `with`; WITH ... DELETE does not.
+        if isinstance(st, exp.Subquery) and isinstance(st.this, (exp.Select, exp.Union)):
+            continue
+        return False
+    return True
+
+
+def _guard_template_write(query: str, db_name: str):
+    """Refuse to modify a *_template database (B-25).
+
+    The grader executes gold against whatever database it is handed, and a
+    Management-category gold is DML. On 2026-08-12 a regrade pointed at
+    `exchange_traded_funds_template` ran an archive-and-delete into it: 21574 rows
+    left `annual_returns`, taking every non-NULL `categoryperf` with them. Templates
+    are the source every per-task database is cloned from and the reference gold is
+    graded against, so that silently redefined "correct" for two tasks and made them
+    unwinnable in either arm for two days, with nothing erroring.
+
+    Reads are always allowed. Set ALLOW_TEMPLATE_WRITES=1 for deliberate maintenance
+    (restoring a template, rebuilding a baseline) — the point is to stop accidents,
+    not to make templates immutable.
+    """
+    if not db_name.endswith("_template"):
+        return
+    if os.environ.get("ALLOW_TEMPLATE_WRITES") == "1":
+        return
+    if _is_read_only(query):
+        return
+    raise TemplateWriteBlocked(
+        f"refusing to run a non-read-only statement against {db_name!r}. "
+        "Templates are the clone source for every per-task DB and the reference the "
+        "grader runs gold against, so writing to one silently changes what 'correct' "
+        "means for every later run (B-25). Run this against a per-task copy instead "
+        "(shared.db_utils.create_task_db), or set ALLOW_TEMPLATE_WRITES=1 if you are "
+        f"deliberately maintaining the template. Statement: {' '.join(query.split())[:160]}"
+    )
+
+
 def perform_query(query: str, db_name: str, conn=None):
     MAX_ROWS = 10000
+    _guard_template_write(query, db_name)
     pool = _get_or_init_pool(db_name)
     if conn is None:
         conn = pool.getconn()
