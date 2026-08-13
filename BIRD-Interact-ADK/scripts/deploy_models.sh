@@ -63,6 +63,34 @@ for m in */; do
   python3 utilities/question_leakage_gate.py --model-dir "${m%/}" --brief "$brief" 2>&1 | tail -1
 done
 
+# A10: a masked KB threshold in the model hands the semantic-layer arm a number the
+# raw arm has to ask the user for, so the lift it buys is a protocol artifact. The
+# generator-built models gate this at build time; prompt-only models had nothing until
+# a hand audit found three (one of them introduced by the previous hand audit).
+# Only fatal when the concept is masked on a task this backend actually RUNS -
+# Management-category tasks never reach a read-only semantic layer.
+echo
+echo "=== A10 masked-threshold gate, per model ==="
+A10_FAILED=0
+for m in */; do
+  brief="${m}brief/task_brief.json"
+  kb="$ADK_DIR/bird-interact-full/${m%/}/${m%/}_kb.jsonl"
+  [ -f "$brief" ] || continue
+  if [ ! -f "$kb" ]; then
+    echo "  ${m%/}: no KB at $kb - running with the NUMBER detector OFF"
+    kbarg=()
+  else
+    kbarg=(--kb "$kb")
+  fi
+  # Capture first, then filter: in a pipeline the exit status is the LAST command's,
+  # so `gate | grep` would report grep's verdict and silently pass a real leak.
+  out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" --brief "$brief" \
+          "${kbarg[@]}" 2>&1)" && rc=0 || rc=$?
+  printf '%s\n' "$out" | grep -vE "^\s*\[ok\]" | grep -vE "^\s*$" || true
+  [ "$rc" -eq 0 ] || A10_FAILED=1
+done
+[ "$A10_FAILED" -eq 0 ] || { echo "FAIL: a masked threshold is published - fix before deploying."; exit 1; }
+
 echo
 echo "=== deploy ==="
 ATSCALE_API_URL=http://local.atscaleinternal.com:3001 \
