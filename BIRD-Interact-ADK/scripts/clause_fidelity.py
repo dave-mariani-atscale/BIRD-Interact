@@ -113,6 +113,45 @@ PROBES = [
      "SELECT 'AAA' AS ticker, '1.23' AS score UNION ALL SELECT 'TOTAL', '456'",
      "Q-25 control: the guidance-prescribed literal form WORKS - it never reaches "
      "the warehouse, so there is no rewrite to survive"),
+
+    ("scalar-subquery-in-where",
+     f'SELECT "Fund Count" FROM {M} WHERE "Fund Turnover Ratio" < '
+     f'(SELECT "Fund 52-Week Range Move Pct" FROM {M} LIMIT 1)',
+     "Q-26 control: the subquery is spliced into the outer row, dispatching as "
+     "turnover_ratio < range_move_pct - a plausible count, no error. Clause-level "
+     "this shows only as a dropped LIMIT; the wrongness needs --show-sql"),
+
+    ("scalar-subquery-in-select",
+     f'SELECT "Fund", (SELECT "Average Net Assets (AUM)" FROM {M}) AS pop_avg FROM {M} LIMIT 3',
+     "Q-26 / Q-20 control: pop_avg should be one repeated population value and is "
+     "instead each row's own AUM"),
+
+    ("case-in-where",
+     f'SELECT "Fund Count" FROM {M} WHERE CASE WHEN "Fund Turnover Ratio" > 1 '
+     f"THEN 'high' ELSE 'low' END = 'high'",
+     "unknown - does a CASE survive in the WHERE clause?"),
+
+    ("case-in-orderby",
+     f'SELECT "Exchange", "Fund Count" FROM {M} GROUP BY "Exchange" '
+     f"ORDER BY CASE WHEN \"Exchange\" = 'BATS' THEN 0 ELSE 1 END, \"Exchange\"",
+     "an agent hit an engine assertion on CASE-in-ORDER-BY in etf_6 - does it "
+     "error, survive, or get dropped?"),
+
+    ("string-function",
+     f'SELECT "Exchange" FROM {M} WHERE UPPER("Exchange") = \'BATS\'',
+     "unknown - are string functions pushed down or evaluated somewhere else?"),
+
+    ("nested-aggregate",
+     f'SELECT AVG(t.v) AS v FROM (SELECT "Exchange", SUM("Fund Net Assets (AUM)") AS v '
+     f'FROM {M} GROUP BY "Exchange") t',
+     "unknown - an aggregate over a grouped derived table. Q-24 says the inner "
+     "grouping key may not survive into the outer level"),
+
+    ("two-dataset-groupby",
+     f'SELECT "Exchange", "Category", "Fund Count" FROM {M} '
+     f'GROUP BY "Exchange", "Category" ORDER BY "Exchange", "Category" LIMIT 5',
+     "unknown - grouping on two dimensions that reach the fact through different "
+     "joins is where a fan-out would show up"),
 ]
 
 
