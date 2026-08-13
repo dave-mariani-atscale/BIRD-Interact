@@ -57,7 +57,13 @@ python -m orchestrator.runner --mode a-interact --backend atscale \
   > results/guidance0813_atscale_r1.log 2>&1
 echo "=== atscale done $(date) ==="
 
-if [ ! -s results/guidance0813_atscale_r1.json ]; then
+# The runner ALWAYS timestamps --output (shared.output_paths.timestamped_output_path,
+# called at orchestrator/runner.py:47), so the file on disk is
+# <stem>_YYYYmmdd_HHMMSS.json and never the bare name passed in. Globbing for it is
+# the check; testing the un-suffixed path always "fails" and aborts a healthy run
+# after the expensive arm has already been paid for. That is exactly what happened
+# on the first attempt of this script.
+if ! compgen -G "results/guidance0813_atscale_r1_*.json" > /dev/null; then
   echo "ABORT: atscale output missing/empty; not starting raw"
   exit 1
 fi
