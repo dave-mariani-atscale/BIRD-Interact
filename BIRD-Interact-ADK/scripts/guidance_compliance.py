@@ -532,14 +532,17 @@ def main():
     print(f"\nbase rate: {base_zero}/{len(base_graded)} graded submissions scored 0 "
           f"({base_zero/len(base_graded):.1%})")
 
+    # Outputs go to the CWD, not next to the script: writing them into scripts/ drops two
+    # untracked artifacts into the repo every run.
+    outdir = os.environ.get("COMPLIANCE_OUT", ".")
     json.dump({b: {k: v for k, v in d.items() if k != "rows"} for b, d in results.items()},
-              open(f"{S}/compliance.json", "w"), indent=1)
-    with open(f"{S}/violations.txt", "w") as fh:
+              open(f"{outdir}/compliance.json", "w"), indent=1)
+    with open(f"{outdir}/violations.txt", "w") as fh:
         for bid, d in results.items():
             for r, note in d["rows"]:
                 fh.write(f"[{bid}] {r['run']} {r['task']} graded={r['graded']} "
                          f"reward={r['reward']} :: {note}\n{r['sql']}\n\n")
-    print("violation detail -> violations.txt")
+    print(f"violation detail -> {outdir}/violations.txt")
 
 
 if __name__ == "__main__":
