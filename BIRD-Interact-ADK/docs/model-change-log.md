@@ -965,3 +965,40 @@ ability to decide which tasks a masked term actually applies to, so terms that a
 get classified as live. The same edits, same tree, same brief: `--kb` → PASS, no `--kb` →
 FAIL. Anyone hand-running this gate outside the deploy script should assume a bare
 invocation over-reports, and no conclusion about leak status should be drawn from one.
+
+### M-02 and M-06 measured, same day
+
+Validated the way M-26 was — 5 repeats of the affected task rather than a 19-task arm,
+because both tasks sat at a hard zero floor beforehand (etf_1 scored 0.0 in all 10
+recorded atscale runs, etf_10 in all 6 that ran it), so any non-zero would be a real
+move. Sonnet, caching on, **$2.24 for 10 task-runs** ($0.224/task).
+
+**Scores did not move.** etf_1: 0.0, 0.0, 0.0, 0.0, 0.0. etf_10: 0.0, 0.0, 0.0, 0.0, 0.0.
+Both unchanged. What moved is the mechanism, and only one of the two moved usefully.
+
+**M-02 — the column is right, the task is gated elsewhere.** Gold for etf_10 is
+`[('Opaque', 671, 0.0569), ('Transparent', 1246, 0.4099)]`, so `1-Year Return Known Fund
+Count` reproduces gold's count column **exactly**. The agent discovers it in 5/5 runs. It
+survives into the graded submission in only 1/5, because gold's *third* column is a
+**median** and the agent supplies an average — the task cannot pass on any count measure
+while M-03 is blocked engine-side by Q-06 — and on rejection the agent cannot tell which
+column was wrong, so it reverts to `Fund Count`. Judge this on the column, not on etf_10.
+
+**M-06 — diagnosis confirmed, fix incomplete.** Gold's ranks are **dense 1..27**, computed
+as `RANK() OVER (ORDER BY score DESC)` over the *filtered* rows, which settles the row: a
+build-time global rank cannot answer this question at all. The rename does what it was
+meant to — the agent finds the renamed column 5/5 and correctly declines to project it
+5/5. But it **never writes `RANK()` either** (0/5), so it submits 3 columns where gold
+wants 4. The change removed a wrong answer without producing the right one, and the
+blocker has *moved* rather than cleared: it is now "the agent omits the rank column"
+rather than "the model offers a gapped rank". The next lever is agent-side — guidance
+already prescribes computing `RANK()` in a flat SELECT and it is not firing here.
+
+**A cost this introduced, recorded because it is real.** A-01 records that etf_1's
+column-*count* failure "no longer reproduces" because the agent asks after a wrong-count
+rejection and then computes `RANK()` itself. That is no longer true: 0/5 write `RANK()`
+and 5/5 submit 3 columns. Making a misleading measure unattractive is not the same as
+teaching the replacement, and this is the second time a description change has traded one
+failure mode for another (M-26 traded a wasted ask for an occasional failed submit). A
+future edit that discourages a column should check that the agent picks up the
+alternative, not just that it drops the wrong one.
