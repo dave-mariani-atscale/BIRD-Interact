@@ -917,3 +917,51 @@ new trigger, and the ask it repurposed was already firing. Trigger count went 12
 across today's four description changes, which is the number to watch — the cost of the
 technique is bounded by the roughly three questions a task can afford, and only tasks
 not re-run today would show it.
+
+## 2026-08-13 — M-02 availability-aware count, M-06 rank population in the name
+
+Two of the six model-side rows from `docs/etf-investigation-plan.md` Item 4 turned out to
+still reproduce live; the other four did not need a model change (M-01's subject had been
+dropped in an earlier redeploy, M-07 was already fixed by the Up/Down-Market pair, M-03 is
+blocked engine-side by Q-06, M-09 belongs to the archeology model). These are the two that
+did, both re-verified against the live deployment before being touched.
+
+**M-02 — `1-Year Return Known Fund Count`.** `Fund Count` counts every fund in the slice
+whether or not it carries the metric being reported beside it. By `Valuation Data
+Availability` it gives 814 Opaque / 1496 Transparent where the funds that actually have a
+1-year return are 671 / 1246, so any answer pairing a count with an average return
+described two different populations. Adds a support-set counterpart rather than changing
+`Fund Count`, whose all-funds semantics are correct on their own terms — the same shape as
+`AMV Known Fund Count` and as `Fund Category Scored Fund Count` from M-18. New dataset
+column `return_1y_known` on Fund Analytics.
+
+**M-06 — `Fund SIES Rank` → `Fund SIES Rank (All Funds)`.** The rank is computed over all
+2310 funds at build time and cannot narrow to a query's `WHERE`, so inside a filter it
+returns a gapped sequence: on etf_1's high-quality/YTER screen, 27 rows ranked 1..12,
+14..18, 20.., skipping 13, 19 and 25. A within-filter rank is not expressible in a
+semantic model, so the fix is to stop the name promising one — the population now sits in
+the name, not only in the remark, and the description names `RANK() OVER (...)` over the
+filtered rows as the alternative. The three descriptions that pointed at the old name
+(`Fund Secure Income Efficiency Score` and the Average/Max SIES metrics) were updated in
+the same change; a pointer to a name that no longer resolves costs a submit to discover.
+
+Only the SIES rank was renamed. The model ships **12** global rank measures (AMV, AMV
+Dense, AUM, CAIR, TVS, Sharpe, Sharpe Dense, Duration Advantage, Liquidity Pressure,
+Composite Score Rank in Category, Sector Rank) and every one of them gaps the same way,
+but renaming measures that other tasks already query successfully risks regressions
+outside etf_1. Scope was deliberately held to the one rank M-06 was filed on.
+
+**On M-25's design rule.** Neither change adds an ask trigger. M-02's description states a
+coverage fact and contrasts two counts; M-06's states a population and names a SQL
+alternative. Trigger count is unchanged at 20.
+
+**A10 PASSES** — 13 masked terms across 402 published descriptions, no masked threshold on
+a task this backend runs (12 inert). Run it the way `scripts/deploy_models.sh` runs it, or
+it lies: **the gate needs `--kb`**. Invoked without it, it reported `A10 FAIL` with 4 leaks
+on running tasks, including `Appraisal Ratio` against etf_17. That is a false positive, and
+the direction is counter-intuitive — `--kb` is documented as *enabling* the extra NUMBER
+detector, so dropping it looks like it can only detect less. It also removes the gate's
+ability to decide which tasks a masked term actually applies to, so terms that are inert
+get classified as live. The same edits, same tree, same brief: `--kb` → PASS, no `--kb` →
+FAIL. Anyone hand-running this gate outside the deploy script should assume a bare
+invocation over-reports, and no conclusion about leak status should be drawn from one.
