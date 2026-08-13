@@ -1059,3 +1059,84 @@ first run at baseline as the start of the work: read the agent's submitted SQL
 for every failing task, sort model-fixable from masked-term and non-unique-answer
 failures before changing anything, and require n>=3 per arm before believing any
 delta.
+
+**2026-08-13 - first evaluation round: 3 raw runs, 1 atscale run, all void.**
+
+Every task in all four runs scored 0.000, including all three raw baselines. A
+text-to-SQL baseline does not go 0/19 three times, and the same harness scored
+raw 0.230 / atscale 0.474 on `exchange_traded_funds` an hour earlier, so the
+cause was harness-side and specific to this database. Root cause and fix are in
+the ADK commit "db_environment: stop per-task DB names colliding past Postgres'
+63-byte limit"; the short version is that this is the first BIRD database whose
+name is long enough that `{base_db}__{instance_id}` exceeds 63 bytes, and
+Postgres truncates over-length identifiers with only a NOTICE while `createdb`
+still exits 0. Consequences: all 20 tasks shared one physical database, `init_task`
+500'd on 3-4 tasks per raw run, and - the one that mattered - **a phase-1 pass
+was recorded as a failure**, because the Phase-1 snapshot name truncated to the
+same 63 bytes as its own source and the resulting `createdb` error was caught by
+the handler that returns `passed=False, reward=0.0`. Phase 2 was therefore
+unreachable for the whole database in both arms.
+
+Add a new row to the Workarounds discipline: **when both arms score 0.000 on
+every task of one database, suspect the harness before the model, and check
+whether that database's name is unusually long.** ETF at 55 bytes is one byte
+inside the limit; nothing else had crossed it in five models.
+
+The true phase-1 rates are recoverable from the trajectories, because every
+phase-1 pass left the `createdb` error as its fingerprint:
+
+| arm | runs | tasks that never started | true phase-1 /19 | tasks passed |
+|---|---|---|---|---|
+| raw | 3 | 3, 3, 4 | 0.263 (sd 0.053) | 4, 6, 7, 8, 10, 11 |
+| atscale | 1 | 0 | 0.263 | 2, 3, 4, 7, 8 |
+
+Level on the mean, with raw's figure understated (3-4 of its tasks never ran) and
+atscale at n=1 against a +/-0.05 spread. **No lift is measurable from this round.**
+One genuinely reassuring result: discovery cost is at parity, 5.1 calls per task
+in both arms, so the 117-object surface is not the `cybermarket_pattern`
+budget-exhaustion failure mode.
+
+Reading the submitted SQL sorted the atscale losses into three classes.
+
+- **Real, model-fixable (task 6).** The user stated a Wage Differential Rate
+  cut-off of their own. The agent filtered on the shipped `Wage Competitiveness
+  Tier` instead - a KB 48 bucket with a different boundary - and answered 60
+  positions where the user's threshold gives 33. It did that because the correct
+  path did not exist: `WHERE "Wage Differential Rate" > <n>` returned `Column not
+  found`. WDR shipped only as measures, and a measure can be aggregated but never
+  filtered or grouped BY. Same gap made task 11 inexpressible once the user
+  supplied the filing-window buckets. Fixed by shipping the continuous numerics
+  as attributes as well as measures, plus two grand-total shares so a
+  caller-defined CASE bucket can report its own percentage. **The general lesson
+  for the other models: audit every continuous numeric for a queryable twin, and
+  treat "the caller supplies the threshold" as a first-class query shape. A
+  KB-sanctioned bucket whose boundary differs from the caller's out-competes the
+  correct path on name match, and if the correct path is inexpressible the agent
+  has no way back.**
+
+- **Capped, not fixable (task 10).** The atscale query returned values identical
+  to raw's passing one (Complex 156 / 8.0, Standard 609 / 8.0). Only the row order
+  differed; `conditions.order` is true, `grading_tie_tolerance` defaults to False,
+  and every processing time in this warehouse is 8.0 - so "ordered by processing
+  time" does not determine the order and the expected answer is not unique.
+  Whether to enable tie tolerance is a grading-policy decision and was left alone
+  deliberately: flipping it to make one arm look better is not a model fix.
+
+- **The masked-term rule working as intended (tasks 6, 10, 11 in the raw arm).**
+  Raw won all three by asking the user, and the simulator handed over the exact
+  cut-offs - "greater than 20%", "Complex or Standard based on H-1B dependency or
+  willful violator status", the five filing-window labels. That is the path the
+  benchmark intends for a masked term, and it is the reason the semantic arm must
+  not pre-empt it. The model change above deliberately makes the caller's answer
+  *expressible* without making any withheld number *discoverable*.
+
+One self-inflicted near-miss worth recording: the first draft of the new
+attribute's description illustrated it with "above 20 percent", which is KB 40's
+withheld threshold - handing over for free what the raw arm spends a turn buying.
+The incoming `utilities/masked_threshold_gate.py` passes that text either way (its
+regex excludes bare "above" as too noisy to be useful), so it was fixed on the
+policy rather than on the detector. That gate now runs as step 5 of the model's
+`build.sh`.
+
+**Still not done: a re-run.** Nothing about the scores above should be quoted; the
+next round needs n>=3 per arm on the fixed harness.
