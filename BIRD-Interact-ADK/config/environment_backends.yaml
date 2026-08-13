@@ -239,3 +239,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Archeology Scan
+      households:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Households

@@ -532,3 +532,287 @@ start failing where a sub-1e-4 gap is the only thing between them and a pass, th
 exact comparison is measuring the grader rather than the semantic layer, and that is
 a good argument. `GRADING_AUDIT_PATH` makes counting it free and offline. Report it
 as a sensitivity number next to the headline, never inside it.
+`config/environment_backends.yaml` now carries the `cybermarket_pattern` domain
+entry pointing at `bird_atscale_models_catalog_main` / `Cybermarket Pattern`.
+
+---
+
+## households
+
+**2026-08-11 - initial build, prompt-only.** Generated from the BIRD-Interact
+`households` database by `households/generator/generate.py` in
+`AtScaleInc/bird-atscale-models` (spec -> emitter; the spec is `sql_spec.py` +
+`model_spec.py`). 89 published objects: 3 derived datasets, 10 dimensions (46
+attributes), 33 metrics, 10 `metric_calc`s, 1 model. `sml-cli validate` clean at
+repo root; committed and pushed to `main` as `c42421d`. **Not yet deployed**, so
+none of the four acceptance gates has run - `households/ACCEPTANCE.md` carries
+every gate with its source-of-truth value precomputed from Postgres, marked
+un-run.
+
+Answer-key firewall enforced mechanically rather than by intention:
+`generator/extract_brief.py` allowlists the permitted fields of the 29
+`households` tasks out of `bird_interact_data.jsonl`, then asserts on its own
+output that no denied key (`sol_sql`, `sql_snippet`, `test_cases`, `conditions`,
+`preprocess_sql`, `clean_up_sqls`) and no SQL-shaped text survived. Nothing else
+in the build opens the JSONL; the model was authored from
+`generator/task_brief.md` plus `households_kb.jsonl`, the schema file, and live
+profiling.
+
+Build decisions, each traceable to the knowledge base, the live schema, or
+observed engine behaviour:
+
+- **E-02.** All derived-dataset table references schema-qualified `public.<table>`.
+- **D-01.** No `|` character in any emitted SQL. The one place a concatenation
+  was needed (the infrastructure-configuration label) uses `concat(...)` rather
+  than `||`, since `||` is itself two pipe characters; the generator asserts no
+  `|` remains.
+- **Canonicalisation is the modelling job here.** Every text column in this
+  database is dirty in three independent ways at once - random case, leading and
+  trailing whitespace, interior whitespace runs including raw tabs - plus
+  genuine synonyms. Distinct values before and after normalisation: dwelling
+  class 116 -> 6 classes, tenure 84 -> 7, cable status 123 -> 2, newest vehicle
+  year 123 -> 9 bands, region code 106 -> 10 regions, income bracket 47 -> 12.
+  Grouping on a raw column shatters every "for each area" question, so each
+  grouping attribute ships canonicalised and its raw twin ships as
+  `... (As Recorded)` with a lead-with-the-warning description. The gap is large
+  enough to be worth measuring: `Region` = 'Taguatinga' is 266 households,
+  `Region Code (As Recorded)` = 'Taguatinga' is 214.
+- **One wide household fact.** `amenities` and `transportation_assets` carry a
+  UNIQUE constraint on their household FK and are exactly 1:1 with `households`
+  (1581 rows each, no orphans either way, verified live); `properties` covers
+  1577 of 1581 and is LEFT JOINed. Joining all of them into one 1581-row fact at
+  household grain gives every attribute a direct relationship to every
+  dimension, which pre-empts the whole conformance failure class. Eight of the
+  ten dimensions are consequently degenerate on that fact.
+- **KB formulas that are fully stated are precomputed:** Household Density
+  (KB 11), Infrastructure Quality Score (KB 13), Vehicle Ownership Index
+  (KB 14), Bathroom Ratio (KB 15), Dwelling Capacity (KB 17), Living Condition
+  Score (KB 20), Dwelling Type Score (KB 44).
+- **KB formulas whose numeric mapping or weights the KB never states are NOT
+  shipped:** Expenditure Ratio (KB 12, "divided by a numeric mapping of income
+  bracket"), Service Support Score (KB 16, "a weighted score"), Mobility Score
+  (KB 18, "a numeric mapping of the newest vehicle year"), Socioeconomic Index
+  (KB 19, "a weighted sum of income score, expenditure ratio, and tenure
+  score"). Each ships its components instead, and every component's description
+  names the concept it feeds and tells the agent to ask the user for the missing
+  mapping. Shipping them would have meant inventing a threshold nobody
+  authorised, under a name matching the question's own words.
+- **No Yes/No flag for any masked composite concept.** 28 of the 29 tasks turn
+  on a `knowledge_ambiguity` entry with `is_mask: true`; only `households_16`
+  (Income Classification) is `is_mask: false`. So no flag ships for Affluent
+  (KB 21), Urban (KB 22), Mobile (KB 23), Crowded (KB 25), Modern (KB 26),
+  Well-Equipped (KB 27), Economically Stable (KB 28), Comfortable Living
+  (KB 29), Self-Sufficient (KB 30), Compact (KB 39) or Economically Independent
+  (KB 42) households. Expect this to cost tasks; `ACCEPTANCE.md` records them as
+  capped so a score is read correctly.
+- **Income thresholds made expressible without inventing one.** KB 2 names
+  income classes 'Low Income' through 'Very High Income' and KB 21 defines
+  Affluent as 'High Income' or 'Very High Income', but the column stores R$
+  ranges and nothing maps the two. Rather than invent a cut-off, the Income
+  Bracket dimension ships `Income Bracket Rank` (1-12 by monetary amount) and
+  `Income Bracket Lower Bound` / `Upper Bound` in reais, so any threshold a user
+  names is expressible after asking. This also answers "the second-highest
+  bracket" directly.
+- **Group vs entity readings separated only where they diverge.** Average
+  Bathroom Ratio 0.6611 vs Bathrooms Per Resident (Pooled) 0.5519; Average
+  Household Density 1.3927 vs Residents Per Bedroom (Pooled) 1.2450 - both
+  shipped, named asymmetrically, each description naming the other. Where the
+  formula is linear in its components (Infrastructure Quality Score is a plain
+  mean of three terms; Living Condition Score is a 50/50 blend of two) the
+  pooled group formula is provably identical to the mean of entities, so only
+  one object ships. That is the Surface size rule applied: a variant only where
+  it is provably distinguishable.
+- **Missing-input policy handled by three-valued members, not policy twins.**
+  Where an input is absent the model ships an explicit member - Income Bracket
+  'Undisclosed' (110 households), Social Support Status 'Not enrolled' (8),
+  Dwelling Class 'Not recorded' (4), Newest Vehicle Year 'Undisclosed' (84),
+  Infrastructure Configuration 'Not recorded' (4) - so a caller can express
+  either the strict or the include-them reading by filtering, and neither
+  reading is unrecoverable. Coverage counts ship per formula (not per
+  component): Households With Bathroom Ratio 1577, With Household Density 1574,
+  With Infrastructure Data 1577, With Living Condition Score 1577.
+- **Three KB entries have no backing column at all**, verified against
+  `information_schema.columns`: Residential Zone Types (KB 34), Utility Access
+  Level (KB 35), Dwelling Condition Status (KB 38). The concepts built on them -
+  High-Mobility Urban Household (KB 40), Stable Infrastructure Household
+  (KB 41), Well-Maintained Dwelling (KB 43) - are therefore inexpressible here,
+  and the nearest available attributes say so instead of approximating. There is
+  likewise no floor-area or square-meter column anywhere, so a Space Bonus rule
+  stated in square meters per resident cannot be evaluated; the Dwelling
+  Capacity description says so rather than letting the agent substitute it.
+- **KB 45 (Urban Zone, `loczone = 1`) matches zero rows** - the 15 live zone
+  numbers run 121 to 414. It ships as `Urban Zone (Zone Number Equals 1)`, with
+  the qualifier in the name and a description that leads with "this returns
+  nothing" and redirects to the KB 22 infrastructure reading of urban. Shipped
+  rather than deleted because it is the knowledge base's own definition, but
+  named so it cannot quietly out-compete the right object.
+- **Two cable-availability readings.** KB 7 enumerates 'avail', 'available' and
+  'yes' as affirmative; the live data also carries 'y' and 'have' on 115
+  households. `Cable Status` (905 Available) takes all five tokens and
+  `Cable Status (Knowledge Base Tokens Only)` (790) takes the KB's three. The
+  two provably differ, so both ship, named asymmetrically.
+- **No precomputed rank columns - a deliberate deviation from the build prompt**,
+  reasoned in `ACCEPTANCE.md`. Every superlative question in this task set is
+  filtered, and a static global rank computed in dataset SQL is wrong under a
+  filter while being named in exactly the question's words. `ORDER BY <metric>
+  DESC LIMIT n` on the SQL interface is filter-correct. The tie structure that
+  would have decided a RANK/DENSE_RANK twin is recorded as capped instead:
+  Household Density has a two-way tie at 6.0 and a twelve-way tie at 5.0, and
+  Car Count a five-way tie at 5, so any `LIMIT 10` by density or unfiltered
+  "highest car count" has a non-unique expected answer.
+- **Withheld columns**, recorded so the omission is not read as an oversight:
+  `amenities.amenityref`, `properties.propref`,
+  `transportation_assets.transref`, `households.serviceplan` and
+  `service_types.serviceref` are surrogate row ids on 1:1 tables that no
+  question touches; the household is already identified by House Number.
+- **Hidden objects: none.** The Infrastructure leaf was initially a hidden
+  surrogate id (`infrastructure_ref`, 75 rows) per the "no leaf-grain
+  descriptive column" rule; profiling showed those 75 source rows are dirty
+  duplicates of only 7 real water/road/parking combinations, so the leaf is now
+  keyed on the canonical triple, has 8 browsable members, and answers a real
+  question. Nothing needs hiding.
+- **Surface size held down deliberately.** 89 published objects against the 162
+  that reached discovery parity and the 188 that exhausted per-task budget on
+  `cybermarket_pattern`. The multiplicative rules were treated as permissions,
+  not obligations: no rank twins, one water-access reading, one reading each for
+  the two linear composite scores.
+- **No median anywhere** - no KB definition in this database requires one, so
+  the MDX-Median workaround row is not exercised.
+
+Generator self-audit gates (all clean): duplicate labels and unique_names across
+every attribute and metric, `unique_name` differing from `label` on anything
+queryable, unreferenced datasets, metrics naming a column no dataset defines,
+dimensions referencing unknown levels, relationships whose `join_columns` count
+differs from the target level's `key_columns`, dangling cross-references between
+descriptions, non-ASCII in a description outside the model's own accented member
+values (Ceilândia, Guará, Candangolândia), SML length limits, `metric_calc`
+folder minimums, and 59 discoverability phrases taken verbatim from the tasks'
+own wordings - each must match at least one published description, checked by
+parsing the emitted YAML and normalising whitespace rather than grepping the raw
+file, because `safe_dump` folds long descriptions at column 100.
+
+All three derived datasets were dry-run directly against the warehouse before
+validate: 1581 / 122 / 13 rows as expected, every canonical CASE verified to
+have no unmatched value falling through to a default, and every knowledge-base
+formula spot-checked against hand-recomputed source values.
+
+`config/environment_backends.yaml` now carries a `households` domain entry
+pointing at `bird_atscale_models_catalog_main` / `Households`. That schema is the
+expected one by convention, **not** one read back from `list_models`, because the
+model is not deployed - a comment above the entry says so. Before the first run:
+deploy, confirm the schema and table against what `list_models` actually
+reports, and restart the services. `shared/environment_backends.py` caches this
+file in a module-level dict at first load, so a `--backend` flag will not pick up
+an edit; two full runs have previously been lost to a config that was already
+correct on disk.
+
+**2026-08-11 - all four acceptance gates run against the deployed model; all
+four pass.** Q-17b health gate passes (`list_models` succeeds and returns all 5
+models; `Households` reports 43 measures / 46 dimensions, matching the build).
+Catalog-suffix confirmed: the deployed schema is
+`bird_atscale_models_catalog_main`, which is what the config entry already named.
+Post-deploy MDX gate passes 10/10, including the two expressions that go beyond
+plain measure arithmetic - `Share Of Households Percent` sums to 100 across
+regions and `Infrastructure Score Range Across Regions` returns
+0.7916666666666665, so both the `[All]` member and the `ALLMEMBERS` set resolve
+correctly. Exactness exact-equal on every figure at full double precision, with
+two averages differing in the last double bit only (engine summation order, the
+same class recorded under `cybermarket_pattern`). Conformance 20/20, every
+grouping totalling exactly 1581. Discoverability: every question-style
+paraphrase surfaced its intended object, including all nine "cannot be answered
+here" redirects. Coverage 6/6. Group-vs-entity separation confirmed diverging on
+both pairs that should diverge. Full evidence in `households/ACCEPTANCE.md`.
+
+**One real defect, found by Gate 1i and fixed (`d6ff534`).** The five
+`... (As Recorded)` attributes were emitted through the whitespace-normalising
+helper rather than straight from the source, so they arrived half-cleaned:
+whitespace collapsed, case preserved. Live distinct-member counts were 64
+(tenure), 92 (dwelling class), 88 (cable status), 67 (newest vehicle year) and 12
+(income bracket) against the raw 84 / 116 / 123 / 122 / 46. Five descriptions
+therefore stated wrong spelling counts, and `Income Bracket (As Recorded)` had
+collapsed to 12 members - nearly the canonical 13, because those raw spellings
+differ only in whitespace and not in case - which made its "do not group on this"
+warning actively misleading: grouping on it gave the right groups rather than the
+fragmentation the description warned about. This was invisible to `sml-cli
+validate`, invisible to the other three gates, and invisible to every Gate 1
+total; it only shows up in a live distinct-member count, which is why Gate 1i
+exists. The canonical columns were never affected and every canonical figure is
+unchanged after the fix. **Requires a redeploy to go live** - until then the
+deployed model still carries the half-cleaned columns and the four wrong counts.
+Nothing a benchmark question targets is affected, since the questions group on
+the canonical attributes.
+
+**2026-08-12 - what the households evaluation actually measured, and one
+transferable lesson.** Five runs of the atscale arm after the config fix, all
+clean, all scoring 0.095 with sd 0.000 and passing the identical two tasks.
+Raw's three runs average 0.078 on the 20 shared query tasks (spread 0.050 to
+0.100). The +0.022 gap is under half the 0.049 run-to-run spread, so households
+supports no lift claim in either direction yet.
+
+The reason is the task set, not the model. Reading the gold SQL for every
+failing task (permitted for diagnosis; never folded back into the build)
+produced two defect families:
+
+- **The graded reference answers a different question than the one asked.** 12
+  of 21. households_1 asks for area code and average bathroom ratio and its gold
+  returns `SUM(Auto_Count)` for the top region; households_13 is
+  `output_type: table` asking for counts per area and its gold returns the
+  single top area by percentage; households_M_10 returns the *fifth* row via
+  `OFFSET 4 LIMIT 1`. The task's own `user_query_ambiguity` snippets agree with
+  the question text and disagree with the gold, which is the strongest evidence
+  available that the two halves of these records were generated from different
+  queries - `sol_sql` comes from BIRD's ground-truth file and the question and
+  ambiguity payloads from the public file, joined on `instance_id`.
+- **The gold filters on literals absent from the data**, so the graded answer is
+  degenerate. Every one of these matched 0 rows: `'More than R$ 4,400'`,
+  `'More than R$ 880 and less'`, the named income classes `'low income'` through
+  `'very high income'`, `roadsurface IN ('asphalt','concrete')` (actual value
+  `'Asphalt, concrete'`), `wateraccess IN ('yes','available at least in one
+  room')` (actual `'Yes, available at least in one room'`), and
+  `'2012 to 2013'`. Consequences, executed verbatim: households_7's correct
+  answer is **-151** (its Urban test can never fire, and gold subtracts Rural
+  from Urban), households_12's is **empty**, households_17's is **0**.
+
+A further 5 tasks are decided by string granularity rather than modelling: the
+gold filters dirty text at `LOWER()` or `TRIM(UPPER())`, which folds case but
+merges neither synonyms nor interior whitespace, while the canonical attributes
+merge all three and therefore select a larger population. households_4: gold's
+'apartment' is 222 properties and the canonical Apartment class is 255, so 86
+against 105.
+
+**The transferable lesson, and it is worth carrying to the other 19 databases:
+descriptions suppress reliably and promote unreliably.** The first fix shipped
+the recorded-value readings as secondary attributes whose descriptions opened
+with "WARNING - this is NOT the canonical" and closed with "Group on X
+instead". The next run scored 0.095 again - completely inert. The trajectories
+show why: the agent saw those attributes in `explore_columns` on every task that
+needed them (households_4's very first search returned
+`Dwelling Class (Recorded, Lower Case)` with its full description) and used the
+canonical attribute anyway, on all four tasks, spending its budget resubmitting
+the same wrong query. The build prompt already warns that a description cannot
+steer an agent *toward* an object; this is the same rule in reverse, and the
+reverse direction is the strong one. A warning in a description is a blunt,
+effective instrument - so do not point one at an object you actually want used.
+The only lever that moved behaviour was the name.
+
+Two defects found while checking the deployed name-swap, both invisible to
+`sml-cli validate` and to every acceptance gate:
+
+- **A silent-empty-result trap of my own making.** Prepending a granularity note
+  while preserving the original description text left canonical member values
+  documented on an attribute that no longer held them: Cable Status said
+  "'Available' (905 households)" while its members were all lower-cased. An
+  agent copying that literal filters on a value matching zero rows and gets an
+  empty result with no error. `check_swapped_descriptions.py` in the model repo
+  now gates the class by failing any quoted literal that case-insensitively
+  matches a real member but differs in case or whitespace.
+- **Cleanup scoped to the wrong dimension.** The redundant `(As Recorded)` twins
+  live on the Household dimension, not on the dimension being swapped, so six
+  of them survived pointing at the same column as the newly-bare level.
+
+Harness change from the same investigation: the Management-category (DDL/DML)
+exclusion applied only to non-raw backends, so the raw arm ran 29 households
+tasks against the atscale arm's 21 and 600 against 410 across the suite, which
+is what inflated raw's headline. `--exclude-management` now applies the
+identical predicate to the raw arm, results files record `exclude_management`
+and `task_count`, and `summarize_runs.py` shows the scope per run.
