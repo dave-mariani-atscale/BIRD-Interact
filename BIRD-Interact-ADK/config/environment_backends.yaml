@@ -288,3 +288,11 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Archeology Scan
+      crypto_exchange:
+        # Built and deployed 2026-08-14 through scripts/deploy_models.sh, which
+        # passes --catalog-name=..._main, so it lands in the same schema as the
+        # rest. 20 of its 30 tasks are Query-category and therefore eligible;
+        # the other 10 are Management (DDL/DML) and are filtered out.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Crypto Exchange
