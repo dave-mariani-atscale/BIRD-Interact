@@ -1,6 +1,7 @@
 # How BIRD-Interact grades a submission, and everything wrong with it
 
-Complete reference, written 2026-08-14. Supersedes `docs/bird-upstream-grading-plan.md`.
+Complete reference, written 2026-08-14. This is the single source for the
+benchmark's grading behaviour and its defects; nothing else in `docs/` restates it.
 
 Everything here was measured on **all 22 databases, 410 Query tasks, 820 graded
 phases**, using local Postgres and the graders' own code. **No API tokens, no

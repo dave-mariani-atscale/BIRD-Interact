@@ -1544,6 +1544,10 @@ controls.
 
 ### Order sensitivity swept across all 22 databases, 2026-08-14 — the bigger ceiling
 
+> Full write-up, including the grading pipeline itself and five further defects:
+> **`docs/bird-grading-comparison.md`**. The summary below is kept for the
+> chronology; that document is the reference.
+
 `conditions.order == true` makes the grader compare row by row. That is only
 answerable if gold's own `ORDER BY` **totally** orders its result. Measured, not
 parsed: every gold run twice, the second time with the planner pushed onto
