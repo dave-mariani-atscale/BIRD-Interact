@@ -1443,3 +1443,48 @@ Width` now ship as snapshot attributes beside the strength they feed.
 
 Both changes were checked against gold in Postgres before being made, and
 neither was measured — no run was spent.
+
+#### Reading the phase-2 halves, and re-grading `_2` — no runs
+
+`_2` **is winnable today, with no model change.** Graded its own rows offline
+against gold through `ex_base_external_pred`: ordered by `"Order"` it returns
+**1 under all four tie/decimal combinations**. The n2 submission lost it two
+ways, both agent-side — it ordered by fill rate descending where gold's physical
+order is by order id, and it added `AND "Order Fill Rate" IS NOT NULL` to tidy
+the output, which quietly dropped **9 of the 969** orders gold keeps. The second
+is addressable: `Order Fill Rate` now carries a **prohibition** against
+filtering the nulls away, with both row counts. Prohibitions are the one form of
+guidance that has measured as landing (violation rates ≤1.8% across 961 ETF
+submissions); prescriptions have not.
+
+`_12` phase 2 asks for "the account with the highest margin utilization — just
+show its ID" and gold answers with the **user** id; the submission answered with
+the balance-record id. `Account Balance` now says a bare "the account" is
+ambiguous between the record and its holder, gives both counts (1000 against
+201), and asks the agent to confirm.
+
+`_15` phase 2 **did not move** even with the confirm-which-population trigger now
+on both twins: it picked the all-orders share (0.21) where gold wants the
+share of orders carrying a liquidation price (100.00). The model holds both
+objects and names both; that is as far as the model can go.
+
+Two more tasks are gold-blocked, and both are new:
+
+- **`_4`'s two gold queries disagree with each other about one column.** Phase 1
+  selects `ab.marg_sum` and expects 321804.16; phase 2 selects
+  `ab.marg_sum::numeric` and expects 321804, with the utilization rounded to 6
+  places from the *truncated* denominator (13.216762 against the true
+  13.216755959782606). `conditions.decimal` is 6, so rounding does not reconcile
+  them. **M-31 traded phase 2 for phase 1** — before it the model matched
+  neither, because phase 1 failed first, so the fix is strictly better, but `_4`
+  cannot reach 1.00. Tracker B-29.
+- **`_16` phase 2 gold fans out on the market.** It joins orders to
+  `analyticsindicators` on `exchSpot = md_ref`, so every order becomes one row
+  per snapshot of its market with a different `large_order_ratio`, and the
+  reference CTE is itself multi-valued and `CROSS JOIN`ed. 993 rows out of 970
+  orders, including values well below the stated threshold. A model computing
+  Market Impact Cost once per order returns 476. Tracker B-30.
+
+`_20` phase 2 is closer than the string-aggregation cap suggested: the agent
+hardcoded the literal and got the right seven orders, losing only on rounding
+(72.65% against gold's 72.65246943576246%) and on gold's arbitrary row order.
