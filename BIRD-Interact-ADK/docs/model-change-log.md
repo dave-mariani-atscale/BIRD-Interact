@@ -1160,3 +1160,109 @@ Dialect inventory re-probed against the live engine 2026-08-14 and unchanged:
 `SQRT` all accepted; `CAST(x AS numeric(p,s))` returns a string. `POWER` and
 `CORR` being rejected is why the Pearson correlation ships as a `metric_calc`
 over precomputed sums rather than being left to the caller.
+
+### First measurement, 2026-08-14 — n=1 both arms, and what it found
+
+Baseline on the 20 Query tasks, flag set unchanged from the 2026-08-11
+re-baseline, Sonnet both arms: **atscale 0.255, raw 0.340 — lift −8.5 pp.** The
+semantic arm was *behind*, and the reason was one defect, not task difficulty.
+Cost $6.77 (atscale $3.80, raw $2.97; 87–92% of input tokens served from cache).
+Runs: `results/crypto_n1_atscale_20260814_084450.json`,
+`results/crypto_n1_raw_20260814_085602.json`.
+
+#### M-30 — one dimension, one join column, or attribute-only queries die
+
+`Market Snapshot` was joined from three datasets on **two different columns**:
+`cx_ds_market_snapshot` on `market_stats_id`, and `cx_ds_order` /
+`cx_ds_position_risk` on `latest_market_stats_id`, so that order and position
+measures could be sliced by market conditions. With two join roles on one
+dimension the planner cannot choose a path for a query that projects
+**attributes and no measure**, and every pairing of a Market Snapshot attribute
+with an attribute of any other dimension failed:
+
+    SELECT "Exchange Spot Market", "Snapshot Time" FROM model
+      -> Error during query planning: assertion failed:
+         No candidate paths found for an attribute
+    SELECT "Exchange Spot Market", "Snapshot Time", "Market Snapshot Count"
+      FROM model GROUP BY 1,2                                       -> fine
+
+**32 of 98 `run_query` calls in the atscale arm died this way**, and it burned
+the entire budget of `_1`, `_17` and `_19` — the agent bisecting its own
+projection column by column trying to find the bad name. There was no bad name.
+
+Every other dimension pair resolved. Market Snapshot was the only dimension
+joined on more than one column name.
+
+Fixed by dropping the two role joins. What they bought is preserved by
+denormalisation rather than a second join: `cx_ds_order` and
+`cx_ds_position_risk` already carry the market-condition columns of the market's
+latest snapshot. `Volatility Rating Used` is published on Position Risk And
+Margin for the same reason. Cost: order and position measures can no longer be
+sliced by Market Snapshot attributes, which now errors loudly naming both sides
+rather than answering.
+
+**Why the build gates missed it, and the gate that now catches it.** Acceptance
+Gate 2 asked "does measure M resolve by dimension D" for all 40 pairings — and a
+measure names the fact the planner routes through, so the measured form of the
+broken pairing passed. BIRD questions ask for identifiers and labels far more
+often than for aggregates. `scripts/dim_pair_probe.py` now probes every
+dimension pair **attribute-only**; run it post-deploy on every model. Tracker Q-27.
+
+#### M-31 — `real::numeric` truncates to six significant digits
+
+Postgres converts `float4` to `numeric` through `float4out` at `FLT_DIG=6`:
+
+    marg_sum            321804.16
+    marg_sum::numeric   321804
+
+The derived datasets cast every source column to `::numeric` for tidiness. On
+the 27 `real`-typed source columns that silently corrupted **941 of 1000 margin
+balances and 821 of 1000 realised PnL values**, and everything computed from
+one. Nothing errored; the values are plausible to the last surviving digit.
+
+Dropped the cast on all 27 (37 sites) — they are read as `double`, which is both
+what the column is and what a plain SQL reader of this warehouse gets. Verified
+against gold at value level: `crypto_exchange_2`'s fill rates now agree to the
+last digit (86.89062114355171, 77.1294880507704, 68.15908317592815), and `_4`'s
+margin balance and utilization match exactly (901343.56, 1.1975455807396416).
+
+**The exactness gate did not catch this because its Postgres reference queries
+used the same `::numeric` cast as the model — both sides were wrong in the same
+direction.** A reference query must read the source column raw. `COLUMNS` is now
+regenerated from a live `information_schema` probe rather than hand-declared.
+
+#### Not changed, and why
+
+- **Volatility rating has no documented column.** The column-meaning file calls
+  `vol_meter` a *volume*-intensity meter and `priceShiftDay` the day's price
+  shift; nothing in the schema is documented as volatility. Gold uses
+  `priceShiftDay`, the model uses `vol_meter`. Rebinding would not win either
+  task that turns on it (see below), so both descriptions now name the other and
+  ask the user to confirm, instead of the model silently picking.
+- **Share-of-orders ask trigger was on one twin only.** `High Liquidation Risk
+  Share Of All Orders` carried no confirm-which-population sentence while its
+  sibling did, and `_15` phase 2 reached for exactly that one. Same sentence on
+  both now — amending a trigger that already fires, not adding an ask.
+
+#### Gold-side findings — record these, do not model against them
+
+- **`_1` is non-deterministic.** Gold is `ORDER BY marketdata."TimeTrack" DESC
+  LIMIT 1`, and `TimeTrack` holds **one distinct value across all 605 rows**. The
+  expected answer (EX203) is whichever row the scan happened to return. No model
+  can reproduce it except by luck; raw scored 0.00 on it too.
+- **`_3` is non-deterministic the same way.** Gold takes one global volatility
+  via `ORDER BY marketstats."FundSpot" DESC LIMIT 1` — `FundSpot` is a timestamp,
+  many rows tie on the maximum, and the row it returned (EX127, −14.59%) belongs
+  to a market neither position trades on. The positions' own markets carry 12.41%
+  and 7.96%.
+- **`_17` and `_19` require literal strings gold never defines.** Phase 1 of each
+  is a single classification label — `'Normal Market Conditions'`, `'Normal
+  Market'`. KB 16 and KB 12 define the *thresholds* (both of which the model
+  computes correctly) but name no output wording.
+- **`_19` gold contradicts its own KB.** KB 12 defines Arbitrage Window on the
+  Arbitrage-Potential Score, and KB 3 defines APS as a four-term sum. Gold tests
+  `arbitrage_pct` alone. The model follows the KB.
+- **`_5` cannot be reproduced by any semantic layer.** Gold sums a `real` column,
+  so its total carries float32 accumulation error (24503744.0). The engine emits
+  `SUM(CAST(x AS FLOAT8))` — read from the dispatched SQL, not inferred — so the
+  model returns 24503748.29. Correct arithmetic, ungradable answer.
