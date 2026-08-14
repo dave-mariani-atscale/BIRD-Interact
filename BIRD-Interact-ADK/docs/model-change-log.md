@@ -1002,3 +1002,15 @@ teaching the replacement, and this is the second time a description change has t
 failure mode for another (M-26 traded a wasted ask for an occasional failed submit). A
 future edit that discourages a column should check that the agent picks up the
 alternative, not just that it drops the wrong one.
+
+### Correction to the B-25 figures above, 2026-08-13
+
+Entries above quote "a 19-task arm that last totalled about 9.10". That conflated two
+runs: **9.10 was `rebase0810_atscale_r1` on 2026-08-10**, the last arm before the damage;
+the arm immediately preceding the fix (`guidance0813_atscale_r1`) totalled **7.40**.
+
+Measured in a full arm after the fix: **`postb25_atscale_r1` = 9.70 / 19** (avg 0.5105,
+$4.26) — the highest atscale total on record. Against the damaged arm that is **+2.30**,
+of which `etf_2` +1.0 and `etf_4` +1.0 are B-25's fix landing as predicted, `etf_3` +1.0
+is a separate name-column choice (B-13), and `etf_5` −0.7 is run-to-run variance. B-25's
+own contribution is +2.0, matching the +1.94 the 5-repeat validation estimated.
