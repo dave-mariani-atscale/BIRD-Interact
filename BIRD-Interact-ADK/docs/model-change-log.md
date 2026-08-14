@@ -1541,3 +1541,67 @@ precision ceiling is 0–2 tasks and can be ignored. **`archeology_scan` is the
 exception at 4 of 10**, and its recorded scores should be read with that in
 mind: roughly 40% of its tasks are capped by arithmetic no semantic layer
 controls.
+
+### Order sensitivity swept across all 22 databases, 2026-08-14 — the bigger ceiling
+
+`conditions.order == true` makes the grader compare row by row. That is only
+answerable if gold's own `ORDER BY` **totally** orders its result. Measured, not
+parsed: every gold run twice, the second time with the planner pushed onto
+different physical operators (`enable_seqscan/hashjoin/nestloop/hashagg = off`),
+compared after the grader's own rounding, and counted only where the row
+*content* was identical — so a content difference cannot masquerade as an order
+difference.
+
+**438 phases are graded order-sensitively. In 78 of them — 65 tasks, 15.9% of
+all Query tasks — the order moved.** Lower bound: a tie both plans happen to
+emit identically is not caught.
+
+| database | tasks | order-loose | float32 (E-04) | either |
+|---|---|---|---|---|
+| **archeology_scan** | 10 | **8** | 4 | **9** |
+| hulushows | 20 | 9 | 0 | 9 |
+| fake_account | 24 | 7 | 0 | 7 |
+| organ_transplant | 19 | 5 | 0 | 5 |
+| labor_certification_applications | 19 | 4 | 0 | 4 |
+| mental_health / sports_events | 20 / 20 | 4 / 4 | 0 | 4 / 4 |
+| exchange_traded_funds | 19 | 3 | 0 | 3 |
+| crypto_exchange | 20 | 2 (`_6`, `_10`) | 2 (`_5`, `_10`) | 3 |
+| cybermarket_pattern | 20 | 2 | 0 | 2 |
+| solar_panel | 20 | 1 | 1 | 2 |
+| households | 21 | 1 | 0 | 1 |
+
+In 57 of the 65, **more than 5% of rows move**, which makes matching a lottery
+rather than a near miss — `crypto_exchange_10` phase 2 displaces 1627 of 2558
+rows, `hulushows_16` 998 of 1000, `archeology_scan_6` 894 of 900. The remaining
+8 move ≤5% and could plausibly coincide.
+
+**This is not model-fixable and it is bigger than every engine defect found so
+far.** No model object can reproduce another query's physical row order. The
+agent can produce exactly the right rows and still fail, and the failure reads
+as a value error — which is how `_6` was misdiagnosed twice today, first as a
+missing percentile and then as E-05.
+
+The practical hit rate is lower than 15.9%, because an agent's own query
+sometimes coincides with gold's physical order: `crypto_exchange_2` passes with
+`ORDER BY "Order"` against a gold that carries no `ORDER BY` at all. Tracker
+**B-31**.
+
+**Mitigation is a grading decision, not a model one** — comparing
+order-insensitively wherever gold carries no total order. That is re-gradable
+offline for nothing (`scripts/regrade_flags.py`), so it can be quantified before
+anyone argues about it.
+
+### Combined structural ceiling per deployed model
+
+Union of the two exposures, as a share of each database's Query tasks:
+
+    archeology_scan                    9 of 10 at risk   ceiling ~10%
+    labor_certification_applications   4 of 19           ceiling ~79%
+    exchange_traded_funds              3 of 19           ceiling ~84%
+    crypto_exchange                    3 of 20           ceiling ~85%
+    solar_panel                        2 of 20           ceiling ~90%
+    cybermarket_pattern                2 of 20           ceiling ~90%
+    households                         1 of 21           ceiling ~95%
+
+`archeology_scan` is not a hard database — it is a **structurally ungradable**
+one, and its recorded scores should never have been read as a model verdict.
