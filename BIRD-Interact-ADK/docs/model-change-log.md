@@ -1409,3 +1409,37 @@ enough to keep unconditionally.
 
 A negative result is worth the ten minutes it cost. It eliminated the
 possibility that four other models were silently broken the same way.
+
+#### Two more gaps closed from reading the failures, neither re-run
+
+**`_11`: the KB's "margin account balance" has two candidate columns, and only
+one shipped.** KB 7 divides initial margin required by a "margin account
+balance". `accountbalances` documents `marg_sum` as the *margin allocated sum*
+and `AVAIL_SUM` as the *available balance amount*; neither is named what the
+formula names, and over the 15 position-account pairings they average **51.65
+and 35.04**. The model published only the `marg_sum` reading, so a question
+meaning the other had no object at all — and gold means the other. Both now ship
+with the basis in the name, each pointing at the other and asking the user to
+confirm, the same shape `Effective Leverage` already used for its two leverage
+columns. The user simulator independently corroborated the available-balance
+reading in `_12`, where the agent divided by Available Balance and passed.
+
+**It still does not win `_11`, and the reason is E-04 again.** Gold writes
+`(...->>'initial_margin_pct')::REAL`, so its average is 35.04369060198466; the
+same expression in numeric or float8 — which is what the model computes — gives
+35.043690212105275. Verified in Postgres, all three variants side by side. The
+addition closes a real modelling hole and is worth keeping on its own merits;
+it is not scored as a task fix. 6 of the 20 golds carry a `::REAL` cast, but it
+only bites when the answer needs more than float32 precision: `_13` and `_14`
+carry 11 and 6 casts and both score 1.00.
+
+**`_9`: the strength shipped, its workings did not.** The task asks for the RSI
+value, the Bollinger band width, the meter direction and the computed strength,
+one row per snapshot. `Technical Signal Strength` was published but its three
+inputs existed only as `Average ...` metrics, so the per-row workings could not
+be projected — the agent put the snapshot id where the missing MACD column
+belonged and lost the shape. `RSI 14`, `MACD Histogram` and `Bollinger Band
+Width` now ship as snapshot attributes beside the strength they feed.
+
+Both changes were checked against gold in Postgres before being made, and
+neither was measured — no run was spent.
