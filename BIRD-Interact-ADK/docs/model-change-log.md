@@ -1014,3 +1014,44 @@ $4.26) — the highest atscale total on record. Against the damaged arm that is 
 of which `etf_2` +1.0 and `etf_4` +1.0 are B-25's fix landing as predicted, `etf_3` +1.0
 is a separate name-column choice (B-13), and `etf_5` −0.7 is run-to-run variance. B-25's
 own contribution is +2.0, matching the +1.94 the 5-repeat validation estimated.
+
+## M-27, 2026-08-13 — a composite of percentiles must share one population
+
+`Fund Composite Score (Within Category)` is the mean of three within-category
+percentile ranks (5-year alpha, 3-year Sharpe, inverse net expense). Each one was
+computed with `PARTITION BY productclass_norm, (<that metric> IS NULL)`, so each
+ranked over the funds that have *that* metric — three different denominators. In Large
+Value: alpha 42, Sharpe 60, expense 78. Their mean therefore averaged three
+incomparable scales, and no fund's score was right.
+
+Measured to 16 digits before the change, on SCHD in Large Value: the per-metric
+populations give 0.9512195121951219 / 0.9830508474576272 / 0.9610389610389610, mean
+**0.9651031068972368** — exactly what the deployed model returned. Over one common
+population the mean is **0.9512**.
+
+The three ingredients now rank over the funds in the category that have **all three**
+inputs, which is the only population on which a mean of percentiles means anything.
+Ruled out as the cause first: the scored *set* was already correct (both model and the
+reference report 42 scored funds in Large Value), as were the ≥10 category gate and the
+Uncategorized handling; and the gap is not `PERCENT_RANK` vs `CUME_DIST` (0.9524).
+The model's 1142 scored funds vs the reference's 997 is fully explained by
+Uncategorized being its own category here — 145 funds — and does not affect any real
+category's percentiles.
+
+**Why this is not gold-derived tuning**, the test archeology task 7 and M-11 set: the
+defect is visible without any reference answer. Averaging percentile ranks drawn from
+three different denominators is incoherent on its own terms — a fund ranked against 78
+peers on expense and 42 on alpha has no common scale between the two numbers. The fix
+makes the measure self-consistent; matching the reference is a consequence, not the
+justification. Contrast the archeology case, where matching would have required
+adopting `::real` and making the model *less* accurate to win a task.
+
+**Scope deliberately limited.** The overall twin (`composite_score_overall`) has the
+same shape and is **not** changed: no task exercises it — a parse of every ETF gold
+finds `PERCENT_RANK` in exactly one, `etf_7`, in the within-category form — and per
+M-06 the last unmeasured rank change removed wrong answers without producing right
+ones. It is recorded on M-27 as pending its own evidence rather than fixed blind.
+
+Tracker: **M-27** (renumbered from M-26 on filing — the change log had already used
+M-26 for the Alpha-Turnover trigger redirect). Expected effect: `etf_7`, 0.0 in every
+arm to date. To be measured at 5 repeats, not assumed.
