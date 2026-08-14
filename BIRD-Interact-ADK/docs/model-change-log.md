@@ -1055,3 +1055,26 @@ ones. It is recorded on M-27 as pending its own evidence rather than fixed blind
 Tracker: **M-27** (renumbered from M-26 on filing — the change log had already used
 M-26 for the Alpha-Turnover trigger redirect). Expected effect: `etf_7`, 0.0 in every
 arm to date. To be measured at 5 repeats, not assumed.
+
+### M-27 measured, same day
+
+5 repeats of `etf_7`, Sonnet, $1.99: **0.00 × 5, unchanged**. The fix is nonetheless
+correct and *sufficient*, which the agent's own submission proves — take its final query
+and swap the gate from `Fund Category Scored Fund Count` to `Fund Category Fund Count`
+and it returns gold's 53 rows and the identical (category, fund) set; as submitted it
+returns 37. Nothing about the score or the rank is wrong any more.
+
+The whole remaining gap is **which population the "enough funds" gate counts**, and the
+cause is the agent's question framing rather than the model. It asked "what minimum
+number of *scoreable* funds should a category have", presupposing the population instead
+of offering both, and the simulator ratified the premise. In the pre-fix run the agent
+asked the genuine two-option version and gated on all funds — correctly. So the
+description that tells the agent to confirm which population is doing its job whenever
+the question is actually asked open.
+
+**This is the third time the pattern has run** (M-06, M-26, now M-27): a model defect is
+found, fixed, verified against the reference — and the task does not move, because the
+agent's choice one layer up is the binding constraint. The lesson is not to stop fixing
+model defects; it is that a model fix should be scored as *removing a known-wrong
+answer*, and its task-level payoff predicted at zero unless something separately shows
+the agent will make the remaining choices correctly. Budget model work on that basis.
