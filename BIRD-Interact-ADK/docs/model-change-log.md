@@ -1379,3 +1379,33 @@ gold has no `ORDER BY` past the spread, so the three snapshots tied at
 The attribute stays — it closes a real hole in the model, and it is the reading
 a snapshot-grain question means — but it is not scored as a fix, and no run was
 spent on it.
+
+#### Q-27 swept across the other models — nothing else is affected
+
+The multi-role join that broke crypto_exchange is detectable statically, without
+touching the engine: parse each model's `relationships` and flag any dimension
+reached by more than one distinct `join_columns` tuple.
+
+    archeology_scan                   Site: zoneref / zoneregistry
+    exchange_traded_funds             Fund: fundlink / instrumentref /
+                                            portfolioref / productlink / tickersym
+                                      Family: familylink / familyref
+    solar_panel                       plant_record: 5 column names, but only one
+                                                    joined dimension, so no pairs
+    crypto_exchange, cybermarket_pattern, households,
+    labor_certification_applications  single-role throughout
+
+**Then probed live, and they are fine.** `Fund × Family`, `Fund × Category`,
+`Fund × Security`, `Fund × Year`, `Family × Category`, `Site Name × Equipment`
+and `Site Name × Scan ID` all return rows attribute-only. So two join column
+names on one dimension is **not** sufficient to trigger Q-27, and no recorded
+ETF or archeology number is affected — no rework.
+
+What was different in crypto_exchange is that the multi-role dimension's own
+source dataset is *also* a fact carrying measures. Not characterised further:
+the exact rule is the engine's to define, and the model-side discipline — one
+join column per dimension, denormalise instead of adding a role — is cheap
+enough to keep unconditionally.
+
+A negative result is worth the ten minutes it cost. It eliminated the
+possibility that four other models were silently broken the same way.
