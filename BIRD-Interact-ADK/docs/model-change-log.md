@@ -1488,3 +1488,56 @@ Two more tasks are gold-blocked, and both are new:
 `_20` phase 2 is closer than the string-aggregation cap suggested: the agent
 hardcoded the literal and got the right seven orders, losing only on rounding
 (72.65% against gold's 72.65246943576246%) and on gold's arbitrary row order.
+
+### Precision exposure swept across all 22 databases, 2026-08-14 — and two of my own calls corrected
+
+410 Query tasks, 820 graded phases. Every gold executed on a disposable copy of
+its template, then re-executed with its `real` columns widened to `float8`, and
+the two compared **after the grader's own rounding**. Free; no runs.
+
+| exposure | tasks | share |
+|---|---|---|
+| **E-05** — numeric rendered as a double | **0** | 0% |
+| **E-04** — float32 arithmetic surviving the rounding | **11** | 2.7% |
+
+**E-05 does not exist. I filed it this morning and it was wrong.** The mechanism
+is real — the layer returns an IEEE double where gold holds a Postgres `numeric`
+— but the grader rounds *both* sides before comparing, and
+`resolve_decimal_places` falls back to **2** when a task says `decimal: -1`,
+which absorbs any difference below the second decimal. My evidence had been a
+raw `canonical_cell` diff that skipped the rounding the grader actually applies.
+
+That changes `_6`'s diagnosis: under the grader's rounding its rows match gold as
+a **multiset, exactly**. What fails is row order — `conditions.order` is true,
+gold has no `ORDER BY` past the spread, and **401 of 1000 rows sit in ties**. So
+`_6` belongs to the B-27 non-deterministic-gold family, and the percentile
+population added earlier was *necessary after all*: without it the multiset did
+not match either.
+
+**`_11` is winnable, and I said the opposite.** Graded against gold, the new
+`Average Margin Utilization (Available Balance Basis)` returns **1** — 35.043690
+against gold's 35.043691, absorbed at 2 decimal places. The `::REAL` downcast I
+blamed does not survive rounding. That makes the margin-balance twin the second
+scored model fix of the day, not a correctness-only change.
+
+**E-04 is real but rare, and a `::REAL` cast is not the test.** It bites only
+when the float32 result crosses the rounding boundary. Confirmed, all run-to-run
+stable, two hand-verified:
+
+    archeology_scan   _1 _6 _7 _8     4 of 10 tasks - by far the worst exposed
+    crypto_exchange   _5 _10
+    polar_equipment   _4 _9
+    disaster_relief   _4
+    planets_data      _5
+    solar_panel       _2
+
+`polar_equipment_4` sums to 128608.00 in float32 and 128607.80 in float64;
+`archeology_scan_1` phase 2 differs on 2 of 597 rows at the second decimal
+(43.87 against 43.88). Against that, `crypto_exchange_13` and `_14` carry 11 and
+6 `::REAL` casts and both score **1.00**.
+
+**Read this as a ceiling, not a defect list.** For 21 of 22 databases the
+precision ceiling is 0–2 tasks and can be ignored. **`archeology_scan` is the
+exception at 4 of 10**, and its recorded scores should be read with that in
+mind: roughly 40% of its tasks are capped by arithmetic no semantic layer
+controls.
