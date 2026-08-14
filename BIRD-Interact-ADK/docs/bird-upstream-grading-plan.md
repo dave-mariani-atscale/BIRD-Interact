@@ -59,6 +59,32 @@ And `conditions["distinct"]` is **never read** — not in this repo, not upstrea
 It is dead metadata in both. So is `remove_order_by`, defined at
 `eval_bird_interact.py:183` and called from nowhere.
 
+**Upstream reads exactly one of the three condition fields.** `conditions` ships
+`{decimal, distinct, order}` on every task, and `eval_bird_interact.py` reads
+only `order` (line 245). `distinct` is never read. `decimal` is never read
+either — `preprocess_results(predicted_res)` is called with no argument, so the
+default `decimal_places=2` applies to every task in the benchmark regardless of
+what the task declared.
+
+Measured: **141 of 820 phases declare a `decimal` other than 2 or -1**, and on
+**110 of them gold's own values actually differ** between rounding to the
+declared precision and rounding to 2. So this is not a hypothetical. It is
+concentrated in databases we have not run yet — `fake_account` 25 phases,
+`organ_transplant` 17, `planets_data` 15 — with only 29 across all seven
+databases we have deployed models for.
+
+This repo *does* honour `decimal` (`resolve_decimal_places`, behind
+`GRADING_HONOR_DECIMAL`, on in `.env`). That is a deviation, but a defensible
+one: `remove_round` strips gold's own `ROUND()`, destroying the precision the
+question asked for, and `decimal` is the dataset's way of restoring it. Upstream
+strips the `ROUND()` and then ignores the field that would have restored it.
+
+**Defect E is therefore: wire up the fields the dataset already carries, or
+delete them.** Reading `decimal` in `preprocess_results` is a one-line change and
+makes grading match what each task actually asks for. `distinct` needs the same
+decision — honour it, or remove it from the dataset so nobody assumes it does
+something.
+
 **The ordered branch assumes gold totally orders its own result.** It does not.
 That is defect A.
 
@@ -275,6 +301,7 @@ carrying a mechanism-grade repro rather than a score:
 | C2 | intra-task column consistency | `crypto_exchange_4`'s two golds side by side |
 | C4 | KB entries should name their output labels | `crypto_exchange_17` / `_19` against KB 16 / KB 12 |
 | D | compare unordered results as multisets, and either honour `conditions.distinct` or drop it | `eval_bird_interact.py:250`, plus the 15/30/75-row demonstration above |
+| E | read `conditions.decimal` in `preprocess_results`, or remove the field | 141 phases declare it, 110 change gold's values; `eval_bird_interact.py:32` and 245 |
 
 Every claim in §1 has been checked against upstream's own evaluator, which is
 checked out at `/Users/dianne/go/src/github.com/BIRD-Interact/`. The `set()`
