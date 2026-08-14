@@ -14,10 +14,10 @@ invisible in a score: the failure reads as a wrong value.
 ## 1. What grading actually does
 
 Per task, `conditions = {decimal, distinct, order}` drives a four-step pipeline.
-References are to this repo (`shared/db_utils.py`); the ADK mirrors upstream's
-`evaluation/src/eval_bird_interact.py` where the comments say so, but **nobody
-here has read upstream's evaluator recently — confirm each behaviour against it
-before filing.**
+References are to this repo (`shared/db_utils.py`) and to **upstream's own
+evaluator**, `evaluation/src/eval_bird_interact.py`, which is checked out one
+level up at `/Users/dianne/go/src/github.com/BIRD-Interact/`. Every behaviour
+below was read in both and matches unless noted.
 
 1. **Clean gold** — `remove_comments` → `remove_distinct` → `remove_round`
    (`ex_base_external_pred`, ~line 845). Upstream does this too. Stripping
@@ -25,19 +25,39 @@ before filing.**
    *manufactured* by sorting on rounded values.
 2. **Execute both sides** on the same database.
 3. **Round both sides** to `resolve_decimal_places(conditions)` — the task's
-   `decimal`, or **2** when it says `-1`. So a difference below the second
-   decimal is invisible to grading.
+   `decimal`, or **2** when it says `-1`. Upstream is simpler and always rounds
+   to 2 (`preprocess_results(results, decimal_places=2)`, called with no
+   argument), so honouring `decimal` at all is an ADK deviation. Either way, a
+   difference below the second decimal is invisible to grading.
 4. **Compare** (`_compare_rows`):
    - `order: true` → **exact list equality**, row by row.
    - `order: false` → `set(pred) == set(gt)`.
 
 Two things in step 4 deserve upstream attention on their own.
 
-**The unordered branch uses `set()`, not a multiset.** A prediction returning a
-row five times compares equal to one returning it once. `distinct` is carried as
-a separate condition but plays no part in the comparison. Worth checking whether
-upstream has the same shape; if it does, it is a silent correctness hole in
-every `order: false` task.
+**The unordered branch uses `set()`, not a multiset — confirmed upstream.**
+`eval_bird_interact.py:250` is `return 1 if set(predicted_res) == set(ground_res)
+else 0`, character-for-character the same decision this repo makes. A prediction
+returning every gold row five times grades as **correct**. Demonstrated against
+`crypto_exchange_4` (15 gold rows, `order: false`) through the real grader:
+
+    exact gold rows        15 rows -> 1
+    every row duplicated   30 rows -> 1
+    every row x5           75 rows -> 1
+    one row only            1 row  -> 0
+
+So it is not that anything passes — dropping rows is caught. It is specifically
+**multiplicity that is ignored**, on every `order: false` task in the benchmark.
+
+Worse, the two halves of the pipeline pull against each other. Upstream strips
+the `DISTINCT` keyword from *both* queries (`remove_distinct`, called on pred and
+sol at lines 260–262), which **manufactures** duplicate rows, and then compares
+with `set()`, which **erases** them. A task whose whole point is de-duplication
+cannot be failed on it.
+
+And `conditions["distinct"]` is **never read** — not in this repo, not upstream.
+It is dead metadata in both. So is `remove_order_by`, defined at
+`eval_bird_interact.py:183` and called from nowhere.
 
 **The ordered branch assumes gold totally orders its own result.** It does not.
 That is defect A.
@@ -254,10 +274,15 @@ carrying a mechanism-grade repro rather than a score:
 | C1 | extend the lint to `LIMIT` | `crypto_exchange_1`: `SELECT count(*), count(DISTINCT "TimeTrack") FROM marketdata` → `605, 1` |
 | C2 | intra-task column consistency | `crypto_exchange_4`'s two golds side by side |
 | C4 | KB entries should name their output labels | `crypto_exchange_17` / `_19` against KB 16 / KB 12 |
+| D | compare unordered results as multisets, and either honour `conditions.distinct` or drop it | `eval_bird_interact.py:250`, plus the 15/30/75-row demonstration above |
 
-Check each claim against upstream's own evaluator before filing — the pipeline
-described in §1 is **this repo's**, and the `set()`-vs-multiset point in
-particular needs confirming there before it is worth raising.
+Every claim in §1 has been checked against upstream's own evaluator, which is
+checked out at `/Users/dianne/go/src/github.com/BIRD-Interact/`. The `set()`
+comparison, the unconditional `remove_distinct` on both sides, the unread
+`conditions["distinct"]` and the uncalled `remove_order_by` are all upstream
+behaviour, not ADK deviations — cite the line numbers when filing. The one ADK
+deviation in the pipeline is honouring `conditions.decimal`; upstream always
+rounds to 2.
 
 ### Step 4 — only then, if a number is wanted
 
