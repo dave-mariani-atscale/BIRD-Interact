@@ -1266,3 +1266,54 @@ regenerated from a live `information_schema` probe rather than hand-declared.
   so its total carries float32 accumulation error (24503744.0). The engine emits
   `SUM(CAST(x AS FLOAT8))` — read from the dispatched SQL, not inferred — so the
   model returns 24503748.29. Correct arithmetic, ungradable answer.
+
+#### M-30 and M-31 measured, same day
+
+`results/crypto_n2_atscale_20260814_093712.json`, atscale arm only — nothing in
+the change set touches the raw arm, so lift is computed against the same
+`crypto_n1_raw_20260814_085602.json` on the same 20 tasks.
+
+| | n1 | n2 |
+|---|---|---|
+| atscale average reward | 0.255 | **0.410** |
+| lift vs raw 0.340 | −8.5 pp | **+7.0 pp** (relative +20.6%) |
+| phase 1 passes | 6/20 | 10/20 |
+| `No candidate paths` | **32 of 98** `run_query` | **0 of 62** |
+| arm cost | $3.80 | $3.16 |
+
+The mechanism is confirmed directly: the assertion is gone, and the 36 wasted
+queries with it. Four tasks moved, all of them tasks the assertion had been
+eating: `_17` 0.00 → **1.00**, `_19` 0.00 → 0.70, `_4` 0.00 → 0.70, `_12`
+0.00 → 0.70. Canaries `_8`, `_13`, `_14` (1.00) and `_20` (0.70) all held, which
+matters because M-31 changed the value of every balance, execution and fee
+figure in the model.
+
+**Predicted 0.30–0.36 and it came in at 0.410, because two of the "gold-blocked"
+calls were wrong.** Corrections, both recorded on tracker B-28:
+
+- **`_17` and `_19` were not label-blocked.** Told to expect failure because the
+  KB defines the threshold but no output wording, both instead passed phase 1:
+  the agent asked the user what columns the answer should contain and then wrote
+  the labels itself — `CASE WHEN "Liquidity Crisis" = 'Yes' THEN 'Liquidity
+  Crisis' ELSE 'Normal Market Conditions' END`. An unspecified literal is
+  reachable when the agent has budget left to ask. In n1 it never had any,
+  because the assertion had spent it.
+- **`_12` is not capped by the mask.** The masked Margin Call Risk threshold
+  came back from the user simulator on a direct ask, and phase 1 passed. The
+  firewall stops the *model* shipping a threshold; it does not stop the agent
+  asking for one. Read "masked" as "costs an ask", not as "unwinnable" —
+  `_10` and `_13` should be re-read the same way.
+
+Held as predicted: `_4` 0.00 → 0.70 exactly as the offline replay said it would;
+`_1`, `_2`, `_3`, `_5`, `_6` all still 0.00 for the reasons above.
+
+**`_15` did not move** (0.70, phase 2 still wrong). Putting the
+confirm-which-population trigger on the second twin bought nothing — the
+guidance prior holds: a prescription lands rarely, and this was one more instance.
+
+**What generalises.** The standing prior is "a model fix moves nothing" — 3 for 3
+on ETF. That prior was measured on fixes that corrected a *value*, where the
+agent's next choice up the stack became binding. M-30 is a different kind of
+fix: it removed a hard error the agent had no way to diagnose, and it returned
+the budget the error was consuming. Those pay. The distinction to carry forward
+is whether the defect costs the agent *turns*, not whether it costs correctness.
