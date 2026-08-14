@@ -93,6 +93,34 @@ Two gotchas worth carrying:
 
 ---
 
+
+### 2026-08-14 — the same `real::numeric` truncation crypto_exchange had (M-31)
+
+Found by sweeping every generated model after crypto_exchange M-31, not by a
+cybermarket run. `PriceAmt`, `ThreatIntelIndex` and `TraceScore` are `real`, and
+Postgres converts float4 to numeric through `float4out` at `FLT_DIG=6`, so
+`real::numeric` truncates to six significant digits — `232.59462` became
+`232.595`. **973 of 1000 `PriceAmt` values and 943 of 1000 `ThreatIntelIndex`
+values were affected.**
+
+Worse here than in crypto_exchange, because the usage was **mixed inside one
+dataset**: `sold_unit_price` was published from the raw column while
+`sold_line_value_usd` was computed from the truncated one, so unit price ×
+quantity did not equal the line value in the model's own rows. Same shape for
+`threat_intel_index` against the KB 7 Threat Handling Rate ratio.
+
+Casts dropped on those three; `AnonLevel` keeps its own, being TEXT, where
+`::numeric` is the correct and lossless conversion. Verified after redeploy —
+`Sold Line Value USD Total` is now 7788131.640065193, matching Postgres exactly,
+where the truncated model returned 7788132.4030.
+
+**Any cybermarket number recorded before 2026-08-14 was measured against
+truncated prices.** The aggregate error is small (76 cents in $7.8M) but 973 of
+1000 individual rows were wrong, and per-row values are what the tasks ask for.
+
+Swept clean at the same time: `archeology_scan` (no cast on any of its four
+float columns), `exchange_traded_funds`, `households`,
+`labor_certification_applications` and `solar_panel` (no `::numeric` at all).
 ## archeology_scan
 
 **2026-08-11 - initial build from `create_bird_model_prompt.v2.md`, prompt-only.**
@@ -1317,3 +1345,37 @@ agent's next choice up the stack became binding. M-30 is a different kind of
 fix: it removed a hard error the agent had no way to diagnose, and it returned
 the budget the error was consuming. Those pay. The distinction to carry forward
 is whether the defect costs the agent *turns*, not whether it costs correctness.
+
+#### `_6` — the missing percentile population, and why it still does not win
+
+The model published a percentile of Spread Percentage over the 605 **markets**
+and one over the snapshots sharing a sentiment, but not the plain rank over all
+1000 **snapshots**, which is what a question working at snapshot grain means. A
+market's spread is fixed, so the two are different numbers: the second-widest
+spread ranks 0.9983443708609272 over markets and 0.996996996996997 over
+snapshots. Added as `Spread Percentage Percentile Rank (All Snapshots)`, with
+all three cross-referencing each other and carrying the population in the name.
+
+**Necessary, not sufficient — proved offline before spending anything.** Taking
+`_6`'s own n1 submission, swapping in the new column and running it through the
+real grader (`ex_base_external_pred`) returns **0**, with all 1000 rows
+differing. The percentile now matches. What does not is the rendering:
+
+    model      0.19402062638484815
+    postgres   0.19402062638484815200
+
+Gold's spread arithmetic stays in Postgres `numeric` and keeps 18+ significant
+digits; the semantic layer returns an IEEE double. With `decimal: -1` and tie
+tolerance off the grader canonicalises cells to text, so they never compare
+equal. No model change reaches this — filed as **E-05**. It only bites when
+gold's expression stays in `numeric`: a gold column computed with any `real` or
+`double` operand renders identically and matches, which is why `_2` and `_4`
+were winnable and `_6` is not.
+
+`_6` also carries a second, independent blocker: `conditions.order` is true and
+gold has no `ORDER BY` past the spread, so the three snapshots tied at
+0.192805848617617352 come back in an arbitrary order that must be matched.
+
+The attribute stays — it closes a real hole in the model, and it is the reading
+a snapshot-grain question means — but it is not scored as a fix, and no run was
+spent on it.
