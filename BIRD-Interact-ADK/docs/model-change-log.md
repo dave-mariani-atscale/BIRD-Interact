@@ -1552,19 +1552,26 @@ compared after the grader's own rounding, and counted only where the row
 *content* was identical — so a content difference cannot masquerade as an order
 difference.
 
-**438 phases are graded order-sensitively. In 78 of them — 65 tasks, 15.9% of
+**438 phases are graded order-sensitively. In 68 of them — 57 tasks, 13.9% of
 all Query tasks — the order moved.** Lower bound: a tie both plans happen to
 emit identically is not caught.
 
+**Corrected from an initial 65 tasks / 78 phases.** The first pass executed gold
+WITHOUT the `remove_comments`/`remove_distinct`/`remove_round` cleanup gold
+actually gets at grading time. B-19's `ROUND()` stripping removes ties gold
+manufactured by sorting on rounded values, and skipping it over-counted by 8
+tasks — `archeology_scan` alone dropped from 8 to 5. Any future sweep must clean
+gold the way `ex_base_external_pred` does.
+
 | database | tasks | order-loose | float32 (E-04) | either |
 |---|---|---|---|---|
-| **archeology_scan** | 10 | **8** | 4 | **9** |
+| **archeology_scan** | 10 | **5** | 4 | **7** |
 | hulushows | 20 | 9 | 0 | 9 |
-| fake_account | 24 | 7 | 0 | 7 |
+| fake_account | 24 | 5 | 0 | 5 |
 | organ_transplant | 19 | 5 | 0 | 5 |
 | labor_certification_applications | 19 | 4 | 0 | 4 |
 | mental_health / sports_events | 20 / 20 | 4 / 4 | 0 | 4 / 4 |
-| exchange_traded_funds | 19 | 3 | 0 | 3 |
+| exchange_traded_funds | 19 | 2 | 0 | 2 |
 | crypto_exchange | 20 | 2 (`_6`, `_10`) | 2 (`_5`, `_10`) | 3 |
 | cybermarket_pattern | 20 | 2 | 0 | 2 |
 | solar_panel | 20 | 1 | 1 | 2 |
@@ -1595,12 +1602,12 @@ anyone argues about it.
 
 Union of the two exposures, as a share of each database's Query tasks:
 
-    archeology_scan                    9 of 10 at risk   ceiling ~10%
+    archeology_scan                    7 of 10 at risk   ceiling ~30%
     labor_certification_applications   4 of 19           ceiling ~79%
-    exchange_traded_funds              3 of 19           ceiling ~84%
     crypto_exchange                    3 of 20           ceiling ~85%
-    solar_panel                        2 of 20           ceiling ~90%
+    exchange_traded_funds              2 of 19           ceiling ~89%
     cybermarket_pattern                2 of 20           ceiling ~90%
+    solar_panel                        1 of 20           ceiling ~95%
     households                         1 of 21           ceiling ~95%
 
 `archeology_scan` is not a hard database — it is a **structurally ungradable**
