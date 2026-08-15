@@ -60,6 +60,13 @@ async def run_parallel_evaluation(
             # Anything but "none" makes these scores non-comparable to published
             # BIRD-Interact numbers, so the run records which regime produced it.
             "submit_feedback_level": settings.submit_feedback_level,
+            # This run's wall-clock window. llm_usage rows were already
+            # attributed by time; grading-audit rows now are too, which is what
+            # lets scripts/score_dual.py re-score a finished run under a
+            # different grading regime without spending a re-run.
+            "run_started": run_started,
+            "run_finished": time.time(),
+            "grading_audit_path": settings.grading_audit_path,
             # Deviations from upstream's protocol, all off by default. Recorded
             # so a totals number always carries the regime that produced it.
             "deviations": {
@@ -67,6 +74,8 @@ async def run_parallel_evaluation(
                 "grading_honor_decimal": settings.grading_honor_decimal,
                 "grading_casefold": settings.grading_casefold,
                 "grading_rel_tolerance": settings.grading_rel_tolerance,
+                "grading_rel_tolerance_value": settings.grading_rel_tolerance_value,
+                "grading_order_lint": settings.grading_order_lint,
                 "free_wasted_actions": settings.free_wasted_actions,
                 # Not a grading change: it changes what the semantic-layer arm
                 # can DO, so two runs differing only here are not comparable.

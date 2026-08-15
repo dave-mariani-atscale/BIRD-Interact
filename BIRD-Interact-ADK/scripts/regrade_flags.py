@@ -45,6 +45,11 @@ ARM = argv[0]                  # raw | atscale
 PATH = argv[1]
 CACHE = argv[2] if len(argv) > 2 else f".regrade_cache_{DATABASE}_{ARM}.pkl"
 
+def clean(sqls):
+    """The cleanup step 1 of grading applies to both sides."""
+    return U.remove_round(U.remove_distinct(U.remove_comments(list(sqls))))
+
+
 tasks = {}
 for line in open(settings.data_path):
     d = json.loads(line)
@@ -112,24 +117,35 @@ for i, (tid, phase, sql) in enumerate(subs):
 pickle.dump(cache, open(CACHE, "wb"))
 
 # ---- grade under each flag combo -------------------------------------------
+# Full flag sets, never diffs, so a printed number traces to exactly one row.
+# The first entry is the baseline every other row is compared against.
 COMBOS = {
-    "as-run (tie=T dec=T)":  (True,  True),
-    "tie=F dec=T":           (False, True),
-    "tie=T dec=F":           (True,  False),
-    "tie=F dec=F (upstream)": (False, False),
+    # What .env held from 2026-08-11 to 2026-08-14, i.e. what the stored runs
+    # were actually scored under.
+    "pre-0814 (dec+casefold)":  dict(tie=False, dec=True,  cf=True,  rel=False, lint=False),
+    "0814 (tie+rel+lint)":      dict(tie=True,  dec=True,  cf=True,  rel=True,  lint=True),
+    "upstream (all off)":       dict(tie=False, dec=False, cf=False, rel=False, lint=False),
 }
 
 def gold(tid, phase):
     td = tasks[tid]
     if phase == 1:
-        return td.get("sol_sql"), td.get("conditions", {})
-    fu = td.get("follow_up") or {}
-    return fu.get("sol_sql"), fu.get("conditions", {})
+        sol, cond = td.get("sol_sql"), td.get("conditions", {})
+    else:
+        fu = td.get("follow_up") or {}
+        sol, cond = fu.get("sol_sql"), fu.get("conditions", {})
+    # Same lift the live grader applies (db_environment/server.py); no-op unless
+    # settings.grading_order_lint is on. Without this a re-grade silently
+    # differs from the run it is re-grading.
+    return sol, U.apply_order_lint(cond, tid, phase)
 
 verdicts = {}   # combo -> {(tid,phase,sql): 0/1}
-for name, (tie, dec) in COMBOS.items():
-    settings.grading_tie_tolerance = tie
-    settings.grading_honor_decimal = dec
+for name, flags in COMBOS.items():
+    settings.grading_tie_tolerance = flags["tie"]
+    settings.grading_honor_decimal = flags["dec"]
+    settings.grading_casefold = flags["cf"]
+    settings.grading_rel_tolerance = flags["rel"]
+    settings.grading_order_lint = flags["lint"]
     v = {}
     for (tid, phase, sql) in subs:
         pred = cache.get((tid, phase, sql))
@@ -147,52 +163,83 @@ for name, (tie, dec) in COMBOS.items():
                 # both wrong and order-dependent.
                 U.reset_task_db(DB, TEMPLATE)
                 conn = U.get_connection_for_phase(DB)
-                v[(tid, phase, sql)] = U.ex_base([sql], sol, DB, conn, cond)
+                # Step 1 of grading, on BOTH sides — remove_comments ->
+                # remove_distinct -> remove_round. The live raw path gets it
+                # from test_case_default; ex_base itself does none of it, so
+                # calling ex_base directly graded ROUND()ed gold against
+                # ROUND()ed prediction and disagreed with the run it was
+                # replaying (exchange_traded_funds_3 recorded 1.0, replayed
+                # 0.0). The reproduction check below is what surfaced it.
+                v[(tid, phase, sql)] = U.ex_base(clean([sql]), clean(sol),
+                                                 DB, conn, cond)
             else:
                 v[(tid, phase, sql)] = U.ex_base_external_pred(pred, sol, DB, conn, cond)
         except Exception:
             v[(tid, phase, sql)] = 0
     verdicts[name] = v
 
-# ---- reward replay (a-interact: 0.7 phase1 + 0.3 phase2, attempt-agnostic) --
+# ---- reward replay -----------------------------------------------------------
+# A phase pays 0.7/0.3. The retry discount (0.5/0.2) exists but applies ONLY in
+# c-interact — a-interact pays full price on every attempt
+# (db_environment/server.py:378). Mode comes from the results JSON rather than
+# being assumed, since the same script re-grades both.
+FIRST = {1: 0.7, 2: 0.3}
+RETRY = {1: 0.5, 2: 0.2}
+DISCOUNTS_RETRIES = res.get("mode") == "c-interact"
+
+
 def reward_for(v):
     per = {}
     for r in res["results"]:
         tid = r["instance_id"]
         if tid not in tasks:
             continue
-        phase, total = 1, 0.0
+        phase, total, attempt = 1, 0.0, 0
         for (t, p, sql) in subs:
-            if t != tid:
+            if t != tid or p != phase:
                 continue
-            if p != phase:
-                continue
+            attempt += 1
             if v.get((t, p, sql)):
-                total += 0.7 if phase == 1 else 0.3
+                table = RETRY if (DISCOUNTS_RETRIES and attempt > 1) else FIRST
+                total += table[phase]
                 if phase == 2:
                     break
-                phase = 2
+                phase, attempt = 2, 0
                 if not (tasks[tid].get("follow_up") or {}).get("sol_sql"):
                     break
         per[tid] = total
     return per
 
-base = reward_for(verdicts["as-run (tie=T dec=T)"])
-print(f"\n=== {ARM} ({PATH}) — {len(subs)} submissions ===")
+BASE = next(iter(COMBOS))
+base = reward_for(verdicts[BASE])
+print(f"\n=== {ARM} ({PATH}) — {len(subs)} submissions, baseline {BASE} ===")
+
+# Does the baseline reproduce what the run recorded? If it does not, the replay
+# and the live run disagree about something OTHER than the flags being swept,
+# and no delta below is safe to quote until that is explained. Printed per task
+# rather than as a total, because a total can net out to zero.
+recorded = {r["instance_id"]: r.get("total_reward", 0.0) for r in res["results"]}
+off = [(t, recorded.get(t), base[t]) for t in base
+       if abs(base[t] - recorded.get(t, 0.0)) > 1e-9]
+if off:
+    print(f"!! baseline does NOT reproduce the recorded run on {len(off)} task(s) "
+          f"(task, recorded, replayed): {off}")
+else:
+    print(f"baseline reproduces the recorded total ({sum(base.values()):.2f}).")
 for name in COMBOS:
     per = reward_for(verdicts[name])
     tot = sum(per.values())
     diffs = [(t, base[t], per[t]) for t in per if abs(per[t] - base[t]) > 1e-9]
-    print(f"{name:<24} avg={tot/len(per):.4f} total={tot:.2f}"
+    print(f"{name:<26} avg={tot/len(per):.4f} total={tot:.2f}"
           f"  flips={len(diffs)} {diffs if diffs else ''}")
 
-# which submissions changed verdict, per flag
+# which submissions changed verdict, per combo
 for name in COMBOS:
-    if name.startswith("as-run"):
+    if name == BASE:
         continue
-    ch = [(t, p, verdicts['as-run (tie=T dec=T)'][k], verdicts[name][k])
+    ch = [(t, p, verdicts[BASE][k], verdicts[name][k])
           for k in verdicts[name]
           for t, p, _ in [k]
-          if verdicts[name][k] != verdicts['as-run (tie=T dec=T)'][k]]
+          if verdicts[name][k] != verdicts[BASE][k]]
     if ch:
         print(f"  submission verdict changes under {name}: {ch}")

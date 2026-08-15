@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -237,6 +238,10 @@ def get_connection_for_phase(db_name: str):
 
 
 _NUMERIC_STR_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)$")
+# 'YYYY-MM-DD' followed by a time: the form a semantic layer returns a Postgres
+# date/timestamp in over JSON. See canonical_cell.
+_TIMESTAMP_STR_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$")
 
 
 def process_decimals_recursive(item, decimal_places: int):
@@ -304,6 +309,66 @@ def resolve_decimal_places(conditions) -> int:
     return dp if isinstance(dp, int) and dp >= 0 else 2
 
 
+_ORDER_LINT: Optional[set] = None
+
+
+def _order_lint_phases() -> set:
+    """The (task_id, phase) pairs whose gold does not determine its own row
+    order, loaded once from settings.grading_order_lint_path."""
+    global _ORDER_LINT
+    if _ORDER_LINT is None:
+        path = settings.grading_order_lint_path
+        if not os.path.isabs(path):
+            # Resolved against the repo root, not the working directory: the
+            # services are started from there but a script or a test need not
+            # be, and a missing list degrades silently to upstream behaviour.
+            path = os.path.join(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))), path)
+        try:
+            with open(path) as f:
+                doc = json.load(f)
+            _ORDER_LINT = {(t, int(p)) for t, p in doc.get("phases", [])}
+        except Exception:
+            logger.warning("order lint list unreadable at %s — order graded as "
+                           "upstream does", settings.grading_order_lint_path,
+                           exc_info=True)
+            _ORDER_LINT = set()
+    return _ORDER_LINT
+
+
+def apply_order_lint(conditions, task_id: str, phase: int):
+    """Drop `order` from a phase whose gold does not determine an order.
+
+    `order: true` makes the grader compare row by row, which is only answerable
+    if gold's own ORDER BY totally orders its result. Measured over all 22
+    databases by replanning gold (scripts/bird_order_lint.py): on 68 of 438
+    order-sensitive phases — 57 tasks — it does not, and the "expected" order
+    is whichever one Postgres's chosen plan happened to emit. Nothing
+    reproduces that except by luck, and an engine that is not Postgres never
+    gets the luck.
+
+    So on those phases the order is not graded at all. That is coarser than
+    _ordered_match_tolerating_ties, which still grades the part of the order
+    gold DOES fix — but it needs no heuristic, it is decided by gold alone, and
+    it covers the 20 phases where the sort key cannot be inferred at all. The
+    two are complementary and both are on: this one where gold is provably
+    arbitrary, the tie tolerance everywhere else.
+
+    Returns `conditions` unchanged unless the flag is on AND the phase is
+    listed, so a run with the flag off is bit-identical to upstream here.
+    """
+    if not settings.grading_order_lint or not conditions:
+        return conditions
+    if not conditions.get("order"):
+        return conditions
+    if (task_id, int(phase)) not in _order_lint_phases():
+        return conditions
+    lifted = dict(conditions)
+    lifted["order"] = False
+    lifted["_order_lint"] = True     # recorded in the grading audit
+    return lifted
+
+
 def canonical_cell(value) -> str:
     """Render a cell for cross-source string comparison.
 
@@ -320,6 +385,17 @@ def canonical_cell(value) -> str:
     alone. Case-folding only matters for genuinely case-varying gold conventions
     the agent can't predict; it doesn't paper over an actually-wrong answer.
 
+    A timestamp string is truncated to its date, which is what
+    preprocess_results already does to a TYPED date/datetime
+    (strftime("%Y-%m-%d"), time component discarded). Gold's timestamp column
+    therefore reaches the comparison as '2025-02-19' while a semantic layer
+    returns the JSON string '2025-02-19 16:29:00' or '2025-02-19T00:00:00' —
+    which can never match, whatever the answer. Six phases across five
+    databases project a date or datetime at all (crypto_exchange twice), so
+    this is small but total where it lands. Applied to both sides, so a text
+    column that merely looks like a timestamp is truncated on both and still
+    compares equal.
+
     Only reached via _compare_rows' `cell` hook, and only from the cross-source
     path: on the raw path Python's own numeric equality already ignores
     representation, and collapsing to strings there would newly equate str '100'
@@ -330,7 +406,11 @@ def canonical_cell(value) -> str:
     if isinstance(value, (int, float, Decimal)):
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
-    return str(value).lower() if settings.grading_casefold else str(value)
+    text = str(value)
+    stamp = _TIMESTAMP_STR_RE.match(text.strip())
+    if stamp:
+        return stamp.group(1)
+    return text.lower() if settings.grading_casefold else text
 
 
 def _cell_cmp(a, b) -> Optional[int]:
@@ -350,8 +430,9 @@ def _cell_cmp(a, b) -> Optional[int]:
     return (sa > sb) - (sa < sb)
 
 
-def _sort_key_indices(gt_res) -> List[int]:
+def _sort_key_indices(gt_res) -> Optional[List[int]]:
     """Infer which columns the gold result is ORDERed BY, as column indices.
+    None means "no column qualifies" — see the fallback note at the end.
 
     The tie-tolerant comparisons need to know which columns rows may be
     permuted within. This used to assume the sort column was the LAST one,
@@ -375,11 +456,22 @@ def _sort_key_indices(gt_res) -> List[int]:
     very tie tolerance this exists to provide. The sort measure is the coarsest
     of the monotonic columns; an identifier is the finest. Ties in distinct-count
     prefer the rightmost column, which reproduces the historical behaviour on
-    the "label, value ORDER BY value" shape. Falls back to the last column when
-    nothing qualifies, so previously-passing comparisons are unaffected.
+    the "label, value ORDER BY value" shape.
+
+    When NOTHING qualifies this returns None and the callers forgive nothing.
+    It used to fall back to the last column, which is the B-22 over-reach: if
+    that column is constant, every row lands in ONE tie group and the ordered
+    comparison silently becomes an unordered one. Measured over all 22
+    databases (365 multi-row order-sensitive phases): the fallback fired on 33
+    and collapsed to a single group on 10, `exchange_traded_funds_6` among
+    them. A tie tolerance that cannot identify the sort key must not forgive a
+    permutation. Cost, measured by replanning gold across the 68 phases whose
+    order gold does not itself determine: rescues drop from 57 to 48. The other
+    20 are covered by settings.grading_order_lint, which uses measured evidence
+    rather than this heuristic.
     """
     if not gt_res:
-        return [-1]
+        return None
     width = len(gt_res[0])
     best, best_distinct = None, None
     for c in range(width):
@@ -395,7 +487,7 @@ def _sort_key_indices(gt_res) -> List[int]:
         distinct = 1 + sum(1 for x in cmps if x != 0)
         if best_distinct is None or distinct <= best_distinct:
             best, best_distinct = c, distinct
-    return [best] if best is not None else [-1]
+    return [best] if best is not None else None
 
 
 def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
@@ -433,6 +525,8 @@ def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
     if not gt_res:
         return True
     key_idxs = _sort_key_indices(gt_res)
+    if key_idxs is None:
+        return False        # no inferable sort key — forgive nothing (B-22)
     groups = []
     for row in gt_res:
         key = tuple(row[i] for i in key_idxs)
@@ -514,6 +608,8 @@ def _ordered_match_tolerating_ties_numeric(pred_res, gt_res) -> bool:
     if not gt_res:
         return True
     key_idxs = _sort_key_indices(gt_res)
+    if key_idxs is None:
+        return False        # no inferable sort key — forgive nothing (B-22)
     groups = []
     for row in gt_res:
         key = tuple(row[i] for i in key_idxs)
@@ -768,6 +864,13 @@ def record_graded_submission(**entry) -> None:
     if not path:
         return
     try:
+        # Stamped so a row can be attributed to a run. The services are
+        # long-lived and know nothing about runs, so the orchestrator records
+        # its own window in the results JSON and the two are matched by time —
+        # the same scheme llm_usage uses, and sound for the same reason (runs
+        # are sequential; see --repeat). Without this the audit is one
+        # undifferentiated pile and no completed run can be re-scored from it.
+        entry.setdefault("ts", time.time())
         with open(path, "a") as f:
             f.write(json.dumps(_json_safe(entry), sort_keys=True) + "\n")
     except Exception:

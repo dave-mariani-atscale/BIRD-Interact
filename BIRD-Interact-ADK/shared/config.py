@@ -103,7 +103,23 @@ class Settings(BaseSettings):
     # ORDER BY key has duplicate values, the order within a tied block is
     # arbitrary and the two sources legitimately disagree. True forgives a
     # permutation confined to ties; False keeps upstream's strict compare.
+    #
+    # Only meaningful where the sort key can be inferred from gold's result.
+    # Where it cannot, db_utils._sort_key_indices returns None and nothing is
+    # forgiven (B-22) — grading_order_lint covers those phases instead.
     grading_tie_tolerance: bool = False
+
+    # GRADING. Grade row order only where gold determines one. Measured over all
+    # 22 databases by replanning gold (scripts/bird_order_lint.py): 68 of 438
+    # order-sensitive phases carry `order: true` over a gold whose own ORDER BY
+    # leaves the order to the plan. True compares those as multisets; False
+    # keeps upstream's row-by-row compare. See db_utils.apply_order_lint.
+    grading_order_lint: bool = False
+    # The list the flag above consumes. Regenerate with
+    #   python scripts/bird_order_lint.py --write config/order_undetermined.json <all 22 dbs>
+    # An unreadable file degrades to upstream behaviour with a warning, never
+    # to silently forgiving more.
+    grading_order_lint_path: str = "config/order_undetermined.json"
 
     # GRADING. Upstream never reads conditions["decimal"] — it always rounds to
     # 2 (preprocess_results' default). True honours each task's declared
@@ -142,6 +158,16 @@ class Settings(BaseSettings):
     # every value from 1e-6 to 1e-2 rescues exactly the same one submission —
     # but it is a real loosening, so it stays a deliberate choice rather than
     # the default.
+    #
+    # Re-measured 2026-08-14 over all 930 audited submissions, and the answer is
+    # now a firm no: 2e-5 adds exactly one phase over 1e-6 — crypto_exchange_4
+    # phase 2, on the RAW arm — and it works by absorbing gold's own
+    # float4->numeric truncation to 6 significant digits (defect C2), not
+    # cross-engine noise. At 2e-5 the forgiven gap on a 7-digit value is larger
+    # than one unit at the precision the task is graded to, which is the line
+    # that makes a tolerance defensible at all: it must stay below the graded
+    # precision, or it stops distinguishing a representation artefact from a
+    # different answer.
     grading_rel_tolerance_value: float = 1e-6
 
     # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
@@ -162,7 +188,14 @@ class Settings(BaseSettings):
     # instead of by re-running the benchmark. Empty disables it. The
     # semantic-layer path is the reason it exists: its predicted rows live only
     # in the MCP response and were previously discarded after scoring.
-    grading_audit_path: str = ""
+    #
+    # Defaulted ON 2026-08-14. It was opt-in, and the runs that most needed
+    # re-grading are exactly the ones nobody thought to enable it for. Every
+    # grading flag below is a deviation, so every recorded score needs to stay
+    # convertible back to upstream's regime (scripts/score_dual.py) — which is
+    # only possible if the rows were kept. Costs a few MB per run and changes
+    # no verdict.
+    grading_audit_path: str = "results/grading_audit.jsonl"
 
     # BUDGET (a-interact only). Upstream's update_budget deducts a cost by
     # action TYPE and never inspects the outcome, so a duplicate submit and a

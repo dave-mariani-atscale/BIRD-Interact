@@ -103,8 +103,19 @@ def sweep(db):
 
 
 if __name__ == "__main__":
+    # --write regenerates the list the grader consumes when
+    # settings.grading_order_lint is on. Pass ALL 22 databases when writing it:
+    # the file replaces its predecessor wholesale, so a partial sweep would
+    # silently un-flag every phase it did not visit.
+    argv = list(sys.argv[1:])
+    write_to = None
+    if "--write" in argv:
+        i = argv.index("--write")
+        write_to = argv[i + 1] if len(argv) > i + 1 else "config/order_undetermined.json"
+        del argv[i:i + 2]
+
     out = []
-    for db in sys.argv[1:]:
+    for db in argv:
         try:
             r = sweep(db)
         except Exception as e:
@@ -119,3 +130,21 @@ if __name__ == "__main__":
               f"{len(ids):2d} tasks {ids if ids else ''}", flush=True)
     json.dump(out, open("/tmp/order_sweep.json", "w"), indent=1)
     print("\nwrote /tmp/order_sweep.json")
+
+    if write_to:
+        phases = sorted({(u[0], u[1]) for r in out for u in r["unstable"]})
+        doc = {
+            "_": "Phases whose gold ORDER BY does not determine gold's own row "
+                 "order, measured by replanning gold (see this file's generator). "
+                 "The grader compares these as multisets when "
+                 "settings.grading_order_lint is on. LOWER BOUND: a tie both "
+                 "plans happen to emit identically is not caught.",
+            "generated_by": "scripts/bird_order_lint.py --write " + write_to,
+            "databases_swept": [r["db"] for r in out],
+            "order_sensitive_phases": sum(r["ordered_phases"] for r in out),
+            "phases": [[t, p] for t, p in phases],
+        }
+        with open(write_to, "w") as f:
+            json.dump(doc, f, indent=1)
+        print(f"wrote {write_to}: {len(phases)} phases / "
+              f"{len({t for t, _ in phases})} tasks over {len(out)} databases")

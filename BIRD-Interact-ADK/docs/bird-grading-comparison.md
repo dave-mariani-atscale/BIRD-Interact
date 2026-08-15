@@ -342,11 +342,50 @@ or remove it from the dataset so nobody assumes it does something.
 
 `GRADING_HONOR_DECIMAL=true` in our `.env` is a deviation from upstream. On the
 evidence it is free to drop (0 flips), and dropping it restores comparability
-with published numbers and retires a deviation. **Recommendation: turn the flag
-off, keep the four-line `resolve_decimal_places` behind it** — 110 phases can
-differ and 57 of them sit in the three databases coming next, so you will want
-to measure it then rather than rediscover it. Not done yet: it changes the
-measurement instrument, which is the owner's call.
+with published numbers and retires a deviation. **This section originally
+recommended turning it off. Decided the other way on 2026-08-14 — see §11.**
+Re-measured over the whole 930-submission audit rather than 129: turning it off
+costs 1 atscale phase (`exchange_traded_funds_19` p2) and 2 raw
+(`solar_panel_8` p1 and p2). Honouring a precision the dataset itself declares
+is easier to defend than ignoring it, the number we report is lift under one
+grader rather than parity with the leaderboard, and §11's dual reporting makes
+the upstream number recoverable anyway.
+
+---
+
+## 6b. Defect F — golds that do not return the same answer twice
+
+**27 of ~800 graded phases.** Found on 2026-08-14, by asking why an offline
+re-grade disagreed with the run it was replaying.
+
+Defect A asks whether gold determines its own row *order*. `bird_order_lint`
+discards any pair of runs whose row *content* differs, as "not an order
+question". It is a question about something worse. Re-run each gold under a
+different plan and compare as multisets after the grader's own rounding:
+
+    27 phases   values differ, and not by float noise   -- nobody can pass these
+     1 phase    values differ within 1e-6 relative      -- float64 accumulation order
+
+    polar_equipment  5    households  4    mental_health  4    crypto_exchange  3
+    fake_account  2   labor_cert_apps  2   museum_artifact  2   + 6 databases with 1
+
+Severity runs to total: `polar_equipment_2` phase 1 differs on **9981 of 10000**
+rows, `polar_equipment_18` phase 2 on **9202 of 10000**, `mental_health_13`
+phase 2 on **98 of 100**.
+
+The mechanism is a pick-one-per-group with a non-unique tiebreak. `households_8`
+returns a different pair of cities every time the plan changes; `mental_health_2`
+phase 2 returns diagnosis `f440` or `f429` depending on the plan. Only 3 of the
+27 use an obvious `ROW_NUMBER()`/`DISTINCT ON` — a text search for row-pickers
+would have found almost none of this, which is why it is measured.
+
+**This is not the same as defect A and does not overlap it.** A is an ordering
+the grader should not be asking about; F is an *answer* that does not exist. No
+grading flag can help — a tolerance cannot reconcile `f440` with `f429` — and
+neither arm can win these. Strictly upstream, tracker **B-27**.
+
+*Lint: `scripts/bird_content_lint.py <db ...>`, same method and cost as the
+other two.*
 
 ---
 
@@ -364,6 +403,12 @@ python scripts/bird_order_lint.py <all 22 db names>        # -> /tmp/order_sweep
 
 # Defect B — expect 11 tasks, 0 for the withdrawn E-05 column
 python scripts/bird_precision_lint.py <all 22 db names>    # -> /tmp/precision_sweep.json
+
+# Defect F — expect 27 non-deterministic + 1 float-noise phase
+python scripts/bird_content_lint.py <all 22 db names>      # -> /tmp/content_sweep.json
+
+# Regenerate the list the grader consumes for defect A
+python scripts/bird_order_lint.py --write config/order_undetermined.json <all 22 db names>
 
 # Defects D and E — flag sensitivity on a finished run, no LLM calls
 python scripts/regrade_flags.py atscale results/<run>.json --database <db>
@@ -431,10 +476,126 @@ join planning, `E-01` `COUNT(attribute)` returning members, `Q-15`
 `COUNT(DISTINCT)` unreliability, `Q-17b` non-idempotent publish, `E-04`'s engine
 half (`SUM(CAST(x AS FLOAT8))`).
 
-**This repo:** the two lints, the optional tolerances, and the decision in §6
-about `GRADING_HONOR_DECIMAL`.
+**This repo:** the lints, the optional tolerances, and the flag decisions in
+§11.
 
 Tracker rows: **B-27** (non-deterministic gold), **B-29** (`_4`'s two golds
 disagree), **B-30** (`_16` fan-out), **B-31** (defect A), **B-32** (defect D),
 **E-04** (defect B), **E-05** (withdrawn). Update them rather than filing
 duplicates.
+
+---
+
+## 11. What this repo grades on, decided 2026-08-14
+
+Sections 1–10 describe the defects. This section is the decision record: which
+of them we now correct for locally, which we deliberately do not, and what each
+one is worth. Everything here was measured over the **930 recorded submissions**
+in `results/grading_audit_0811.jsonl` (527 atscale, 403 raw, four databases)
+and over all 22 databases' golds. No LLM calls.
+
+The organising principle, and the only one that makes a local grading change
+defensible: **the raw arm executes prediction and gold on the same engine, so a
+cross-engine divergence cannot arise there at all.** Dave's `0fd631b` says the
+same thing. Every change below removes a divergence that is an artefact of
+being a different engine, and none of them touches whether the answer is right.
+
+### Shipped
+
+| | change | measured over the audit |
+|---|---|---|
+| **B-22 fix** | `_sort_key_indices` returns None instead of falling back to the last column; both tie-tolerant comparisons then forgive nothing | prerequisite, no verdict change |
+| `GRADING_REL_TOLERANCE=true` @1e-6 | retry a failed comparison on pre-rounding rows | atscale **+2 phases**, raw **+1**, zero regressions |
+| `GRADING_TIE_TOLERANCE=true` | forgive a permutation confined to ties | atscale +1 phase (subsumed by the above), raw 0 |
+| `GRADING_ORDER_LINT=true` | don't grade an order gold does not determine | 68 phases eligible; 0 in this audit's four databases beyond the above |
+| timestamp strings | `canonical_cell` truncates `YYYY-MM-DD HH:MM:SS` to the date, as `preprocess_results` already does to a typed datetime | 6 phases exposed benchmark-wide, 0 in this audit |
+| audit on by default, rows stamped | `GRADING_AUDIT_PATH` defaults on; each row carries `ts`; runs record their window | no verdict change |
+
+The three phases that move are `exchange_traded_funds_7` p1 and
+`crypto_exchange_5` p1 (atscale) and `archeology_scan_6` p1 (raw).
+
+### Re-baselined, on the runs we hold
+
+All four re-grades reproduce their recorded totals exactly before anything is
+changed, which is the check that the replay is tracking the real trajectory.
+
+| run | as-run | re-graded | lift |
+|---|---|---|---|
+| `crypto_n2_atscale` | 8.20 | **8.90** (`crypto_exchange_5` p1) | crypto lift **+7.0 → +10.5 pts** |
+| `crypto_n1_raw` | 6.80 | 6.80 | |
+| `postb25_atscale_r2` (ETF) | 8.70 | 8.70 | ETF lift unchanged, +6.8 pts |
+| `postb25_raw_r2` (ETF) | 7.40 | 7.40 | |
+
+Direction is not uniform and should not be claimed as such: **per database, ETF
+and crypto move the atscale arm only, archeology moves the raw arm only.** That
+reproduces the 2026-08-12 finding behind B-20 — it just does not generalise,
+because archeology is the database §8 shows is structurally ungradable (7 of 10
+tasks at risk, ceiling ~30%). A grading change is defensible because it removes
+an artefact, not because of which arm it happens to help.
+
+**B-22 was not optional.** `_compare_rows_numeric_tolerant` calls
+`_ordered_match_tolerating_ties_numeric` *unconditionally* — it is not gated on
+`grading_tie_tolerance` — so turning on the relative tolerance alone would have
+dragged the same heuristic in with it. Swept over all 22 databases: the old
+fallback fired on **33 of 365** multi-row order-sensitive phases and collapsed
+**10** of them into a single tie group, silently converting an ordered
+comparison into an unordered one. `exchange_traded_funds_6` is one of the 10.
+
+**The two order mechanisms are complementary, not redundant.** Feeding a
+differently-planned gold back through the grader across the 68 phases whose
+order gold does not determine: the fixed heuristic rescues **48**, and the
+order lint covers all **68** because it needs no key inference at all. Neither
+alone is enough — the lint is a lower bound (a tie both plans emit identically
+is not caught), which is exactly what the heuristic still catches.
+
+### Deliberately not done
+
+* **`Counter()` instead of `set()` (defect D).** Real upstream defect, wrong
+  change for us to make alone. Gold's own result contains duplicate rows on
+  **25 of 810** phases, **12** of them `order: false` — and a semantic layer
+  answering at a grain cannot emit a duplicate row at all. Take it upstream
+  *paired* with dropping the DISTINCT strip; adopting it here would penalise
+  the arm that de-duplicates by construction.
+* **Raising `GRADING_REL_TOLERANCE_VALUE` to 2e-5.** Over the full audit it
+  adds exactly one phase more than 1e-6 — `crypto_exchange_4` p2, on the **raw**
+  arm — by absorbing gold's own float4→numeric truncation (C2). At 2e-5 the
+  forgiven gap on a 7-digit value exceeds one unit at the graded precision. The
+  rule that keeps a tolerance defensible: **it must stay below the precision the
+  task is graded to.**
+* **Relaxing column order.** Three atscale submissions failed on it; the raw arm
+  gets the output shape wrong at the same rate (`+1` column on 45 atscale and 38
+  raw submissions). Model behaviour, not an engine artefact.
+* **Turning `GRADING_HONOR_DECIMAL` off**, as §6 proposed. See that section.
+
+### Dual reporting
+
+Every flag above is a deviation, so no single number is self-describing. Runs
+now record `run_started` / `run_finished`, the audit stamps every row with `ts`,
+and `scripts/score_dual.py <results.json>` re-scores a finished run under both
+regimes offline — free, no MCP replay, local Postgres only:
+
+    upstream    every deviation off, the published leaderboard's rules
+    as-run      whatever the .env flags were
+    platform    all of the above on
+
+Quote runs as a pair. A regime that passes MORE is a lower bound (a phase-1
+flip means the live agent would have gone on to attempt phase 2, and that
+submission does not exist); a regime that passes FEWER is exact.
+
+### Two replay bugs this work surfaced
+
+`scripts/regrade_flags.py` now checks its baseline against the run's recorded
+per-task rewards before printing any delta, and that check immediately failed
+twice:
+
+* it called `ex_base` directly, which — unlike the live raw path's
+  `test_case_default` — applies **none** of step 1's cleanup, so it graded
+  `ROUND()`ed gold against a `ROUND()`ed prediction. `exchange_traded_funds_3`
+  recorded 1.0 and replayed 0.0.
+* its reward replay was briefly changed to discount retries (0.5/0.2). That
+  discount is **c-interact only** (`db_environment/server.py:378`); a-interact
+  pays full price on every attempt.
+
+Neither affected any run's recorded score — both were in the offline tool. The
+lesson is the check, not the bugs: **a re-grade that cannot reproduce the run it
+is re-grading is not evidence about anything.**
