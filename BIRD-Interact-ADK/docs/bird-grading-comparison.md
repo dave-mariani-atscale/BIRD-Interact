@@ -355,8 +355,11 @@ the upstream number recoverable anyway.
 
 ## 6b. Defect F — golds that do not return the same answer twice
 
-**27 of ~800 graded phases.** Found on 2026-08-14, by asking why an offline
-re-grade disagreed with the run it was replaying.
+**27 of ~800 graded phases.** Found on 2026-08-14 while chasing an offline
+re-grade that disagreed with the run it was replaying. **That mismatch turned
+out to have a different cause** — a missing cleanup step in the replay tool, §11
+— and the correction matters, because it is the difference between "the
+benchmark scores differently every time you run it" and what is actually true.
 
 Defect A asks whether gold determines its own row *order*. `bird_order_lint`
 discards any pair of runs whose row *content* differs, as "not an order
@@ -379,10 +382,29 @@ phase 2 returns diagnosis `f440` or `f429` depending on the plan. Only 3 of the
 27 use an obvious `ROW_NUMBER()`/`DISTINCT ON` — a text search for row-pickers
 would have found almost none of this, which is why it is measured.
 
+**How far the non-determinism actually reaches, measured 2026-08-16.** All 28
+were re-run under three ordinary conditions and compared against a plain
+baseline: the same query again in the same session, again on a fresh
+connection, and again with `max_parallel_workers_per_gather = 0` — the most
+common real configuration difference between two machines.
+
+    moves under an ordinary rerun            0 of 28
+    moves only under forced planner operators   28 of 28
+
+So, precisely: **a rerun on this machine scores the same, and our offline
+re-grades of these tasks are reproducible.** What is defective is that the
+answer is a property of the plan rather than of the query — which is exactly
+what changes between Postgres versions, data volumes, `work_mem` settings and
+machines. It is a latent defect for us and an active one for anyone whose
+planner chooses differently, upstream's own leaderboard host included. Do not
+report it as run-to-run flakiness; report it as an under-determined answer.
+
 **This is not the same as defect A and does not overlap it.** A is an ordering
 the grader should not be asking about; F is an *answer* that does not exist. No
 grading flag can help — a tolerance cannot reconcile `f440` with `f429` — and
-neither arm can win these. Strictly upstream, tracker **B-27**.
+neither arm can win these if the host's planner disagrees with the one that
+built the dataset. Strictly upstream, trackers **B-27** (the first two found)
+and **B-34** (the benchmark-wide sweep).
 
 *Lint: `scripts/bird_content_lint.py <db ...>`, same method and cost as the
 other two.*
@@ -582,20 +604,36 @@ Quote runs as a pair. A regime that passes MORE is a lower bound (a phase-1
 flip means the live agent would have gone on to attempt phase 2, and that
 submission does not exist); a regime that passes FEWER is exact.
 
-### Two replay bugs this work surfaced
+### Three replay bugs, and the gate that now catches them
 
-`scripts/regrade_flags.py` now checks its baseline against the run's recorded
-per-task rewards before printing any delta, and that check immediately failed
-twice:
+Offline re-grading is how every decision above was made, so a re-grade that
+silently disagrees with the run it is replaying corrupts all of it. Adding a
+reproduction check found three bugs in two days, none of which touched a
+recorded score — all were in the offline tools:
 
-* it called `ex_base` directly, which — unlike the live raw path's
-  `test_case_default` — applies **none** of step 1's cleanup, so it graded
-  `ROUND()`ed gold against a `ROUND()`ed prediction. `exchange_traded_funds_3`
-  recorded 1.0 and replayed 0.0.
-* its reward replay was briefly changed to discount retries (0.5/0.2). That
-  discount is **c-interact only** (`db_environment/server.py:378`); a-interact
-  pays full price on every attempt.
+* **`ex_base` does none of step 1's cleanup.** The live raw path gets it from
+  `test_case_default`; `regrade_flags.py` called `ex_base` directly and so
+  graded `ROUND()`ed gold against a stripped prediction.
+  `exchange_traded_funds_3` recorded 1.0 and replayed 0.0. `score_dual.py`
+  then walked into the identical trap the same day.
+* **The retry discount is c-interact only** (`db_environment/server.py:378`).
+  Applying 0.5/0.2 in a-interact under-counts every task that passed on a
+  retry.
 
-Neither affected any run's recorded score — both were in the offline tool. The
-lesson is the check, not the bugs: **a re-grade that cannot reproduce the run it
-is re-grading is not evidence about anything.**
+**None of the three was catchable by an oracle smoke test**, because there the
+prediction *is* gold and both sides agree however they are graded. Two things
+close the class:
+
+* `grade_raw_submission()` in `db_utils` is now the single entry point for
+  grading raw SQL — cleanup on both sides, then `ex_base`. Offline tools call
+  it; nothing calls `ex_base` directly except the live path and
+  dataset-supplied test cases.
+* Both tools now **refuse to print** rather than warn. `regrade_flags.py`
+  exits if its baseline misses the recorded per-task reward; `score_dual.py`
+  exits if its as-run regime disagrees with the live grader on any single
+  submission — sharper, since a total can net out while two verdicts move in
+  opposite directions. Verified by tampering with one recorded verdict and
+  confirming the gate fires.
+
+Defect F is not an excuse to soften either gate: all 28 of its phases were
+measured stable across ordinary reruns (§6b).

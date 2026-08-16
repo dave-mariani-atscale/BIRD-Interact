@@ -969,9 +969,29 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     return 1 if _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) else 0
 
 
+def grade_raw_submission(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
+    """Grade a raw-SQL submission end to end: step 1's cleanup on BOTH sides,
+    then ex_base. The whole raw path, in one call.
+
+    THE entry point for grading raw SQL, live or offline. `ex_base` deliberately
+    does none of the cleanup — upstream's doesn't either, and dataset-supplied
+    test cases call it with their own preparation — so calling it directly is a
+    trap: gold keeps its ROUND() while the prediction loses its own, and the two
+    are then compared at different precisions. That trap has now been walked
+    into twice in offline tools (scripts/regrade_flags.py, then
+    scripts/score_dual.py on the same day), and both times it was invisible
+    until a re-grade failed to reproduce the run it was replaying. An oracle
+    smoke test cannot catch it, because there the prediction IS gold and both
+    sides agree however they are cleaned.
+
+    So: offline graders call this, never ex_base.
+    """
+    return ex_base(remove_round(remove_distinct(remove_comments(list(pred_sqls)))),
+                   remove_round(remove_distinct(remove_comments(list(sol_sqls)))),
+                   db_name, conn, conditions)
+
+
 def test_case_default(pred_sqls, sol_sqls, db_name, conn, conditions=None):
-    pred_sqls = remove_round(remove_distinct(remove_comments(pred_sqls)))
-    sol_sqls = remove_round(remove_distinct(remove_comments(sol_sqls)))
-    result = ex_base(pred_sqls, sol_sqls, db_name, conn, conditions)
+    result = grade_raw_submission(pred_sqls, sol_sqls, db_name, conn, conditions)
     assert result == 1, f"ex_base returned {result} but expected 1."
     return result

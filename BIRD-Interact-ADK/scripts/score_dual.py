@@ -167,8 +167,11 @@ def main():
                     conns[db] = U.get_connection_for_phase(scratch[db])
                     pred = r["pred_sql"]
                     pred = [pred] if isinstance(pred, str) else list(pred)
-                    v = U.ex_base(U.remove_round(U.remove_distinct(U.remove_comments(pred))),
-                                  sol, scratch[db], conns[db], cond)
+                    # grade_raw_submission, never ex_base: ex_base does none of
+                    # step 1's cleanup, so calling it directly compares a
+                    # stripped prediction against a gold that kept its ROUND().
+                    v = U.grade_raw_submission(pred, sol, scratch[db],
+                                               conns[db], cond)
                 else:
                     pred_rows = [tuple(x) for x in (r["pred_rows"] or [])]
                     v = U.ex_base_external_pred(pred_rows, sol, scratch[db],
@@ -179,12 +182,17 @@ def main():
         scores[name] = verdicts
         print(f"  scored under {name}", file=sys.stderr, flush=True)
 
+    # A phase pays 0.7/0.3. The retry discount (0.5/0.2) is c-interact ONLY —
+    # a-interact pays full price on every attempt (db_environment/server.py:378).
+    # Read from the run rather than assumed; applying it in a-interact silently
+    # under-counts every task that passed on a retry.
+    FIRST, RETRY = {1: 0.7, 2: 0.3}, {1: 0.5, 2: 0.2}
+    discounts_retries = res.get("mode") == "c-interact"
+
     def reward(verdicts):
-        """a-interact reward replay, in trajectory order: a phase passed on its
-        FIRST submission pays 0.7/0.3, on a retry 0.5/0.2
-        (db_environment/server.py:379). The audit records the attempt number the
-        live grader assigned, so this is exact rather than a reconstruction."""
-        FIRST, RETRY = {1: 0.7, 2: 0.3}, {1: 0.5, 2: 0.2}
+        """Reward replay in trajectory order. The audit records the attempt
+        number the live grader assigned, so this is exact rather than a
+        reconstruction."""
         per = collections.defaultdict(float)
         phase_of = collections.defaultdict(lambda: 1)
         done = set()
@@ -192,12 +200,35 @@ def main():
             per.setdefault(tid, 0.0)
             if tid in done or phase != phase_of[tid] or not v:
                 continue
-            per[tid] += (FIRST if attempt == 1 else RETRY)[phase]
+            table = RETRY if (discounts_retries and attempt > 1) else FIRST
+            per[tid] += table[phase]
             if phase == 1 and (tasks.get(tid, {}).get("follow_up") or {}).get("sol_sql"):
                 phase_of[tid] = 2
             else:
                 done.add(tid)
         return per
+
+    # ---- reproduction gate, per SUBMISSION ---------------------------------
+    # Sharper than comparing totals: a total can net out to zero while two
+    # verdicts moved in opposite directions. Under the as-run regime this
+    # script must agree with the live grader on every single submission, since
+    # it is replaying the same rows through the same code under the same flags.
+    # A disagreement is a bug in the replay, not a finding — the three found so
+    # far all were, and none of them was caught by an oracle smoke test, where
+    # the prediction IS gold and agrees however it is graded.
+    if "as-run" in wanted:
+        mismatched = [(t, p, a, bool(v), r["passed"])
+                      for (t, p, a, v), r in zip(scores["as-run"], rows)
+                      if bool(v) != bool(r["passed"])]
+        if mismatched:
+            sys.exit(
+                f"as-run disagrees with the live grader on {len(mismatched)} of "
+                f"{len(rows)} submissions (task, phase, attempt, replayed, "
+                f"recorded): {mismatched[:10]}\n"
+                f"That is a replay bug, not a grading result. Gold "
+                f"non-determinism does not explain it: the 28 phases whose "
+                f"values move under forced planner operators were all measured "
+                f"stable across ordinary reruns (tracker B-34).")
 
     n_tasks = len({r["task_id"] for r in rows})
     base_name = wanted[0]

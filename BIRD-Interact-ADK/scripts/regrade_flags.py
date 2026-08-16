@@ -45,11 +45,6 @@ ARM = argv[0]                  # raw | atscale
 PATH = argv[1]
 CACHE = argv[2] if len(argv) > 2 else f".regrade_cache_{DATABASE}_{ARM}.pkl"
 
-def clean(sqls):
-    """The cleanup step 1 of grading applies to both sides."""
-    return U.remove_round(U.remove_distinct(U.remove_comments(list(sqls))))
-
-
 tasks = {}
 for line in open(settings.data_path):
     d = json.loads(line)
@@ -170,8 +165,8 @@ for name, flags in COMBOS.items():
                 # ROUND()ed prediction and disagreed with the run it was
                 # replaying (exchange_traded_funds_3 recorded 1.0, replayed
                 # 0.0). The reproduction check below is what surfaced it.
-                v[(tid, phase, sql)] = U.ex_base(clean([sql]), clean(sol),
-                                                 DB, conn, cond)
+                v[(tid, phase, sql)] = U.grade_raw_submission(
+                    [sql], sol, DB, conn, cond)
             else:
                 v[(tid, phase, sql)] = U.ex_base_external_pred(pred, sol, DB, conn, cond)
         except Exception:
@@ -222,10 +217,17 @@ recorded = {r["instance_id"]: r.get("total_reward", 0.0) for r in res["results"]
 off = [(t, recorded.get(t), base[t]) for t in base
        if abs(base[t] - recorded.get(t, 0.0)) > 1e-9]
 if off:
-    print(f"!! baseline does NOT reproduce the recorded run on {len(off)} task(s) "
-          f"(task, recorded, replayed): {off}")
-else:
-    print(f"baseline reproduces the recorded total ({sum(base.values()):.2f}).")
+    # Hard stop, not a warning. A re-grade that cannot reproduce the run it is
+    # re-grading disagrees with it about something other than the flags being
+    # swept, so every delta below would be that disagreement plus the flags,
+    # with no way to tell which is which. Both times this fired it was a real
+    # bug in this script. Gold non-determinism is NOT an excuse to soften it:
+    # all 28 phases that vary under forced planner operators were measured
+    # stable across ordinary reruns, fresh connections and parallelism off.
+    sys.exit(f"baseline does NOT reproduce the recorded run on {len(off)} task(s) "
+             f"(task, recorded, replayed): {off}\n"
+             f"Explain that before reading any delta — it is not the flags.")
+print(f"baseline reproduces the recorded total ({sum(base.values()):.2f}).")
 for name in COMBOS:
     per = reward_for(verdicts[name])
     tot = sum(per.values())
