@@ -1336,14 +1336,36 @@ backend failures.
 
 **What the semantic arm pays that raw does not.** 17% of its query calls
 errored, against 1% for raw - a 17x difference, and every errored call still
-costs a coin. The errors are engine limitations, not model defects: CTE
-rejection (13 occurrences - and 18 of 19 references are written as CTEs),
-`must appear in the GROUP BY clause` (12, the rule that every measure needs an
-aggregate wrapper once a query contains a join), an
-`assertion failed: We already handled attribute values` planner error (9),
-`ntile` (3), `Could not find correct column to sort by` (3), NULLIF (2). Only
-three name misses in the whole round (`Surgical Risk Score`, `Surgical Risk`,
-`center`), so discovery and naming are essentially working.
+costs a coin. Classified exactly: `must appear in the GROUP BY clause` (12, the
+rule that every measure needs an aggregate wrapper once a query contains a
+join), an `assertion failed: We already handled attribute values` planner error
+(9), `incorrectly constructed` constraints (8), column-not-found (6), `ntile`
+(3), `Could not find correct column to sort by` (3), aggregate-in-WHERE (2),
+NULLIF (2), a parse error (1), and 16 assorted engine errors. Only three name
+misses in the whole round (`Surgical Risk Score`, `Surgical Risk`, `center`),
+so discovery and naming are essentially working.
+
+**Correction, 2026-08-16.** An earlier version of this entry claimed 13 CTE
+rejections and attributed them to the engine. Both halves were wrong. The count
+came from a classifier bug - a case-insensitive `'cte' in text` test matching
+the letters inside "constru**cte**d" - and the true count of tool-guard
+rejections across all six runs is **zero**: no agent ever attempted a CTE, so
+the guard cost nothing this round. And the guard is not an engine limit at all;
+it is a client-side single-virtual-table policy in the MCP query tool
+(`validation.py`, `FromQualificationError`). The AtScale engine itself is not
+what refuses a `WITH` clause. Verified against the running server: a subquery in
+the FROM clause and an INNER JOIN to one both execute normally, so a CTE rewrites
+as `FROM (SELECT ...) t` - which is what the agents were already doing. Only
+`IN (subquery)` is separately refused. The model description now states the two
+layers separately and gives that rewrite.
+
+**Forward risk worth tracking.** The `develop` branch of the MCP server extends
+that same guard to reject **JOINs and FROM-subqueries** as well, not just CTEs.
+The running server permits both. Every successful phase-1 submission in this
+round used a FROM-subquery, and the model's own coverage gate uses an INNER JOIN
+to a subquery, so shipping the `develop` guard as-is would break queries that
+work today and would remove the only available CTE workaround. Worth measuring
+before that lands.
 
 **Surface size is not the problem this time.** Discovery cost 23% of the
 semantic arm's coins against 22% for raw - at parity, with 2.5 `explore_columns`
