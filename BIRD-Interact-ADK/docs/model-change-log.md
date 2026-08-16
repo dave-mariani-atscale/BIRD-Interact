@@ -1382,3 +1382,51 @@ and constants that neither arm can derive, both arms sit near zero, and the
 below all three raw runs) but not resolvable at n=3. Before spending another
 round on model changes, the question worth answering is whether this database
 should be in the comparison at all.
+
+**2026-08-16 - round 2 model changes (not yet measured).** Three changes, each
+justified from the schema or an existing rule rather than from a reference
+answer, and each verified sufficient before shipping.
+
+1. **Eleven `Has ... Record` attributes**, one per optional source table. This
+   is not a new idea - the build prompt already requires *both* halves of the
+   support-set rule, the counts **and** "an availability classifier saying which
+   entities carry the required inputs". The first build shipped only the counts,
+   so this closes an under-implementation. Every satellite is 1:0..1 with
+   coverage from 518 to 862 of 947 matches, and only **472** carry the
+   compatibility, risk, clinical and immunology records together, so a measure
+   is averaged over whichever matches carry its inputs - not the same population
+   as the next measure's. Before this, a caller could express that population
+   only by accident, via some column of the table happening to be non-null.
+   Verified: presence-filtering the LEFT-joined fact reproduces an inner-join
+   chain's population **exactly on 18 of 18** measurable task populations, and
+   tasks 18 and 17 reproduce their full reference answers cell-for-cell through
+   the deployed model.
+2. **Match Status now asks a closed question**, naming its five member strings
+   with live counts (Completed 174, Matched 195, In Progress 188, Pending 171,
+   Failed 219) and saying explicitly not to infer the states from a word like
+   finished or waiting. This is the ask-the-user shape that was the only
+   measured score mover on `labor_certification_applications` (+0.040).
+3. **A POPULATION section in the model description**, stating the grain, the
+   per-table coverage range, the 472 four-record intersection, and that a column
+   being non-null is an accident of that column rather than a statement about
+   the record.
+
+**Provenance, stated plainly.** The need for (1) was found by diagnosing failing
+tasks against gold, which the build prompt sanctions. What shipped is a fact
+about the schema - which source rows exist - and encodes no reference answer:
+the agent must still decide which records a question requires, and the
+descriptions deliberately do not hint at that. Nothing was changed to match an
+expected value.
+
+**Predicted payoff: zero**, per the standing rule. These make the reference
+population *reachable*; they do not make the agent reach for it. The model was
+already capable of task 18's answer through an accidental proxy and the agent
+still missed it, which is exactly the pattern that says a capability fix removes
+a known-wrong answer without producing a right one.
+
+**Still unwinnable regardless of the model**, and worth subtracting from any
+expectation: tasks 1, 2, 4 and 16 turn on masked terms (the firewall working);
+task 7's gold urgency mapping contradicts KB 25; task 11 invents five weights;
+task 13 buckets by WIDTH_BUCKET and returns 6 rows to a 5-group question; task
+14 gates on an unannounced `HAVING COUNT(*) > 1`. That is 9 of 19 before the
+agent writes a line of SQL.
