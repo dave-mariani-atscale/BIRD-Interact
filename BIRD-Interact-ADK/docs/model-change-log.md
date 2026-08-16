@@ -1262,9 +1262,101 @@ at build time because a band cannot know the runtime population - row-level
 score attributes ship so the caller can derive one from `ROW_NUMBER`. The full
 list with reasons is `OMISSIONS` in `generator/spec.py`.
 
-**Still not done: an evaluation run.** Nothing here is a score. The four
-acceptance gates prove correctness, not usability, and on every prior model the
-first measured run came in at the raw baseline with all the lift coming
-afterwards. Budget n>=3 per arm, roughly 4 repeats on raw to 1-2 on the semantic
-arm, and read the agent's actual submitted SQL for every failing task before
-changing anything.
+**2026-08-16 - first measured round, 3 runs per arm, query-only (19 tasks).**
+
+| arm | run 1 | run 2 | run 3 | mean | sd | phase-1 passes |
+|---|---|---|---|---|---|---|
+| raw | 0.0895 | 0.0526 | 0.0737 | **0.0719** | 0.0151 | 5 of 57 task-runs |
+| atscale | 0.0368 | 0.0368 | 0.0526 | **0.0421** | 0.0074 | 3 of 57 task-runs |
+
+Gap -0.0298 average reward (-41% relative, -0.57 reward points over 19 tasks),
+exact Mann-Whitney U=0.5, two-sided **p = 0.200**. Note what that p can and
+cannot say: at 3 versus 3 the exact test's floor is p = 0.100, so 0.200 with
+U=0.5 is close to the most separation this design can show. **n=4 per arm is
+the minimum that can reach p < 0.05**; the pooled sd of 0.012 against a 0.030
+gap says about 3 per arm suffices on power alone, so one more run each is the
+cheap next step - not four.
+
+**Both arms are on the floor, and that is the headline.** The raw text-to-SQL
+baseline scores ~0.30 on every other database in this repo and 0.072 here. 16
+of 19 tasks never passed in raw across three runs, 18 of 19 never passed in
+atscale. A raw arm at a fifth of its usual score is a statement about the task
+set, not about either backend.
+
+**The harness is not at fault** (checked first, per the 0.000 fingerprint):
+submit results carry real grading verdicts (`SQL failed Phase 1. Your SQL is
+not correct.`), not error strings, so no passes are being swallowed. The
+database name is 16 characters and nowhere near the 63-byte identifier limit.
+
+**Grading flags explain nothing.** All six runs re-graded under all four
+tie-tolerance / decimal-honouring combinations: **zero verdict flips in every
+run, both arms**. Tie-order and rounding are not in play on this database.
+
+**Root cause: the reference answers' populations are an artifact of which
+satellite tables the gold SQL happens to join.** 18 of 19 references INNER JOIN
+at least one optional satellite - up to four of them - and every such join
+silently narrows the population. Worked example, task 18: the four-table chain
+(`recipients_immunology`, `clinical`, `compatibility_metrics`,
+`risk_evaluation`) cuts 947 matches to 472 before any stated filter, and to 91
+after the question's own conditions. The agent, correctly filtering
+`Match Status = 'Completed'`, returned 166 recipients. Neither the question nor
+the knowledge base mentions any of it, and the chain differs per task (task 9
+joins one satellite, task 18 joins four), so there is no single convention to
+learn. This model LEFT JOINs its satellites deliberately - that is what keeps
+every match present and every dimension conformant - and switching to inner
+joins to match gold would be answer-fitting to the reference's SQL-writing
+habits, would break the coverage the support-set measures exist to expose, and
+would still be wrong for the tasks that join a different subset.
+
+Further conditions stated nowhere in either the question or the KB: task 14
+gates on `HAVING COUNT(*) > 1` (which is what turns "top 10 centers" into a
+3-row answer); task 11 invents five weights (0.4/0.6 and 0.7/0.3) for scores
+the question only asks the analyst to "come up with"; task 13 buckets with
+`WIDTH_BUCKET` (equal-width) rather than `NTILE` (equal-count) and so returns
+**6** rows to a question asking for 5 groups; task 7's gold maps medical
+urgency as 1A=5, 1B=4, **ELSE 2**, which contradicts KB 25 (Status 2=3,
+Status 3=2, all others=1). The model implements KB 25, per the follow-the-KB
+rule, and that costs task 7 - correctly. No third urgency reading was added,
+because a 1A/1B/else-2 mapping has no basis in the KB.
+
+**Failure classification of the last phase-1 submission per task** (shape
+against the reference, which is the only cheap way to know what a model change
+could reach):
+
+| | raw | atscale |
+|---|---|---|
+| shape matches, values wrong | 10 | 5 |
+| wrong row count | 6 | 8 |
+| wrong column count | 3 | 1 |
+| would not execute at all | 0 | **4** |
+
+On four tasks *both* arms produce the **identical** wrong shape (7, 11, 13,
+14) - conclusive that those are question-interpretation failures rather than
+backend failures.
+
+**What the semantic arm pays that raw does not.** 17% of its query calls
+errored, against 1% for raw - a 17x difference, and every errored call still
+costs a coin. The errors are engine limitations, not model defects: CTE
+rejection (13 occurrences - and 18 of 19 references are written as CTEs),
+`must appear in the GROUP BY clause` (12, the rule that every measure needs an
+aggregate wrapper once a query contains a join), an
+`assertion failed: We already handled attribute values` planner error (9),
+`ntile` (3), `Could not find correct column to sort by` (3), NULLIF (2). Only
+three name misses in the whole round (`Surgical Risk Score`, `Surgical Risk`,
+`center`), so discovery and naming are essentially working.
+
+**Surface size is not the problem this time.** Discovery cost 23% of the
+semantic arm's coins against 22% for raw - at parity, with 2.5 `explore_columns`
+calls per task against the 7.6 that made `cybermarket_pattern` pathological.
+The semantic arm used *fewer* tool calls than raw (12.4 vs 16.9 per task) and
+ran out of budget less often (60% of task-runs vs 88%). It is not being taxed
+by model size; it is being taxed by query rejections and by the same
+unwinnable references raw faces.
+
+**Read this database as a broken comparison rather than a model result.** The
+honest summary is that organ_transplant's reference answers encode populations
+and constants that neither arm can derive, both arms sit near zero, and the
+-0.030 gap between them is real in direction (all three atscale runs at or
+below all three raw runs) but not resolvable at n=3. Before spending another
+round on model changes, the question worth answering is whether this database
+should be in the comparison at all.
