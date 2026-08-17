@@ -35,9 +35,14 @@ sleep 1
 # under test and the user simulator. Without it both read "unknown" and are only
 # separable by model name — which fails as soon as they share a model. Each
 # service makes calls in exactly one role, so the tag is per process.
-BIRD_LLM_ROLE=system_agent "$PYTHON_BIN" -m uvicorn system_agent.server:app --host "$HOST" --port 6000 --log-level warning &
-BIRD_LLM_ROLE=user_sim "$PYTHON_BIN" -m uvicorn user_simulator.server:app --host "$HOST" --port 6001 --log-level warning &
-BIRD_LLM_ROLE=db_environment "$PYTHON_BIN" -m uvicorn db_environment.server:app --host "$HOST" --port 6002 --log-level warning &
+# nohup + a persisted log per service: a bare `&` ties each service to the
+# launching terminal (closing it SIGHUPs all three, and every later run fails
+# with "All connection attempts failed"), and without the redirect a crash
+# leaves no trace on disk. Both failure modes have voided scored runs.
+mkdir -p "$PROJECT_DIR/logs"
+BIRD_LLM_ROLE=system_agent nohup "$PYTHON_BIN" -m uvicorn system_agent.server:app --host "$HOST" --port 6000 --log-level warning >> "$PROJECT_DIR/logs/system_agent.out" 2>&1 &
+BIRD_LLM_ROLE=user_sim nohup "$PYTHON_BIN" -m uvicorn user_simulator.server:app --host "$HOST" --port 6001 --log-level warning >> "$PROJECT_DIR/logs/user_simulator.out" 2>&1 &
+BIRD_LLM_ROLE=db_environment nohup "$PYTHON_BIN" -m uvicorn db_environment.server:app --host "$HOST" --port 6002 --log-level warning >> "$PROJECT_DIR/logs/db_environment.out" 2>&1 &
 
 # Wait for all three to be healthy
 for i in $(seq 1 30); do

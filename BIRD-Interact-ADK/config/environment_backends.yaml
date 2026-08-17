@@ -296,3 +296,24 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Crypto Exchange
+      households:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Households
+      labor_certification_applications:
+        # Deployed 2026-08-13 with `sml-cli atscale-deploy --catalog-name=
+        # bird_atscale_models_catalog_main`, i.e. the suffixed name passed
+        # verbatim, so it lands in the same schema as the five siblings rather
+        # than creating an unsuffixed second copy (Q-17). Schema read back from
+        # list_models after the deploy.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Labor Certification Applications
+      organ_transplant:
+        # Deployed 2026-08-15 with `sml-cli atscale-deploy --catalog-name=
+        # bird_atscale_models_catalog_main`, the suffixed name passed verbatim.
+        # Schema read back from list_models after the deploy, which returned
+        # eight models (the Q-17b health gate) rather than only succeeding.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Organ Transplant

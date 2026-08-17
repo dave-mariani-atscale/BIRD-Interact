@@ -1695,3 +1695,1192 @@ Union of the two exposures, as a share of each database's Query tasks:
 
 `archeology_scan` is not a hard database — it is a **structurally ungradable**
 one, and its recorded scores should never have been read as a model verdict.
+`config/environment_backends.yaml` now carries the `cybermarket_pattern` domain
+entry pointing at `bird_atscale_models_catalog_main` / `Cybermarket Pattern`.
+
+---
+
+## households
+
+**2026-08-11 - initial build, prompt-only.** Generated from the BIRD-Interact
+`households` database by `households/generator/generate.py` in
+`AtScaleInc/bird-atscale-models` (spec -> emitter; the spec is `sql_spec.py` +
+`model_spec.py`). 89 published objects: 3 derived datasets, 10 dimensions (46
+attributes), 33 metrics, 10 `metric_calc`s, 1 model. `sml-cli validate` clean at
+repo root; committed and pushed to `main` as `c42421d`. **Not yet deployed**, so
+none of the four acceptance gates has run - `households/ACCEPTANCE.md` carries
+every gate with its source-of-truth value precomputed from Postgres, marked
+un-run.
+
+Answer-key firewall enforced mechanically rather than by intention:
+`generator/extract_brief.py` allowlists the permitted fields of the 29
+`households` tasks out of `bird_interact_data.jsonl`, then asserts on its own
+output that no denied key (`sol_sql`, `sql_snippet`, `test_cases`, `conditions`,
+`preprocess_sql`, `clean_up_sqls`) and no SQL-shaped text survived. Nothing else
+in the build opens the JSONL; the model was authored from
+`generator/task_brief.md` plus `households_kb.jsonl`, the schema file, and live
+profiling.
+
+Build decisions, each traceable to the knowledge base, the live schema, or
+observed engine behaviour:
+
+- **E-02.** All derived-dataset table references schema-qualified `public.<table>`.
+- **D-01.** No `|` character in any emitted SQL. The one place a concatenation
+  was needed (the infrastructure-configuration label) uses `concat(...)` rather
+  than `||`, since `||` is itself two pipe characters; the generator asserts no
+  `|` remains.
+- **Canonicalisation is the modelling job here.** Every text column in this
+  database is dirty in three independent ways at once - random case, leading and
+  trailing whitespace, interior whitespace runs including raw tabs - plus
+  genuine synonyms. Distinct values before and after normalisation: dwelling
+  class 116 -> 6 classes, tenure 84 -> 7, cable status 123 -> 2, newest vehicle
+  year 123 -> 9 bands, region code 106 -> 10 regions, income bracket 47 -> 12.
+  Grouping on a raw column shatters every "for each area" question, so each
+  grouping attribute ships canonicalised and its raw twin ships as
+  `... (As Recorded)` with a lead-with-the-warning description. The gap is large
+  enough to be worth measuring: `Region` = 'Taguatinga' is 266 households,
+  `Region Code (As Recorded)` = 'Taguatinga' is 214.
+- **One wide household fact.** `amenities` and `transportation_assets` carry a
+  UNIQUE constraint on their household FK and are exactly 1:1 with `households`
+  (1581 rows each, no orphans either way, verified live); `properties` covers
+  1577 of 1581 and is LEFT JOINed. Joining all of them into one 1581-row fact at
+  household grain gives every attribute a direct relationship to every
+  dimension, which pre-empts the whole conformance failure class. Eight of the
+  ten dimensions are consequently degenerate on that fact.
+- **KB formulas that are fully stated are precomputed:** Household Density
+  (KB 11), Infrastructure Quality Score (KB 13), Vehicle Ownership Index
+  (KB 14), Bathroom Ratio (KB 15), Dwelling Capacity (KB 17), Living Condition
+  Score (KB 20), Dwelling Type Score (KB 44).
+- **KB formulas whose numeric mapping or weights the KB never states are NOT
+  shipped:** Expenditure Ratio (KB 12, "divided by a numeric mapping of income
+  bracket"), Service Support Score (KB 16, "a weighted score"), Mobility Score
+  (KB 18, "a numeric mapping of the newest vehicle year"), Socioeconomic Index
+  (KB 19, "a weighted sum of income score, expenditure ratio, and tenure
+  score"). Each ships its components instead, and every component's description
+  names the concept it feeds and tells the agent to ask the user for the missing
+  mapping. Shipping them would have meant inventing a threshold nobody
+  authorised, under a name matching the question's own words.
+- **No Yes/No flag for any masked composite concept.** 28 of the 29 tasks turn
+  on a `knowledge_ambiguity` entry with `is_mask: true`; only `households_16`
+  (Income Classification) is `is_mask: false`. So no flag ships for Affluent
+  (KB 21), Urban (KB 22), Mobile (KB 23), Crowded (KB 25), Modern (KB 26),
+  Well-Equipped (KB 27), Economically Stable (KB 28), Comfortable Living
+  (KB 29), Self-Sufficient (KB 30), Compact (KB 39) or Economically Independent
+  (KB 42) households. Expect this to cost tasks; `ACCEPTANCE.md` records them as
+  capped so a score is read correctly.
+- **Income thresholds made expressible without inventing one.** KB 2 names
+  income classes 'Low Income' through 'Very High Income' and KB 21 defines
+  Affluent as 'High Income' or 'Very High Income', but the column stores R$
+  ranges and nothing maps the two. Rather than invent a cut-off, the Income
+  Bracket dimension ships `Income Bracket Rank` (1-12 by monetary amount) and
+  `Income Bracket Lower Bound` / `Upper Bound` in reais, so any threshold a user
+  names is expressible after asking. This also answers "the second-highest
+  bracket" directly.
+- **Group vs entity readings separated only where they diverge.** Average
+  Bathroom Ratio 0.6611 vs Bathrooms Per Resident (Pooled) 0.5519; Average
+  Household Density 1.3927 vs Residents Per Bedroom (Pooled) 1.2450 - both
+  shipped, named asymmetrically, each description naming the other. Where the
+  formula is linear in its components (Infrastructure Quality Score is a plain
+  mean of three terms; Living Condition Score is a 50/50 blend of two) the
+  pooled group formula is provably identical to the mean of entities, so only
+  one object ships. That is the Surface size rule applied: a variant only where
+  it is provably distinguishable.
+- **Missing-input policy handled by three-valued members, not policy twins.**
+  Where an input is absent the model ships an explicit member - Income Bracket
+  'Undisclosed' (110 households), Social Support Status 'Not enrolled' (8),
+  Dwelling Class 'Not recorded' (4), Newest Vehicle Year 'Undisclosed' (84),
+  Infrastructure Configuration 'Not recorded' (4) - so a caller can express
+  either the strict or the include-them reading by filtering, and neither
+  reading is unrecoverable. Coverage counts ship per formula (not per
+  component): Households With Bathroom Ratio 1577, With Household Density 1574,
+  With Infrastructure Data 1577, With Living Condition Score 1577.
+- **Three KB entries have no backing column at all**, verified against
+  `information_schema.columns`: Residential Zone Types (KB 34), Utility Access
+  Level (KB 35), Dwelling Condition Status (KB 38). The concepts built on them -
+  High-Mobility Urban Household (KB 40), Stable Infrastructure Household
+  (KB 41), Well-Maintained Dwelling (KB 43) - are therefore inexpressible here,
+  and the nearest available attributes say so instead of approximating. There is
+  likewise no floor-area or square-meter column anywhere, so a Space Bonus rule
+  stated in square meters per resident cannot be evaluated; the Dwelling
+  Capacity description says so rather than letting the agent substitute it.
+- **KB 45 (Urban Zone, `loczone = 1`) matches zero rows** - the 15 live zone
+  numbers run 121 to 414. It ships as `Urban Zone (Zone Number Equals 1)`, with
+  the qualifier in the name and a description that leads with "this returns
+  nothing" and redirects to the KB 22 infrastructure reading of urban. Shipped
+  rather than deleted because it is the knowledge base's own definition, but
+  named so it cannot quietly out-compete the right object.
+- **Two cable-availability readings.** KB 7 enumerates 'avail', 'available' and
+  'yes' as affirmative; the live data also carries 'y' and 'have' on 115
+  households. `Cable Status` (905 Available) takes all five tokens and
+  `Cable Status (Knowledge Base Tokens Only)` (790) takes the KB's three. The
+  two provably differ, so both ship, named asymmetrically.
+- **No precomputed rank columns - a deliberate deviation from the build prompt**,
+  reasoned in `ACCEPTANCE.md`. Every superlative question in this task set is
+  filtered, and a static global rank computed in dataset SQL is wrong under a
+  filter while being named in exactly the question's words. `ORDER BY <metric>
+  DESC LIMIT n` on the SQL interface is filter-correct. The tie structure that
+  would have decided a RANK/DENSE_RANK twin is recorded as capped instead:
+  Household Density has a two-way tie at 6.0 and a twelve-way tie at 5.0, and
+  Car Count a five-way tie at 5, so any `LIMIT 10` by density or unfiltered
+  "highest car count" has a non-unique expected answer.
+- **Withheld columns**, recorded so the omission is not read as an oversight:
+  `amenities.amenityref`, `properties.propref`,
+  `transportation_assets.transref`, `households.serviceplan` and
+  `service_types.serviceref` are surrogate row ids on 1:1 tables that no
+  question touches; the household is already identified by House Number.
+- **Hidden objects: none.** The Infrastructure leaf was initially a hidden
+  surrogate id (`infrastructure_ref`, 75 rows) per the "no leaf-grain
+  descriptive column" rule; profiling showed those 75 source rows are dirty
+  duplicates of only 7 real water/road/parking combinations, so the leaf is now
+  keyed on the canonical triple, has 8 browsable members, and answers a real
+  question. Nothing needs hiding.
+- **Surface size held down deliberately.** 89 published objects against the 162
+  that reached discovery parity and the 188 that exhausted per-task budget on
+  `cybermarket_pattern`. The multiplicative rules were treated as permissions,
+  not obligations: no rank twins, one water-access reading, one reading each for
+  the two linear composite scores.
+- **No median anywhere** - no KB definition in this database requires one, so
+  the MDX-Median workaround row is not exercised.
+
+Generator self-audit gates (all clean): duplicate labels and unique_names across
+every attribute and metric, `unique_name` differing from `label` on anything
+queryable, unreferenced datasets, metrics naming a column no dataset defines,
+dimensions referencing unknown levels, relationships whose `join_columns` count
+differs from the target level's `key_columns`, dangling cross-references between
+descriptions, non-ASCII in a description outside the model's own accented member
+values (Ceilândia, Guará, Candangolândia), SML length limits, `metric_calc`
+folder minimums, and 59 discoverability phrases taken verbatim from the tasks'
+own wordings - each must match at least one published description, checked by
+parsing the emitted YAML and normalising whitespace rather than grepping the raw
+file, because `safe_dump` folds long descriptions at column 100.
+
+All three derived datasets were dry-run directly against the warehouse before
+validate: 1581 / 122 / 13 rows as expected, every canonical CASE verified to
+have no unmatched value falling through to a default, and every knowledge-base
+formula spot-checked against hand-recomputed source values.
+
+`config/environment_backends.yaml` now carries a `households` domain entry
+pointing at `bird_atscale_models_catalog_main` / `Households`. That schema is the
+expected one by convention, **not** one read back from `list_models`, because the
+model is not deployed - a comment above the entry says so. Before the first run:
+deploy, confirm the schema and table against what `list_models` actually
+reports, and restart the services. `shared/environment_backends.py` caches this
+file in a module-level dict at first load, so a `--backend` flag will not pick up
+an edit; two full runs have previously been lost to a config that was already
+correct on disk.
+
+**2026-08-11 - all four acceptance gates run against the deployed model; all
+four pass.** Q-17b health gate passes (`list_models` succeeds and returns all 5
+models; `Households` reports 43 measures / 46 dimensions, matching the build).
+Catalog-suffix confirmed: the deployed schema is
+`bird_atscale_models_catalog_main`, which is what the config entry already named.
+Post-deploy MDX gate passes 10/10, including the two expressions that go beyond
+plain measure arithmetic - `Share Of Households Percent` sums to 100 across
+regions and `Infrastructure Score Range Across Regions` returns
+0.7916666666666665, so both the `[All]` member and the `ALLMEMBERS` set resolve
+correctly. Exactness exact-equal on every figure at full double precision, with
+two averages differing in the last double bit only (engine summation order, the
+same class recorded under `cybermarket_pattern`). Conformance 20/20, every
+grouping totalling exactly 1581. Discoverability: every question-style
+paraphrase surfaced its intended object, including all nine "cannot be answered
+here" redirects. Coverage 6/6. Group-vs-entity separation confirmed diverging on
+both pairs that should diverge. Full evidence in `households/ACCEPTANCE.md`.
+
+**One real defect, found by Gate 1i and fixed (`d6ff534`).** The five
+`... (As Recorded)` attributes were emitted through the whitespace-normalising
+helper rather than straight from the source, so they arrived half-cleaned:
+whitespace collapsed, case preserved. Live distinct-member counts were 64
+(tenure), 92 (dwelling class), 88 (cable status), 67 (newest vehicle year) and 12
+(income bracket) against the raw 84 / 116 / 123 / 122 / 46. Five descriptions
+therefore stated wrong spelling counts, and `Income Bracket (As Recorded)` had
+collapsed to 12 members - nearly the canonical 13, because those raw spellings
+differ only in whitespace and not in case - which made its "do not group on this"
+warning actively misleading: grouping on it gave the right groups rather than the
+fragmentation the description warned about. This was invisible to `sml-cli
+validate`, invisible to the other three gates, and invisible to every Gate 1
+total; it only shows up in a live distinct-member count, which is why Gate 1i
+exists. The canonical columns were never affected and every canonical figure is
+unchanged after the fix. **Requires a redeploy to go live** - until then the
+deployed model still carries the half-cleaned columns and the four wrong counts.
+Nothing a benchmark question targets is affected, since the questions group on
+the canonical attributes.
+
+**2026-08-12 - what the households evaluation actually measured, and one
+transferable lesson.** Five runs of the atscale arm after the config fix, all
+clean, all scoring 0.095 with sd 0.000 and passing the identical two tasks.
+Raw's three runs average 0.078 on the 20 shared query tasks (spread 0.050 to
+0.100). The +0.022 gap is under half the 0.049 run-to-run spread, so households
+supports no lift claim in either direction yet.
+
+The reason is the task set, not the model. Reading the gold SQL for every
+failing task (permitted for diagnosis; never folded back into the build)
+produced two defect families:
+
+- **The graded reference answers a different question than the one asked.** 12
+  of 21. households_1 asks for area code and average bathroom ratio and its gold
+  returns `SUM(Auto_Count)` for the top region; households_13 is
+  `output_type: table` asking for counts per area and its gold returns the
+  single top area by percentage; households_M_10 returns the *fifth* row via
+  `OFFSET 4 LIMIT 1`. The task's own `user_query_ambiguity` snippets agree with
+  the question text and disagree with the gold, which is the strongest evidence
+  available that the two halves of these records were generated from different
+  queries - `sol_sql` comes from BIRD's ground-truth file and the question and
+  ambiguity payloads from the public file, joined on `instance_id`.
+- **The gold filters on literals absent from the data**, so the graded answer is
+  degenerate. Every one of these matched 0 rows: `'More than R$ 4,400'`,
+  `'More than R$ 880 and less'`, the named income classes `'low income'` through
+  `'very high income'`, `roadsurface IN ('asphalt','concrete')` (actual value
+  `'Asphalt, concrete'`), `wateraccess IN ('yes','available at least in one
+  room')` (actual `'Yes, available at least in one room'`), and
+  `'2012 to 2013'`. Consequences, executed verbatim: households_7's correct
+  answer is **-151** (its Urban test can never fire, and gold subtracts Rural
+  from Urban), households_12's is **empty**, households_17's is **0**.
+
+A further 5 tasks are decided by string granularity rather than modelling: the
+gold filters dirty text at `LOWER()` or `TRIM(UPPER())`, which folds case but
+merges neither synonyms nor interior whitespace, while the canonical attributes
+merge all three and therefore select a larger population. households_4: gold's
+'apartment' is 222 properties and the canonical Apartment class is 255, so 86
+against 105.
+
+**SUPERSEDED - see the correction dated 2026-08-12 below.** The reading at the
+time was that descriptions suppress reliably and promote unreliably. The first fix shipped
+the recorded-value readings as secondary attributes whose descriptions opened
+with "WARNING - this is NOT the canonical" and closed with "Group on X
+instead". The next run scored 0.095 again - completely inert. The trajectories
+show why: the agent saw those attributes in `explore_columns` on every task that
+needed them (households_4's very first search returned
+`Dwelling Class (Recorded, Lower Case)` with its full description) and used the
+canonical attribute anyway, on all four tasks, spending its budget resubmitting
+the same wrong query. The build prompt already warns that a description cannot
+steer an agent *toward* an object; this is the same rule in reverse, and the
+reverse direction is the strong one. A warning in a description is a blunt,
+effective instrument - so do not point one at an object you actually want used.
+The only lever that moved behaviour was the name.
+
+Two defects found while checking the deployed name-swap, both invisible to
+`sml-cli validate` and to every acceptance gate:
+
+- **A silent-empty-result trap of my own making.** Prepending a granularity note
+  while preserving the original description text left canonical member values
+  documented on an attribute that no longer held them: Cable Status said
+  "'Available' (905 households)" while its members were all lower-cased. An
+  agent copying that literal filters on a value matching zero rows and gets an
+  empty result with no error. `check_swapped_descriptions.py` in the model repo
+  now gates the class by failing any quoted literal that case-insensitively
+  matches a real member but differs in case or whitespace.
+- **Cleanup scoped to the wrong dimension.** The redundant `(As Recorded)` twins
+  live on the Household dimension, not on the dimension being swapped, so six
+  of them survived pointing at the same column as the newly-bare level.
+
+Harness change from the same investigation: the Management-category (DDL/DML)
+exclusion applied only to non-raw backends, so the raw arm ran 29 households
+tasks against the atscale arm's 21 and 600 against 410 across the suite, which
+is what inflated raw's headline. `--exclude-management` now applies the
+identical predicate to the raw arm, results files record `exclude_management`
+and `task_count`, and `summarize_runs.py` shows the scope per run.
+
+**2026-08-12 - correction, and the actual transferable lesson. Descriptions steer
+reliably in BOTH directions.** The entry above concluded from the first failed
+attempt that a description can suppress an object but not promote one. The second
+attempt refutes the second half and the correction is the part worth carrying to
+the other 19 databases.
+
+Attempt two moved the bare, unqualified name onto the recorded reading for the
+five concepts that decide scored tasks and pushed the canonical reading behind
+`(Canonical)`, on the theory that only the name moves behaviour. It changed
+nothing: 0.095 again, the same two tasks passing. The trajectories show why. The
+naive attributes' descriptions said "filter here when a literal has to match the
+source spelling; for grouping, counting or any 'for each' question use
+X (Canonical)" - and all four target tasks are counts or groupings. The agent
+followed that instruction exactly, using `(Canonical)` **77 times against 6 uses
+of the bare swapped names** across the run, on all four tasks.
+
+So the mechanism is not one-directional. The agent follows operation-conditional
+guidance in a description closely - "filter here, count there" was obeyed
+precisely. Attempt one failed because its descriptions *suppressed* the objects
+it added; attempt two failed because they *promoted* the wrong one. In both cases
+the channel worked and the guidance was wrong.
+
+Two consequences:
+
+- **For the remaining models: treat description text as a working control
+  surface, and write the operation-conditional guidance deliberately.** Sentences
+  of the form "use A for filtering, B for grouping" are load-bearing, not
+  decoration. That is a positive finding about the semantic layer's metadata and
+  belongs in the product story, not only in a failure log.
+- **For households: the four tasks are not winnable honestly.** Winning them
+  needs a description telling the agent to use the fragmenting reading for
+  counting and grouping, which is instructing bad analysis in a model published
+  as an example of good modelling. `NAIVE_TEXT_PRIMARY` is reverted to False,
+  the machinery kept with the outcome recorded beside the flag so the negative
+  result is not re-derived, and households is reported as no-measurable-lift on
+  the task-set evidence above.
+
+Final households position: 6 clean atscale runs at 0.095 (sd 0.000) against raw's
+0.078 on the 20 shared query tasks; the +0.022 gap is under half the 0.049
+run-to-run spread. 14 of 21 tasks are unwinnable as asked, 4 more turn on string
+granularity the grader resolves one way and honest modelling the other, and 2
+pass. No further model change is warranted on this database.
+
+---
+
+## labor_certification_applications
+
+**2026-08-13 - initial build.** Generated by
+`labor_certification_applications/generator/` (spec.py + sql.py -> generate.py,
+driven end to end by `build.sh`). 117 objects: 5 derived datasets, 13 dimensions
+(49 attributes), 43 metrics, 20 `metric_calc`s, 1 model. Deployed with
+`sml-cli atscale-deploy --catalog-name=bird_atscale_models_catalog_main`, so it
+publishes into the existing suffixed catalog rather than creating an unsuffixed
+second copy (Catalog-suffix / Q-17 rows above). `config/environment_backends.yaml`
+updated with the domain entry, schema read back from `list_models` (6 models).
+
+### Workaround rows applied
+
+- **E-02** - every derived-dataset statement schema-qualified with `public.`.
+- **D-01** - generator gate A4 asserts no emitted SQL contains a `|`, which also
+  rules out `||`; `CONCAT()` is used throughout, and the worksite surrogate is a
+  `DENSE_RANK()` integer rather than a concatenated string key.
+- **MDX-Median** - `Median Processing Days` and `Median Wage Differential Rate`
+  ship as `calculation_method: percentile` with `named_quantiles: median` and
+  `compression: 1000`. Confirmed live that the Postgres dialect rejects them:
+  `Quantile function 'QuantileRawToSketchFunction' is not supported by dialect
+  'Postgresql-9.4.5'`. Both descriptions say the median is unavailable on this
+  warehouse and name the mean to use instead. The engine exposes them as
+  `<name>_instance_0.5` (not `_instance_median`).
+- **E-01** - the six identity attributes (Employer, Attorney Email, Worksite,
+  Preparer Email, SOC Code, Job Title) each say that a bare `COUNT` of the column
+  is not evaluated and name the count measure to use instead.
+- **Q-17b** - gated on `list_models` succeeding and returning the expected model
+  count after every one of the four deploys. Never hit.
+
+### Build decisions worth carrying to other models
+
+- **One wide application fact.** `cases`, `case_worksite` and `prevailing_wage`
+  are exactly 1:1:1 (981 rows each, no orphans either way) and `case_attorney`
+  is 1:0..1 (727 of 981, every row `counselfor = Yes`). Joining all four gives
+  every attribute a direct relationship to every entity dimension, so there is
+  no bridge, no many-to-many, and the conformance-failure class cannot occur.
+  All 13 dimension groups map to the single fact in `column_groups`.
+
+- **Three self-keyed occupation attributes instead of a hierarchy.** `soccd`,
+  `soctitle` and `jobtag` disagree in the live data - 130 codes, 128 standard
+  titles, 700 free-text titles, with one code carrying two titles and two titles
+  carrying two codes. A `soccd`-keyed level named after `soctitle` would fail the
+  engine's functional-dependency check. Shipping `SOC Code`, `SOC Occupation
+  Title` and `Job Title` as three separate self-keyed attributes is also the
+  honest answer to the task set's masked term "occupations", each description
+  naming the other two.
+
+- **`[Dim].[Hier].[All]` is not a whole-model constant, and the failure is
+  silent.** The most valuable finding of this build, caught by acceptance gate 2
+  and invisible to `validate`, to deploy, and to the MDX validator (all six
+  broken expressions validated clean). A tuple like
+  `([Visa Class].[Visa Class Hierarchy].[All], [Measures].[Distinct Visa Classes])`
+  clears only *that* dimension's filter; every other dimension in the query
+  still narrows it. So an index whose denominator is meant to be a
+  warehouse-wide average collapses to the current slice:
+
+  - `Attorney Specialization Index` returned **0.0 at every grain** instead of
+    0.75, because the denominator became "visa types handled by this attorney"
+    (1) rather than "visa types in the warehouse" (4).
+  - `Occupational Demand Index` returned **1.0** instead of 43.73 for SOC
+    15-1252.00 as soon as a second attribute was grouped, for the same reason.
+  - Both numbers are plausible, which is why plausibility is not evidence.
+
+  Fix: `AllMember(<expr>)` strips all dimension context and gives a true
+  whole-model constant. Applied to Occupational Demand Index, Employer Scale
+  Indicator, Attorney Specialization Index, Seasonal Application Index, State
+  Application Concentration Ratio and the Employer H-1B Concentration
+  denominator; all six verified against Postgres afterwards (ODI 43.730886850
+  vs 43.730887, EHC 6.387434555 vs 6.387435).
+
+  The corollary matters as much: **a share-of-total calc genuinely wants the
+  scoped `[All]` behaviour.** The seven `... Share Across ...` calcs divide out
+  exactly one named dimension so that other filters stay in force - that is what
+  makes "percentage of positions within this occupation" and "visa mix for this
+  attorney" expressible at all. Decide per calc which of the two you mean;
+  `Position Share Across Wage Tiers` depends on the scoped form and
+  `Occupational Demand Index` depends on the global one.
+
+- **Near-duplicate readings of one concept must all be cleared together.** A
+  follow-on from the above: because SOC Code, SOC Occupation Title and Job Title
+  are three readings of one concept, an `[All]` on just one of them left the
+  other two narrowing the denominator, and grouping by SOC Code plus SOC
+  Occupation Title returned 100.00 instead of 33.64. Both occupation shares now
+  clear all three occupation hierarchies in one tuple.
+
+- **`RANK() OVER (...)` works in inbound SQL.** Verified live. Ties do exist at
+  the N the questions use (job title 57, 15, 15, 14, 14 restricted to H-1B; SOC
+  title 330, 52, 38, 29, 29, 29), so `RANK` and `DENSE_RANK` top-5 disagree - but
+  no rank metric is shipped, because the caller can express a displayed rank in
+  SQL and a `metric_calc` rank would need one object per grain. Where a task's
+  own `LIMIT N` cuts across a tie the expected answer is not unique and the task
+  is capped regardless of the model.
+
+- **Discoverability is worth probing after deploy, not just at build time.** The
+  build gate (A9, 79 phrases) passed while eight question wordings still matched
+  nothing live: "labor shortage", "demand score", "visa focus", "foreign
+  workers", "pay well", "specialty occupation", "regular filer", "skilled
+  position". Two were pure hyphenation - `explore_columns` is a literal substring
+  match, so "specialty-occupation" and "continuous-filer" never match the
+  space-separated forms a caller types. Write the unhyphenated form.
+
+### Live-data facts that shape the model
+
+Each is stated in the description of the object it affects, because each one
+turns a plausible answer into a wrong one.
+
+- **Every one of the 981 applications is certified**, stored as `Certified`
+  (334), `certified` (324) and `CERTIFIED` (323). So every approval, success and
+  certification rate is 100% at every grain - which is also why only one
+  `Approval Rate` object ships rather than the usual group / mean-of-entity /
+  entity trio: the three are provably identical here. A filter on one
+  capitalisation loses two thirds of the rows, so `Application Status` is
+  normalised and `Application Status As Recorded` carries the raw values.
+- **`recvday` and `decisionday` are single constants** (2023/12/21 and
+  2023-12-29), so every measured processing time is exactly 8 days and the mean,
+  minimum and maximum all equal 8, with standard deviation 0. 216 of 981 have no
+  decision date. This makes KB 32 (Processing Efficiency Ratio) identically 1.0,
+  and it is not shipped.
+- **One receipt month in the whole warehouse**, so `Seasonal Application Index`
+  is identically 1.0 and KB 58's continuous filer (9+ months) is unreachable.
+- **No application offers below its prevailing wage** (WDR min 0.00, max 457.23,
+  mean 21.4242), so the KB 48 `Below-Market` tier is empty.
+- **`willfulv` has no `Yes` value at all**, so a willful-violator filter returns
+  nothing.
+- **Attorney names are not unique** - 19 names cover 45 of the 386 attorneys - so
+  `Attorney Email` is a queryable secondary and the leaf description *leads* with
+  the warning.
+- **`cases.headct` equals `case_worksite.wsheads` on every row**, so one
+  `Worker Positions` measure ships, not two. `cases.siteslots` (1 to 10) does not
+  match the worksite records (exactly one per application), so `Worksites` (854)
+  and `Reported Worksite Slots` (1,472) ship as separately disambiguated
+  measures.
+- **Law firm names carry casing variants** (Fragomen appears twice), so the
+  `Law Firm` description leads with the fact that grouping splits such firms.
+
+### Masked-term policy and its expected cost
+
+The rule applied, stated so it can be checked: a formula the knowledge base
+states explicitly is shipped even when a task marks the term ambiguous (there is
+no constant to hard-code), while a threshold-bearing classification is shipped
+only when its ambiguity entry is `is_mask: false`. One qualifies - the KB 44
+geographic hotspot, shipped as `State Application Hotspot` (9 of 47 states).
+Nine masked classifications are deliberately absent - visa filing window,
+complexity tiers and score, employer size classification, attorney
+specialization category, attorney performance rating, employer dependency level,
+premium wage position, skill shortage occupation - and their components ship
+instead, each description saying it is one input to a larger named concept and
+that the agent should ask the user for the complete definition first.
+
+Tasks 3, 6, 7, 10, 11, 14, 15, 16, 18, 20, M_1, M_2, M_5, M_7, M_8, M_9 and M_10
+each turn on one of those. Expect them to fail and report them separately from
+real defects; on `cybermarket_pattern` no honest model change moved this class.
+Separately, the ten `Management`-category tasks ask for DDL (create a table,
+add a column, define a function or trigger), which a read-only semantic layer
+cannot do at all - only their analytical follow-ups are expressible.
+
+### Knowledge-base entries this database cannot support
+
+KB 22 and 38 need a cost-of-living index; KB 39 needs a premium-processing
+column; KB 36 needs more than one year of receipts; KB 42 is defined against
+total workforce - none of which exist here. KB 27, 33 and 35 need a sum of
+squared shares, which the engine cannot express inline, and no task references
+them. KB 17 is provably identical to KB 11 in this data (the minimum required
+wage *is* the prevailing wage), so one object ships and says so. Full table in
+the model's `SPEC.md`.
+
+### Acceptance evidence
+
+1. **Exactness** - 15 headline figures returned by the model are exact-equal to
+   the same aggregates computed directly on Postgres over the fact's own SQL
+   (981 / 981 / 1134 / 854 / 546 / 386 / 290 applications, certified, positions,
+   worksites, employers, attorneys, preparers; WDR mean 21.424249284, pooled
+   19.506209045; 8.0 processing days over 765; approval 100, external counsel
+   74.108053007, retention 22.528032620). Level IV annual-paid WDR 20.42958427
+   over 132 applications, and the full state distribution with its concentration
+   ratios, also match exactly.
+2. **Conformance** - one measure-by-attribute query per dimension, all 13
+   non-empty, including every secondary attribute.
+3. **Discoverability** - probed with the task briefs' own question wordings only;
+   eight gaps found and closed, then re-verified live.
+4. **Coverage** - one passing query per shape: group aggregate, filter-by-
+   classification then measure, superlative top-N, multi-dimension across three
+   separate source tables, entity-level detail, group-relative comparison. The
+   only shape not answerable is a median, which is dialect-blocked and
+   documented.
+
+The outbound warehouse SQL was read (`get_outbound_queries`) to confirm the
+derived dataset is pushed down verbatim with `public.` qualification and the
+`DENSE_RANK()` window intact, and that the share calcs compile to the
+UNION ALL + self-join form rather than being silently dropped.
+
+**Not yet done:** no evaluation run. Per the build prompt's own guidance, treat a
+first run at baseline as the start of the work: read the agent's submitted SQL
+for every failing task, sort model-fixable from masked-term and non-unique-answer
+failures before changing anything, and require n>=3 per arm before believing any
+delta.
+
+**2026-08-13 - first evaluation round: 3 raw runs, 1 atscale run, all void.**
+
+Every task in all four runs scored 0.000, including all three raw baselines. A
+text-to-SQL baseline does not go 0/19 three times, and the same harness scored
+raw 0.230 / atscale 0.474 on `exchange_traded_funds` an hour earlier, so the
+cause was harness-side and specific to this database. Root cause and fix are in
+the ADK commit "db_environment: stop per-task DB names colliding past Postgres'
+63-byte limit"; the short version is that this is the first BIRD database whose
+name is long enough that `{base_db}__{instance_id}` exceeds 63 bytes, and
+Postgres truncates over-length identifiers with only a NOTICE while `createdb`
+still exits 0. Consequences: all 20 tasks shared one physical database, `init_task`
+500'd on 3-4 tasks per raw run, and - the one that mattered - **a phase-1 pass
+was recorded as a failure**, because the Phase-1 snapshot name truncated to the
+same 63 bytes as its own source and the resulting `createdb` error was caught by
+the handler that returns `passed=False, reward=0.0`. Phase 2 was therefore
+unreachable for the whole database in both arms.
+
+Add a new row to the Workarounds discipline: **when both arms score 0.000 on
+every task of one database, suspect the harness before the model, and check
+whether that database's name is unusually long.** ETF at 55 bytes is one byte
+inside the limit; nothing else had crossed it in five models.
+
+The true phase-1 rates are recoverable from the trajectories, because every
+phase-1 pass left the `createdb` error as its fingerprint:
+
+| arm | runs | tasks that never started | true phase-1 /19 | tasks passed |
+|---|---|---|---|---|
+| raw | 3 | 3, 3, 4 | 0.263 (sd 0.053) | 4, 6, 7, 8, 10, 11 |
+| atscale | 1 | 0 | 0.263 | 2, 3, 4, 7, 8 |
+
+Level on the mean, with raw's figure understated (3-4 of its tasks never ran) and
+atscale at n=1 against a +/-0.05 spread. **No lift is measurable from this round.**
+One genuinely reassuring result: discovery cost is at parity, 5.1 calls per task
+in both arms, so the 117-object surface is not the `cybermarket_pattern`
+budget-exhaustion failure mode.
+
+Reading the submitted SQL sorted the atscale losses into three classes.
+
+- **Real, model-fixable (task 6).** The user stated a Wage Differential Rate
+  cut-off of their own. The agent filtered on the shipped `Wage Competitiveness
+  Tier` instead - a KB 48 bucket with a different boundary - and answered 60
+  positions where the user's threshold gives 33. It did that because the correct
+  path did not exist: `WHERE "Wage Differential Rate" > <n>` returned `Column not
+  found`. WDR shipped only as measures, and a measure can be aggregated but never
+  filtered or grouped BY. Same gap made task 11 inexpressible once the user
+  supplied the filing-window buckets. Fixed by shipping the continuous numerics
+  as attributes as well as measures, plus two grand-total shares so a
+  caller-defined CASE bucket can report its own percentage. **The general lesson
+  for the other models: audit every continuous numeric for a queryable twin, and
+  treat "the caller supplies the threshold" as a first-class query shape. A
+  KB-sanctioned bucket whose boundary differs from the caller's out-competes the
+  correct path on name match, and if the correct path is inexpressible the agent
+  has no way back.**
+
+- **Capped, not fixable (task 10).** The atscale query returned values identical
+  to raw's passing one (Complex 156 / 8.0, Standard 609 / 8.0). Only the row order
+  differed; `conditions.order` is true, `grading_tie_tolerance` defaults to False,
+  and every processing time in this warehouse is 8.0 - so "ordered by processing
+  time" does not determine the order and the expected answer is not unique.
+  Whether to enable tie tolerance is a grading-policy decision and was left alone
+  deliberately: flipping it to make one arm look better is not a model fix.
+
+- **The masked-term rule working as intended (tasks 6, 10, 11 in the raw arm).**
+  Raw won all three by asking the user, and the simulator handed over the exact
+  cut-offs - "greater than 20%", "Complex or Standard based on H-1B dependency or
+  willful violator status", the five filing-window labels. That is the path the
+  benchmark intends for a masked term, and it is the reason the semantic arm must
+  not pre-empt it. The model change above deliberately makes the caller's answer
+  *expressible* without making any withheld number *discoverable*.
+
+One self-inflicted near-miss worth recording: the first draft of the new
+attribute's description illustrated it with "above 20 percent", which is KB 40's
+withheld threshold - handing over for free what the raw arm spends a turn buying.
+The incoming `utilities/masked_threshold_gate.py` passes that text either way (its
+regex excludes bare "above" as too noisy to be useful), so it was fixed on the
+policy rather than on the detector. That gate now runs as step 5 of the model's
+`build.sh`.
+
+**Still not done: a re-run.** Nothing about the scores above should be quoted; the
+next round needs n>=3 per arm on the fixed harness.
+
+---
+
+## organ_transplant
+
+**2026-08-15 - initial build.** Generated by `organ_transplant/generator/`
+(`spec.py` -> `generate.py`, with `sql.py` holding the derived SQL, `stats.py`
+harvesting every live count a description quotes, and `dryrun.py` pinning the
+KB formulas). 254 objects: 3 derived datasets, 16 dimensions, 95 metrics
+(6 hidden), 13 `metric_calc`s, 1 model. Deployed with
+`sml-cli atscale-deploy --catalog-name=bird_atscale_models_catalog_main`;
+`list_models` read back 8 models afterwards (the Q-17b gate).
+
+**Answer-key firewall.** Mechanical, not intentional:
+`generator/extract_brief.py` allowlists the permitted task fields, drops
+`sql_snippet` and `deleted_knowledge` even from the ambiguity entries it does
+copy, then asserts on its own output that no denied key name and no SQL-shaped
+value survives. No gold SQL reached the build.
+
+**Shape.** One wide match fact (947 rows) left-joining all six match-level
+satellites, plus donor (659) and recipient (787) dimensions each left-joining
+their own 1:0..1 satellites. Every satellite verified orphan-free first, so the
+whole conformance failure class is designed out rather than tested for: all 16
+dimension groups reach the single fact.
+
+**Masked-concept split** (generator gate A10, derived from `is_mask` in the
+brief and the KB entry's own `type`, not from a reading of the word
+"threshold"). Masked `calculation_knowledge` - a KB-named formula - ships under
+its own name: Cost-Effectiveness Ratio, Patient Urgency Score, Composite
+Allocation Score, Renal Function Score, Size Compatibility Score, 5 of 5.
+Masked `domain_knowledge` does not ship: the optimal donor-recipient match
+classification, the antibody-mediated rejection risk stratification, the
+marginal donor framework and the allocation policy ordering are published as
+their components only, 0 of 4. Each component's description names the wider
+concept and routes to a closed question naming the shape of answer to request -
+every condition, the exact numeric cutoff, the exact label text, the user's own
+spelling, and re-ask rather than choose on a qualitative reply. **Expect this to
+cost tasks** - `organ_transplant_1`, `_2`, `_4`, `_16` and `M_2` all turn on one
+of those four terms - and report them separately from real defects.
+
+**Engine dialect, re-probed live 2026-08-15** against this deployment rather
+than carried over: `NTILE`, `CORR`, `PERCENTILE_CONT`, `STRING_AGG`, `GREATEST`
+and CTEs are all rejected; `RANK`, `ROW_NUMBER`, `LAG`, `ROUND` and
+`SUM(CASE WHEN ... THEN 1 ELSE 0 END)` are accepted. Two consequences carried
+into the model: `CORR` being rejected is why the six hidden paired-sum measures
+and the `Ischemia Time To Graft Survival Correlation` calc exist (verified equal
+to Postgres `corr()` to 16 digits, under a filter as well as unfiltered), and
+`LAG` being accepted is why no consecutive-run object ships - the caller can
+write it. The model description states the probed list so a caller does not pay
+to discover it.
+
+**Workaround rows applied.** E-02 - every derived table reference is
+`public.<table>`, asserted by gate A2. D-01 - no `|` anywhere in the emitted
+SQL, asserted by gate A1, which is why the blood-group parse uses
+`split_part`/`rtrim` rather than a regex alternation. E-01 and Q-15 - both
+re-confirmed live on this model (`COUNT("Donor")` returned the string
+`D102099`, and co-projecting it with `COUNT(DISTINCT "Donor")` collapsed the
+distinct count to 1 per row); the Donor, Recipient and Match key attributes now
+**lead** with that warning and name the count measure to use instead.
+Catalog-suffix - the suffixed name was passed verbatim and
+`config/environment_backends.yaml` gained a matching `organ_transplant` entry.
+MDX-Median - not needed; no KB definition here rests on a median.
+
+**Three defects found by the acceptance gates, all fixed before the final
+deploy.**
+
+1. *Provably redundant object.* Center volume and center outcome are recorded
+   together on all 774 matches carrying a risk record and never one without the
+   other, so the group formula `0.6*avg(vol) + 0.4*avg(out)` and the mean of the
+   per-row `0.6*vol + 0.4*out` are equal under any filter. Both had shipped;
+   only the group-level `Center Performance Score` survives, and its description
+   says why. The other two group/entity pairs (composite allocation,
+   comprehensive match quality) were checked the same way and **do** differ,
+   because their components have different support sets, so both readings of
+   each are kept.
+2. *Stale cross-references after a rename.* The 63-character `unique_name` limit
+   forced five renames, and four description cross-references were left pointing
+   at names that no longer existed, plus one naming a per-match
+   readmission-risk attribute that was never published. The existing gate only
+   saw references introduced by see/use/compare-with. New gate **A12** checks
+   every parenthesis-qualified object name quoted anywhere in a sentence, and a
+   negative test confirms it fires. New gate **A11** fails the build on any
+   `unique_name` over 63 characters, so the rename cascade cannot recur silently.
+3. *A KB conflation that would have returned the wrong population.* `High-Risk
+   Donor` carried "extended criteria donor" as a paraphrase, but KB 53 defines
+   the marginal / extended-criteria framework as applying to donors who are
+   **not** classified high risk. A marginal-donor question would have matched on
+   surface words, returned a plausible number over the wrong population, and
+   signalled nothing. Both objects now lead with the distinction and route to
+   ask-the-user.
+
+**Degeneracies found by profiling, stated in the descriptions of every object
+that touches them.** Every match timestamp falls inside a single second
+(`match_ts` is one constant string across all 947 rows and is withheld
+entirely; `created_ts` varies only in microseconds), so there is no usable time
+dimension, elapsed-time statistics over it are meaningless, and any ordering by
+it - including the Previous Match carry - is effectively arbitrary. The donor
+organ recovery date has two distinct values; the data-quality update date has
+one. The youngest recipient is 18, so any paediatric or under-18 population is
+empty. No transplant center has more than 4 matches, so per-center averages rest
+on very few cases and center rankings tie heavily.
+
+**Recorded-versus-computed pairs, all verified to differ before both were
+shipped.** Recorded expected graft survival vs the KB's logistic formula: 0 of
+730 agree at 4dp, correlation -0.0072. Recorded blood compatibility vs the ABO
+rule computed from blood groups: agree on 381 of 730. Recorded HLA mismatch
+count (0-6) vs the locus-by-locus comparison (0-3): agree on 93 of 687. The
+recorded size and age sub-scores vs their KB formulas: 0 of 870 and 2 of 870.
+Each pair ships under asymmetric names with those counts in both descriptions.
+
+**Not computable, recorded so a silent gap is distinguishable from an
+oversight.** The resource utilisation index needs an expected length of hospital
+stay, which no column in this warehouse carries; the components ship and the
+description routes the length-of-stay choice to the user. The net health benefit
+score is parameterised by a caller-supplied QALY gain, so no single object can
+carry it; the formula is stated on Surgical Risk Score and both components ship.
+Regional allocation priority compares the donor's region with the recipient's,
+and no donor region column exists. Quantile bands over any score cannot be built
+at build time because a band cannot know the runtime population - row-level
+score attributes ship so the caller can derive one from `ROW_NUMBER`. The full
+list with reasons is `OMISSIONS` in `generator/spec.py`.
+
+**2026-08-16 - first measured round, 3 runs per arm, query-only (19 tasks).**
+
+| arm | run 1 | run 2 | run 3 | mean | sd | phase-1 passes |
+|---|---|---|---|---|---|---|
+| raw | 0.0895 | 0.0526 | 0.0737 | **0.0719** | 0.0151 | 5 of 57 task-runs |
+| atscale | 0.0368 | 0.0368 | 0.0526 | **0.0421** | 0.0074 | 3 of 57 task-runs |
+
+Gap -0.0298 average reward (-41% relative, -0.57 reward points over 19 tasks),
+exact Mann-Whitney U=0.5, two-sided **p = 0.200**. Note what that p can and
+cannot say: at 3 versus 3 the exact test's floor is p = 0.100, so 0.200 with
+U=0.5 is close to the most separation this design can show. **n=4 per arm is
+the minimum that can reach p < 0.05**; the pooled sd of 0.012 against a 0.030
+gap says about 3 per arm suffices on power alone, so one more run each is the
+cheap next step - not four.
+
+**Both arms are on the floor, and that is the headline.** The raw text-to-SQL
+baseline scores ~0.30 on every other database in this repo and 0.072 here. 16
+of 19 tasks never passed in raw across three runs, 18 of 19 never passed in
+atscale. A raw arm at a fifth of its usual score is a statement about the task
+set, not about either backend.
+
+**The harness is not at fault** (checked first, per the 0.000 fingerprint):
+submit results carry real grading verdicts (`SQL failed Phase 1. Your SQL is
+not correct.`), not error strings, so no passes are being swallowed. The
+database name is 16 characters and nowhere near the 63-byte identifier limit.
+
+**Grading flags explain nothing.** All six runs re-graded under all four
+tie-tolerance / decimal-honouring combinations: **zero verdict flips in every
+run, both arms**. Tie-order and rounding are not in play on this database.
+
+**Root cause: the reference answers' populations are an artifact of which
+satellite tables the gold SQL happens to join.** 18 of 19 references INNER JOIN
+at least one optional satellite - up to four of them - and every such join
+silently narrows the population. Worked example, task 18: the four-table chain
+(`recipients_immunology`, `clinical`, `compatibility_metrics`,
+`risk_evaluation`) cuts 947 matches to 472 before any stated filter, and to 91
+after the question's own conditions. The agent, correctly filtering
+`Match Status = 'Completed'`, returned 166 recipients. Neither the question nor
+the knowledge base mentions any of it, and the chain differs per task (task 9
+joins one satellite, task 18 joins four), so there is no single convention to
+learn. This model LEFT JOINs its satellites deliberately - that is what keeps
+every match present and every dimension conformant - and switching to inner
+joins to match gold would be answer-fitting to the reference's SQL-writing
+habits, would break the coverage the support-set measures exist to expose, and
+would still be wrong for the tasks that join a different subset.
+
+Further conditions stated nowhere in either the question or the KB: task 14
+gates on `HAVING COUNT(*) > 1` (which is what turns "top 10 centers" into a
+3-row answer); task 11 invents five weights (0.4/0.6 and 0.7/0.3) for scores
+the question only asks the analyst to "come up with"; task 13 buckets with
+`WIDTH_BUCKET` (equal-width) rather than `NTILE` (equal-count) and so returns
+**6** rows to a question asking for 5 groups; task 7's gold maps medical
+urgency as 1A=5, 1B=4, **ELSE 2**, which contradicts KB 25 (Status 2=3,
+Status 3=2, all others=1). The model implements KB 25, per the follow-the-KB
+rule, and that costs task 7 - correctly. No third urgency reading was added,
+because a 1A/1B/else-2 mapping has no basis in the KB.
+
+**Failure classification of the last phase-1 submission per task** (shape
+against the reference, which is the only cheap way to know what a model change
+could reach):
+
+| | raw | atscale |
+|---|---|---|
+| shape matches, values wrong | 10 | 5 |
+| wrong row count | 6 | 8 |
+| wrong column count | 3 | 1 |
+| would not execute at all | 0 | **4** |
+
+On four tasks *both* arms produce the **identical** wrong shape (7, 11, 13,
+14) - conclusive that those are question-interpretation failures rather than
+backend failures.
+
+**What the semantic arm pays that raw does not.** 17% of its query calls
+errored, against 1% for raw - a 17x difference, and every errored call still
+costs a coin. Classified exactly: `must appear in the GROUP BY clause` (12, the
+rule that every measure needs an aggregate wrapper once a query contains a
+join), an `assertion failed: We already handled attribute values` planner error
+(9), `incorrectly constructed` constraints (8), column-not-found (6), `ntile`
+(3), `Could not find correct column to sort by` (3), aggregate-in-WHERE (2),
+NULLIF (2), a parse error (1), and 16 assorted engine errors. Only three name
+misses in the whole round (`Surgical Risk Score`, `Surgical Risk`, `center`),
+so discovery and naming are essentially working.
+
+**Correction, 2026-08-16.** An earlier version of this entry claimed 13 CTE
+rejections and attributed them to the engine. Both halves were wrong. The count
+came from a classifier bug - a case-insensitive `'cte' in text` test matching
+the letters inside "constru**cte**d" - and the true count of tool-guard
+rejections across all six runs is **zero**: no agent ever attempted a CTE, so
+the guard cost nothing this round. And the guard is not an engine limit at all;
+it is a client-side single-virtual-table policy in the MCP query tool
+(`validation.py`, `FromQualificationError`). The AtScale engine itself is not
+what refuses a `WITH` clause. Verified against the running server: a subquery in
+the FROM clause and an INNER JOIN to one both execute normally, so a CTE rewrites
+as `FROM (SELECT ...) t` - which is what the agents were already doing. Only
+`IN (subquery)` is separately refused. The model description now states the two
+layers separately and gives that rewrite.
+
+**Forward risk worth tracking.** The `develop` branch of the MCP server extends
+that same guard to reject **JOINs and FROM-subqueries** as well, not just CTEs.
+The running server permits both. Every successful phase-1 submission in this
+round used a FROM-subquery, and the model's own coverage gate uses an INNER JOIN
+to a subquery, so shipping the `develop` guard as-is would break queries that
+work today and would remove the only available CTE workaround. Worth measuring
+before that lands.
+
+**Surface size is not the problem this time.** Discovery cost 23% of the
+semantic arm's coins against 22% for raw - at parity, with 2.5 `explore_columns`
+calls per task against the 7.6 that made `cybermarket_pattern` pathological.
+The semantic arm used *fewer* tool calls than raw (12.4 vs 16.9 per task) and
+ran out of budget less often (60% of task-runs vs 88%). It is not being taxed
+by model size; it is being taxed by query rejections and by the same
+unwinnable references raw faces.
+
+**Read this database as a broken comparison rather than a model result.** The
+honest summary is that organ_transplant's reference answers encode populations
+and constants that neither arm can derive, both arms sit near zero, and the
+-0.030 gap between them is real in direction (all three atscale runs at or
+below all three raw runs) but not resolvable at n=3. Before spending another
+round on model changes, the question worth answering is whether this database
+should be in the comparison at all.
+
+**2026-08-16 - round 2 model changes (not yet measured).** Three changes, each
+justified from the schema or an existing rule rather than from a reference
+answer, and each verified sufficient before shipping.
+
+1. **Eleven `Has ... Record` attributes**, one per optional source table. This
+   is not a new idea - the build prompt already requires *both* halves of the
+   support-set rule, the counts **and** "an availability classifier saying which
+   entities carry the required inputs". The first build shipped only the counts,
+   so this closes an under-implementation. Every satellite is 1:0..1 with
+   coverage from 518 to 862 of 947 matches, and only **472** carry the
+   compatibility, risk, clinical and immunology records together, so a measure
+   is averaged over whichever matches carry its inputs - not the same population
+   as the next measure's. Before this, a caller could express that population
+   only by accident, via some column of the table happening to be non-null.
+   Verified: presence-filtering the LEFT-joined fact reproduces an inner-join
+   chain's population **exactly on 18 of 18** measurable task populations, and
+   tasks 18 and 17 reproduce their full reference answers cell-for-cell through
+   the deployed model.
+2. **Match Status now asks a closed question**, naming its five member strings
+   with live counts (Completed 174, Matched 195, In Progress 188, Pending 171,
+   Failed 219) and saying explicitly not to infer the states from a word like
+   finished or waiting. This is the ask-the-user shape that was the only
+   measured score mover on `labor_certification_applications` (+0.040).
+3. **A POPULATION section in the model description**, stating the grain, the
+   per-table coverage range, the 472 four-record intersection, and that a column
+   being non-null is an accident of that column rather than a statement about
+   the record.
+
+**Provenance, stated plainly.** The need for (1) was found by diagnosing failing
+tasks against gold, which the build prompt sanctions. What shipped is a fact
+about the schema - which source rows exist - and encodes no reference answer:
+the agent must still decide which records a question requires, and the
+descriptions deliberately do not hint at that. Nothing was changed to match an
+expected value.
+
+**Predicted payoff: zero**, per the standing rule. These make the reference
+population *reachable*; they do not make the agent reach for it. The model was
+already capable of task 18's answer through an accidental proxy and the agent
+still missed it, which is exactly the pattern that says a capability fix removes
+a known-wrong answer without producing a right one.
+
+**Still unwinnable regardless of the model**, and worth subtracting from any
+expectation: tasks 1, 2, 4 and 16 turn on masked terms (the firewall working);
+task 7's gold urgency mapping contradicts KB 25; task 11 invents five weights;
+task 13 buckets by WIDTH_BUCKET and returns 6 rows to a 5-group question; task
+14 gates on an unannounced `HAVING COUNT(*) > 1`. That is 9 of 19 before the
+agent writes a line of SQL.
+
+**2026-08-16 - round 2 measured, and withdrawn.** One atscale run after the
+round-2 changes: **0.0526** average reward, 1 of 19 phase-1 passes, phase 2 1.
+That is exactly the maximum the three pre-change runs already reached (0.0368,
+0.0368, 0.0526), and the same single task passes (`organ_transplant_22`). The
+prediction of zero payoff held.
+
+The mechanism is unambiguous rather than merely null. Across **129** query and
+submit calls the agent referenced a `Has ... Record` attribute **zero** times,
+while `explore_columns` surfaced one **18** times. They were discovered and
+ignored - which is the correct behaviour, because no question ever asks for
+"matches that have a risk record". The attributes answered a question nobody
+poses; the population narrowing lives in gold's join chain, not in the user's
+words, so no amount of making it *expressible* makes an agent *want* it.
+
+Every cost metric meanwhile landed at or above its pre-change maximum: error
+rate 23% (prior range 11-21%), budget exhaustion 74% (42-68%), budget used
+17.66 (15.58-17.21), `explore_columns` 2.89 per task (2.16-2.68). n=1, so each
+of those is within a whisker individually - but all four moving the same way
+while the score does not is what 11 never-used objects look like.
+
+**Withdrawn**, per "an added object must earn its place twice" and the standing
+preference for withholding columns no question touches. The derived fact
+columns went with them.
+
+The other two changes were kept because they add no objects, and both were also
+inert: asks mentioning match status ran 46% before and 47% after, and the
+agent's chosen status filter matched gold on 21 of 42 before against 8 of 14
+after - indistinguishable, and in any case the agent already picked the status
+correctly about half the time *and still failed*, because the population also
+needs the record restriction it never applies.
+
+**The increased error count was checked and is not a regression from the
+change**: the extra `not found` errors are `ProjectContext` resolution failures
+and the agent referencing columns its own nested subquery did not project -
+agent-side SQL bugs, with zero mentions of any new attribute name.
+
+**Conclusion for this database.** Three model changes have now been tried
+against a measured baseline and none moved a task. The failure classes that
+remain are, in order: reference populations defined by gold's join chain rather
+than by the question; conditions stated nowhere (an unannounced `HAVING`, five
+invented weights, `WIDTH_BUCKET` returning 6 rows to a 5-group question); a gold
+urgency mapping contradicting KB 25; and four masked terms. None of those is
+reachable from the semantic layer, and the raw arm scores 0.072 against its
+~0.30 baseline elsewhere for the same reasons. **Recommend no further model
+work on organ_transplant, and a decision on whether it belongs in the
+comparison at all.**
+
+### organ_transplant - per-task AtScale failure breakdown (4 runs pooled)
+
+Primary blocker = the first thing that must change for the task to pass. Shapes
+are the last replayed phase-1 submission against the reference.
+
+| task | passed | ref shape | agent shape | primary blocker | category | model-fixable |
+|---|---|---|---|---|---|---|
+| 1 | 0/4 | 198x5 | 238x5 | masked AMR risk stratification | masked term | no - firewall |
+| 2 | 0/4 | 15x5 | 18x5 | masked allocation-policy ordering | masked term | no - firewall |
+| 3 | 0/4 | 3x4 | 3x4 | unstated 5-year QALY constant | unstated constant | no |
+| 4 | 0/4 | 2x6 | - | masked optimal-match classification | masked term | no - firewall |
+| 6 | 0/4 | 4x4 | - | join-chain population (4 satellites) | population | expressible, unused |
+| 7 | 0/4 | 60x5 | - | gold urgency ELSE-2 contradicts KB 25 | KB contradiction | no |
+| 8 | 0/4 | 4x3 | 4x3 | join-chain population (4) + unstated Completed | population | expressible, unused |
+| 9 | 0/4 | 4x3 | - | engine parse failure on 2 of 4 finals | engine/agent SQL | partly |
+| 10 | 0/4 | 5x5 | 5x5 | join-chain population + unstated Pending | population | expressible, unused |
+| 11 | 0/4 | 10x2 | 10x4 | five invented weights | unstated constants | no |
+| 13 | 0/4 | 6x3 | 5x3 | WIDTH_BUCKET, so 6 rows to a 5-group question | bucketing method | no |
+| 14 | 0/4 | 3x4 | 10x4 | unannounced HAVING COUNT(*) > 1 | unstated gate | no |
+| 16 | 0/4 | 34x4 | 280x4 | masked marginal-donor framework | masked term | no - firewall |
+| 17 | 0/4 | 4x4 | 4x4 | join-chain population (3 satellites) | population | expressible, unused |
+| 18 | 0/4 | 4x5 | 4x5 | join-chain population (4) + unstated Completed | population | proven expressible, unused |
+| 19 | 0/4 | 3x2 | 2x2 | join-chain population + locus semantics | population | expressible, unused |
+| 20 | 0/4 | 51x5 | 80x5 | join-chain population + unstated Pending | population | expressible, unused |
+| 21 | 0/4 | 6x3 | 4x2 | omitted the count column | output shaping | no |
+| 22 | 4/4 | 7x3 | 7x3 | - passes every run | - | - |
+
+**Totals.** Masked term 4; unstated constant, gate or method 5; join-chain
+population 7; output shaping 1; engine/agent SQL 1; passing 1. **Nine of
+nineteen are unreachable before the agent writes a line of SQL**, and the seven
+population failures are reachable in principle but were not reached even with
+explicit attributes published (round 2, withdrawn). Phase 2 was entered on one
+task only, `_22`.
+
+**Two findings that validate the model rather than indict it.**
+
+*Task 21 is right and still fails.* Gold computes `cost_est / (qol_val * 8)`.
+The published `Cost-Effectiveness Ratio Per Life-Year (Per Match)` divided by 8
+reproduces gold's per-urgency averages **cell-for-cell** (12 at 13345.44, 17 at
+30832.02, 27 at 22505.34 for the first three groups). The task fails because the
+agent projected 2 columns where the reference has 3. The model does not control
+the caller's SELECT list.
+
+*The per-life-year parameterisation was the correct call.* Gold uses a 5-year
+gain on task 3 and an 8-year gain on task 21 - two different constants for the
+same knowledge-base formula, neither stated in either question. Publishing the
+ratio at one life-year with "divide by Y" in the description is the only shape
+that serves both, and it was chosen from the KB before any gold was read. Task 3
+still fails because the projected value carries the unstated 5, even though
+NTILE ordering is scale-invariant.
+
+**2026-08-16 - round 3: satellites become dimensions (the population fix,
+structural this time).** Round 2 failed because it asked the agent to *opt in*
+to a population restriction no question names. Round 3 makes the restriction
+the *default semantics of the query the agent already writes*, using a
+mechanism the engine already has: dimension relationships are INNER joins
+(verified in outbound SQL - a bare `JOIN`, not `LEFT JOIN`). The wide
+denormalized fact was erasing exactly that behaviour.
+
+Each optional source record is now its own dimension at its own grain: six at
+match grain (Compatibility Assessment 870, Risk Evaluation 774, Administrative
+Review 641, Allocation Detail 561, Transport Logistics 518, Data Quality Record
+859), two at recipient grain (Clinical 607, Immunology 645), three at donor
+grain (Medical Record 575, HLA Typing 534, Organ Recovery 513). 91 attributes
+moved off the fact and the Donor/Recipient dimensions onto them, keeping their
+names; single-record formulas are recomputed on their record's dataset;
+cross-record computed attributes stay degenerate on Match, where their nulls
+already encode joint presence. Metrics still ride the wide fact, and a query
+mixing a metric with record attributes restricts the metric through the joins.
+
+**Why this is not answer-fitting.** The mechanism is the engine's own star-join
+semantics; the placement is what the build rules prescribe (degenerate
+dimensions are for genuinely fact-grain attributes; these are entity-grain
+records); and the per-query narrowing it produces is derived from which columns
+a question references, not from any reference answer's contents.
+
+**Verified live after deploy** (list_models healthy, 8 models, all 18 dimension
+groups conforming):
+
+- `Match Count` alone: 947. Grouped by Transport Method: no null group, totals
+  518. Metric averages through the logistics join: exact to the warehouse's own
+  inner join at 6 decimal places.
+- **The natural attribute-form query for task 18 - no presence filters, no
+  special knowledge, just the four columns the question asks about - now
+  reproduces gold cell-for-cell**: buckets 12/60/14/5, HLA 2.75/3.13/2.79/2.60,
+  wait 397/511/567/399, EGS 0.5496/0.4791/0.4622/0.3958. Before the change the
+  same reasoning produced 166 recipients and failed.
+- Task 22's stored passing submission replays unchanged (7 rows).
+- The agents' stored metric-form submissions shift toward gold (task 18's
+  Very High bucket lost its null-PRA rows, task 8 lost its null-transport row)
+  but do not fully converge - metrics do not force joins for records whose
+  attributes are never referenced.
+
+**Known limits, so the next run is read correctly.** (1) The fix reaches the
+population only when the agent references record *attributes*; a metrics-only
+query still averages per-column. In the measured runs 65% of submissions used
+the attribute/subquery form. (2) Count semantics stays the agent's choice:
+gold counts match rows, agents sometimes count distinct recipients (91 rows vs
+87 recipients on task 18's population). (3) Phantom joins remain capped: task
+17's gold joins function_and_recovery without referencing any of its columns,
+so no reference-driven mechanism can reproduce it. (4) The engine's
+`We already handled attribute values` planner assertion rejects the DIRECT
+`AVG(attr) ... GROUP BY attr` form (no subquery); this predates the restructure
+(9 direct-form attempts across the old runs, only 2 succeeded) but its surface
+is wider now that more attributes live on dimensions - the subquery form the
+agents favour works. (5) The masked terms, unstated constants, invented
+weights, WIDTH_BUCKET and the KB-contradicting urgency mapping are untouched
+by this change; 9 of 19 tasks stay unreachable on those grounds.
+
+**2026-08-17 - first post-restructure run (n=1): 0.0000, and the zero is
+infrastructure, not the model.** Three of nineteen tasks - including
+`organ_transplant_22`, the only task that ever passes and the source of the
+entire prior score - were killed mid-flight by empty LLM completions: task 22
+stopped after 3 tool calls with 13 coins unspent and an empty final response,
+task 7 stopped directly after an ask_user answer, task 13 stopped after a
+successful run_query with 5 coins left. None submitted. The other 16 tasks ran
+normally (27 submissions, zero grading flips under all flag settings, query
+error rate DOWN to 7% from 17%, no name misses on any moved attribute), so the
+restructure introduced no regression; a run without the three agent deaths
+would have been expected to score in the prior 0.037-0.053 band or above.
+
+**The restructure is visibly working where it was exercised.** Task 2's
+submission now returns exactly the reference's 15-row population (was 18 before
+the change) - the allocation and clinical joins fired structurally; its values
+still fail on the masked allocation-policy ordering, which is the firewall
+class. Task 17's agent wrote precisely the attribute-form ratio query the
+restructure serves, asked the closed status question the Match Status
+description prescribes (and got "only Completed"), then asked for the
+short-trip threshold - **and the user simulator answered 10 miles where gold
+uses 50**. That task was unwinnable this run regardless of any model (the
+check-the-simulator class), and it would still face gold's phantom
+function_and_recovery join. Task 18's agent happened to choose the metric form
+this run (the form is stochastic across runs; three of five prior submissions
+were attribute-form), which does not force the joins.
+
+Conclusion unchanged from the per-task breakdown: the structural fix removes
+the population blocker for attribute-form queries, the remaining failures sit
+in the masked / unstated-constant / simulator-contradiction classes, and this
+run's headline measures an LLM-availability incident plus known caps, not the
+change. Before the next scored run, check the agent-side logs for the empty
+completions; a run where a fifth of tasks die unsubmitted measures nothing.
+
+**2026-08-17 - second post-restructure run (n=1), with SYSTEM_AGENT_MAX_TOKENS
+fixed: 0.0737** - the best atscale run of the five, above the prior 0.037-0.053
+band, equal to raw's median and inside raw's range. Single-run noise is ±0.10,
+so the score alone claims nothing; the composition is the evidence.
+
+- **Harness fix verified.** 259 agent calls, zero at the old 4096 ceiling (max
+  completion 6573), zero empty-final agent deaths, 19 of 19 tasks submitted.
+- **organ_transplant_2 passed phase 1 for the first time in any atscale run**
+  (0 for 4 before), and its trajectory composes every mechanism built across
+  the three rounds: the agent asked the masked allocation-ordering question and
+  the simulator handed over the rule (the firewall behaving as the benchmark
+  intends); asked the numerals-as-tiers question straight from the Medical
+  Urgency Status description and applied the confirmed ALT mapping inline;
+  asked recorded-versus-computed HLA (the asymmetric-names design); and the
+  allocation+clinical+compatibility joins fired structurally, producing the
+  15-row population the restructure was verified to reach. The
+  always/never/flaky discipline supports attribution: the task moved
+  never-to-pass immediately after a change that touched exactly the objects it
+  references.
+- **Phase 2 went 0 for 2, both on name guesses made with no coins left to
+  explore**: the agents wrote "Expected Graft Survival Score" and "Surgical
+  Risk Score" where the published attributes carry "(Per Match)". Task 22's
+  follow-up is a proven pure name-miss: gold's own answer is NULL (TC212 has no
+  Completed match with a risk record), and the agent's exact SQL with the
+  correct name returns NULL - identical. Task 2's follow-up also mis-scoped the
+  population (gold averages over all matches of the listed recipients, not
+  pancreas-pending matches), so the name alone would not have saved it.
+- **Candidate next change, grounded in the name-ownership rule rather than
+  gold**: nothing currently owns the bare names "Surgical Risk Score" or
+  "Expected Graft Survival (EGS) Score" - the attributes carry "(Per Match)"
+  and the metrics carry "Average ...". The rule says exactly one reading takes
+  the bare name, chosen from the questions' vocabulary; the questions say the
+  bare form. Stripping "(Per Match)" where the bare label is unclaimed would
+  have flipped task 22's follow-up this run (+0.3 reward, verified sufficient
+  for free above).
+- Task 17 is confirmed permanently capped: the simulator answered "10 miles"
+  to the short-trip question in both runs that asked; gold uses 50.
+- Task 18 drew the attribute form this time - the form the restructure serves -
+  and died on the agent's own SQL bug (an alias referenced across subquery
+  scopes: `column t_51.pra does not exist`). Bad luck of a different flavour
+  than last run's metric-form draw.
+
+**Where this leaves the comparison.** Every prior atscale/raw number was
+measured under the truncating 4096 config; this run is the first on the fixed
+harness, and the arms are no longer comparable across that boundary. A clean
+head-to-head needs n>=3 per arm on the new config (raw first - its old numbers
+are also suspect, though no raw task ever died of truncation).
+
+**2026-08-17 - round 4: bare-name ownership + engine-behaviour documentation
+(not yet measured).** Twenty-two row-level attributes drop the "(Per Match)"
+qualifier; nothing owned the bare names, questions use the bare form, and both
+phase-2 failures in the last run were bare-name guesses made with no coins
+left. Verified sufficient before shipping: task 22's stored phase-2 SQL with
+the bare name returns NULL, identical to gold's own NULL. Center Performance
+Score keeps its qualifier (the bare name belongs to the group calculation).
+The model description gains two engine facts: the planner assertion that
+rejects direct attribute aggregation, with the FROM-subquery form that works;
+and the metric-versus-attribute population semantics, with the single-subquery
+form that holds every figure to one population. Prediction, per the standing
+rule: the name change reliably removes a known-wrong outcome (a dead
+submission) rather than guaranteeing a pass; the description guidance is the
+weaker mechanism and is documentation of engine behaviour either way.
+
+**Simulator fidelity finding.** Task 17's wrong constant is a harness-side
+defect in the strict sense: the user simulator's stage-2 prompt receives the
+full ground-truth SQL and its segments, ran on the recommended v2 prompt, and
+still answered "10 miles" against gold's >= 50 - twice, consistently. The
+plumbing is intact; the simulator model (claude-haiku-4-5) fails to read the
+constant out of the WHERE clause it is holding. The remedy is USER_SIM_MODEL in
+.env (no code change), but it changes the benchmark's answers for both arms, so
+it requires a full two-arm re-baseline and should be decided deliberately, not
+patched mid-comparison.
+
+**2026-08-17 - final-config atscale block (sonnet simulator, 16384 tokens,
+round-4 model; n=3): 0.0526 / 0.0000 / 0.0368, mean 0.0298 (sd 0.022).** The
+first block on the configuration the head-to-head will use; comparable only to
+the raw block now running, not to anything earlier.
+
+- **Round 4 confirmed in a scored run**: run 1's task 22 passed BOTH phases -
+  the first atscale phase-2 pass on this database - and its phase-2 SQL is
+  character-for-character the query that previously failed on the "(Per Match)"
+  name, now written bare. Run 3's task 22 passed phase 1 with its last coin and
+  never got to attempt phase 2 (budget), and run 2's was steered off the
+  passing tie-order by the simulator itself ("no tiebreaker needed").
+- **The ask machinery is now reliable on task 2**: all three runs extracted the
+  masked allocation rule (urgency tier order, HLA tiebreak, Pending) and the
+  numerals-as-tiers mapping. Run 2 reproduced the reference's 15-row population
+  and matched **14 of 15 rows exactly**, failing on a single two-row tie:
+  ROW_NUMBER where gold's RANK gives both rows rank 1, plus the arbitrary order
+  between two rows with identical sort keys. One clarifying question (or one
+  luckier draw) from a second never-to-pass conversion.
+- **The sonnet simulator did not fix task 17**: "10 miles" against gold's
+  >= 50, now observed four times across two simulator models. The fidelity
+  failure is the v2 prompt design, not model tier - the simulator invents a
+  plausible constant instead of consulting the ground truth it is handed.
+  Upstream-worthy. It also introduced a new variance source: its decisive
+  wrong answer on run 2's tiebreaker question is what broke task 22 there.
+- Budget exhaustion (14/13/13 of 19) and coin allocation are unchanged from
+  every earlier block; the new per-task outcome lines just made a
+  long-standing condition visible. Query error rate 19-21%, planner assertion
+  still present.

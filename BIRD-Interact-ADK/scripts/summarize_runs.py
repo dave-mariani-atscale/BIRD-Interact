@@ -125,8 +125,13 @@ def summarize(db: str, runs: list):
             bad, why = run_health(r)
             if bad:
                 suspect[r["path"]] = why
+            # Surface task scope: a raw run with --exclude-management is
+            # comparable to a non-raw arm head-to-head, one without it is not.
+            excl = r["doc"].get("query_only")
+            scope = "" if excl is None else ("  [query-only]" if excl else "  [mgmt included]")
             print(f"   {r['path']:<62} {arm:<8} n={m['total_tasks']:<3} "
-                  f"avg={m['average_reward']:.3f}{'   <<< SUSPECT' if bad else ''}")
+                  f"avg={m['average_reward']:.3f}{scope}"
+                  f"{'   <<< SUSPECT' if bad else ''}")
 
     if suspect:
         print("\n!! SUSPECT RUNS EXCLUDED -- these look like broken infrastructure,")

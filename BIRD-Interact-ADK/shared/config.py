@@ -45,6 +45,20 @@ class Settings(BaseSettings):
     litellm_api_base: str = ""
     litellm_api_key: str = ""
 
+    # Per-call completion ceiling for the SYSTEM AGENT's LLM. Applies to both
+    # arms identically (raw and semantic share build_adk_model), so changing it
+    # is a symmetric harness setting, not a grading deviation. Why it exists:
+    # at 4096, an extended-thinking model can spend the whole budget inside the
+    # thinking block; the API then returns a thinking-only turn (text='',
+    # thought=True) with stop_reason max_tokens, ADK's is_final_response()
+    # treats it as the final answer, and the task ends unsubmitted with coins
+    # unspent (observed 2026-08-17: 3 of 19 tasks, 6 calls at exactly 4096;
+    # zero such deaths in any raw run, so the truncation biased against the
+    # semantic arm, whose bigger prompts think longer). The user simulator's
+    # own max_tokens is deliberately NOT covered by this setting - changing the
+    # simulator changes the benchmark's answers, not its plumbing.
+    system_agent_max_tokens: int = 16384
+
     # COST, not a deviation. Anthropic prompt caching for the system agent.
     # cache_control marks a prefix as reusable; it is not prompt content, so the
     # agent sees the same bytes and decides the same things either way — the only

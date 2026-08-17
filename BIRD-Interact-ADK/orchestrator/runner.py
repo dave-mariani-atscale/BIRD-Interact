@@ -105,7 +105,11 @@ async def run_parallel_evaluation(
         nonlocal total_reward, p1_count, p2_count, completed
         instance_id = td["instance_id"]
         async with semaphore:
-            logger.info("=== Task %d/%d: %s ===", i + 1, len(tasks), instance_id)
+            question = " ".join((td.get("amb_user_query") or "").split())
+            if len(question) > 150:
+                question = question[:150] + "..."
+            logger.info("=== Task %d/%d: %s ===\n    Q: %s",
+                        i + 1, len(tasks), instance_id, question)
             try:
                 r = await run_single_task(td)
             except Exception as e:
@@ -121,6 +125,12 @@ async def run_parallel_evaluation(
             if r.get("phase2_passed"):
                 p2_count += 1
             completed += 1
+            outcome = ("PASS both phases" if r.get("phase2_passed")
+                       else "PASS phase 1" if r.get("phase1_passed")
+                       else "error" if r.get("error") else "fail")
+            logger.info("<== %s: %s  reward=%.1f  (%d/%d done, avg %.4f)",
+                        instance_id, outcome, r.get("total_reward", 0),
+                        completed, len(tasks), total_reward / completed)
             if completed % 5 == 0 or completed == len(tasks):
                 await _save()
 
@@ -163,6 +173,20 @@ def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, q
                 tasks.append(json.loads(line))
 
     if query_only and settings.environment_backend == "raw":
+        # Makes the raw arm's task set identical to a non-raw arm's, which is
+        # what the headline scores have to share to be comparable at all:
+        # without it raw ran 29 households tasks against the atscale arm's 21
+        # (600 against 410 across the suite), and raw's larger set is most of
+        # why its headline looked higher.
+        #
+        # Symmetry holds because this is the IDENTICAL predicate the non-raw
+        # branch below applies, not a per-arm re-derivation of "is this DDL".
+        # The predicate is category-based and deliberately not a perfect DDL
+        # detector: households_M_1 is Management-category but its gold only
+        # counts rows, and M_6 through M_9 ask read-only questions whose gold
+        # wraps the answer in CREATE OR REPLACE VIEW. So it over-excludes a few
+        # answerable tasks - but it over-excludes the same ones from both arms,
+        # which is the property that matters.
         before_count = len(tasks)
         tasks = [t for t in tasks if t.get("category") == "Query"]
         logger.warning("--query-only: excluded %d Management-category tasks (%d Query tasks remain)",
@@ -384,7 +408,10 @@ def main():
             concurrency=args.concurrency,
             mode=args.mode,
             meta={"backend": args.backend, "run_index": run_index,
-                  "repeat_total": args.repeat},
+                  "repeat_total": args.repeat,
+                  # Task scope, so a results file states its own comparability.
+                  "query_only": args.query_only,
+                  "task_count": len(tasks)},
         ))
 
 

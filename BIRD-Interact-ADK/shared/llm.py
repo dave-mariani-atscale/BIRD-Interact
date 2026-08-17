@@ -96,7 +96,7 @@ except ImportError:
         model_name = model_name or settings.system_agent_model
         kwargs = dict(
             model=model_name,
-            max_tokens=4096,
+            max_tokens=settings.system_agent_max_tokens,
             num_retries=MAX_RETRIES,
         )
         if settings.litellm_api_base:

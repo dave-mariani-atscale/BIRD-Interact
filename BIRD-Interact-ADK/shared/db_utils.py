@@ -1,5 +1,6 @@
 """Database utilities ported from BIRD-Interact evaluation code."""
 
+import hashlib
 import json
 import logging
 import math
@@ -168,26 +169,78 @@ def _pg_env() -> tuple:
     return args, env_vars
 
 
+#: Postgres silently truncates any identifier longer than this to this length,
+#: emitting only a NOTICE. `createdb` still exits 0, so an over-long database
+#: name does not fail - it quietly becomes a DIFFERENT, shorter database, and
+#: two names that differ only after byte 63 become the SAME database.
+MAX_PG_IDENTIFIER = 63
+
+#: Longest suffix that is later appended to a task DB name (the Phase-1
+#: snapshot, created as `create_task_db(task_db, "p1snap")`). A task DB name has
+#: to leave room for it, or the snapshot collides with the DB it snapshots.
+SNAPSHOT_SUFFIX_LEN = len("__p1snap")
+
+
+def fit_pg_identifier(name: str, reserve: int = 0) -> str:
+    """Return `name` shortened to a Postgres-safe identifier, still unique.
+
+    BIRD's `instance_id` already begins with the database name
+    (`labor_certification_applications_10`), and the task DB name prefixes it
+    again, so the name is the database name twice: 69 bytes for
+    `labor_certification_applications`. Postgres kept the first 63, which cut
+    off `ons_10` - the task number, the only part that distinguishes one task's
+    database from another's - so all 20 tasks landed on one database and the
+    snapshot collided with its own source.
+
+    Rather than truncate, replace the overflowing tail with a hash of the full
+    name: deterministic (a task always resolves to the same DB) and distinct per
+    task. `reserve` holds back room for a suffix appended later.
+    """
+    limit = MAX_PG_IDENTIFIER - reserve
+    if len(name.encode()) <= limit:
+        return name
+    digest = hashlib.sha1(name.encode()).hexdigest()[:8]
+    return f"{name[:limit - len(digest) - 1]}_{digest}"
+
+
 def _drop_and_create_db(db_name: str, template_db: str):
     """Drop db_name (if exists) and recreate from template_db."""
+    # Loud rather than silent: past this length Postgres renames the database
+    # out from under every caller, and the pg_terminate_backend filter below
+    # stops matching `datname` (it compares the un-truncated literal), so
+    # dropdb fails on live connections. Callers must go through
+    # fit_pg_identifier().
+    if len(db_name.encode()) > MAX_PG_IDENTIFIER:
+        raise ValueError(
+            f"database name is {len(db_name.encode())} bytes, over the Postgres "
+            f"{MAX_PG_IDENTIFIER}-byte identifier limit, and would be silently "
+            f"truncated to {db_name[:MAX_PG_IDENTIFIER]!r}: {db_name!r}"
+        )
     args, env_vars = _pg_env()
     close_pool(db_name)
-    subprocess.run(
+    _run_pg(
         ["psql", *args, "-d", "postgres", "-c",
          f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"],
-        check=True, env=env_vars, timeout=60,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        env_vars,
     )
-    subprocess.run(
-        ["dropdb", "--if-exists", *args, db_name],
-        check=True, env=env_vars, timeout=60,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        ["createdb", *args, db_name, "--template", template_db],
-        check=True, env=env_vars, timeout=60,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    _run_pg(["dropdb", "--if-exists", *args, db_name], env_vars)
+    _run_pg(["createdb", *args, db_name, "--template", template_db], env_vars)
+
+
+def _run_pg(cmd: list, env_vars: dict):
+    """Run a psql/createdb/dropdb command, surfacing stderr on failure.
+
+    The previous version discarded stderr, so a `createdb` failure raised a
+    bare CalledProcessError with no message - which is how the identifier
+    collision above stayed invisible while it was voiding whole runs.
+    """
+    proc = subprocess.run(cmd, env=env_vars, timeout=60,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"{cmd[0]} failed (exit {proc.returncode}): "
+            f"{(proc.stderr or '').strip() or 'no stderr'}"
+        )
 
 
 def reset_and_restore_database(db_name: str):
@@ -195,16 +248,20 @@ def reset_and_restore_database(db_name: str):
     _drop_and_create_db(db_name, template_db)
 
 
-def create_task_db(base_db: str, task_id: str, template: str = None) -> str:
+def create_task_db(base_db: str, task_id: str, template: str = None,
+                   reserve: int = SNAPSHOT_SUFFIX_LEN) -> str:
     """Create a per-task DB copy. Returns task DB name.
 
     Args:
         base_db: Base database name (used for naming the task DB).
         task_id: Task identifier (sanitized for DB naming).
         template: Template DB to copy from. Defaults to {base_db}_template.
+        reserve: Bytes to hold back from the 63-byte identifier limit for a
+            suffix appended later. Defaults to room for the Phase-1 snapshot;
+            pass 0 when creating the snapshot itself, which gets no suffix.
     """
     safe_id = task_id.replace("-", "_").replace(".", "_")
-    task_db = f"{base_db}__{safe_id}"
+    task_db = fit_pg_identifier(f"{base_db}__{safe_id}", reserve=reserve)
     template_db = template or f"{base_db}_template"
     _drop_and_create_db(task_db, template_db)
     return task_db
