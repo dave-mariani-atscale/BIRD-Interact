@@ -366,11 +366,22 @@ discards any pair of runs whose row *content* differs, as "not an order
 question". It is a question about something worse. Re-run each gold under a
 different plan and compare as multisets after the grader's own rounding:
 
-    27 phases   values differ, and not by float noise   -- nobody can pass these
+    25 phases   values differ, and not by float noise   -- nobody can pass these
+     2 phases   the 10000-row fetch cap, see below      -- not a gold defect
      1 phase    values differ within 1e-6 relative      -- float64 accumulation order
 
-    polar_equipment  5    households  4    mental_health  4    crypto_exchange  3
+    households  4    mental_health  4    crypto_exchange  3    polar_equipment  3
     fake_account  2   labor_cert_apps  2   museum_artifact  2   + 6 databases with 1
+
+**Two of them are not gold's fault.** `perform_query` fetches at most 10000 rows
+for a SELECT (`db_utils.py:113`) — upstream's own cap, faithfully ported
+(`evaluation/src/postgresql_utils.py:49`), so not an ADK deviation. A gold
+returning more is silently cut to the first 10000, and *which* 10000 is whatever
+the plan emitted. Swept over all 810 phases, exactly two hit it:
+`polar_equipment_2` p1 and `polar_equipment_18` p2, both returning exactly
+10000. Different defect, different fix: a cap that truncates silently should
+error instead, which is three lines in the evaluator and cannot be wrong under
+any reading of what the benchmark is for.
 
 Severity runs to total: `polar_equipment_2` phase 1 differs on **9981 of 10000**
 rows, `polar_equipment_18` phase 2 on **9202 of 10000**, `mental_health_13`
@@ -405,6 +416,45 @@ grading flag can help — a tolerance cannot reconcile `f440` with `f429` — an
 neither arm can win these if the host's planner disagrees with the one that
 built the dataset. Strictly upstream, trackers **B-27** (the first two found)
 and **B-34** (the benchmark-wide sweep).
+
+### What upstream should actually change
+
+The dataset stores **no expected answer** — only `sol_sql`, executed live at
+grading time (confirmed: the 600 task records carry `sol_sql`, `conditions`,
+`test_cases`, and no result field). So fixing a gold is a pure SQL edit. There
+are no golden outputs to regenerate and no past scores invalidated by the
+reference changing.
+
+Two different problems hide under "no single answer", and they want different
+fixes:
+
+*Reproducibility* — gold must return the same thing on any host. **One line per
+gold, no judgment required**, and the lint verifies each fix:
+
+| what gold does | phases | the one-line fix |
+|---|---|---|
+| `ORDER BY ... LIMIT n` over a non-total order | ~15 | add a unique tiebreak (usually the key) |
+| `ROW_NUMBER`/`RANK` picking one row per group | ~4 | add a tiebreak inside the window's `ORDER BY` |
+| `LEAD`/`LAG` over a non-total order | 1 | same |
+| `string_agg`/`array_agg` with no `ORDER BY` | 2 | `ORDER BY` inside the aggregate |
+| `SUM` over `::real`, order-dependent in float32 | ~3 | drop the `::real` — already proposed as B1 (§3) |
+
+*Answerability* — a solver must be able to know which of the tied answers is
+wanted. Determinism does not give you this: pinning `f440` over `f429` makes the
+task stable and still unguessable. That needs a prose edit per task ("break ties
+by the earliest id"), or the task should ask for the tied set rather than one of
+it. It is the expensive half, and it is the half that decides whether these
+count as fair tasks or merely reproducible ones.
+
+**The lightest touch that is still honest** is the first table plus a CI lint.
+It makes the benchmark reproducible everywhere, needs no question rewrites and
+no re-recording, and is mechanical enough to review in one sitting. If even that
+is too much, the minimum is to mark the affected phases in `conditions` so
+evaluators can park them — 25 of 820 phases is 3%, and losing them openly beats
+scoring them randomly.
+
+Whatever is fixed, **the lint is the durable ask**: without it in CI the next
+dataset release reintroduces the same shapes.
 
 *Lint: `scripts/bird_content_lint.py <db ...>`, same method and cost as the
 other two.*
