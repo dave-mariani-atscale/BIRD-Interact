@@ -177,6 +177,37 @@ technically correct. Two objects with equally plausible names is the failure mod
 service to the caller — see the first bullet under Definitions and labels for why the
 descriptions will not save you.
 
+**A threshold whose unit is ambiguous against the stored column gets both readings, and
+the KB's own words verbatim.** A KB definition states a cutoff in prose ("annual portfolio
+turnover is less than 30%", "largest holding greater than 8%", "allocations exceed 60%").
+The stored column may be on a different scale, and then the definition admits two readings:
+the literal number, or the number converted to the column's scale. Resolve it like this:
+
+1. **Count both readings** against the live population before choosing. A reading is
+   *viable* if it selects a proper, non-degenerate subset — not ~0% and not ~100% of the
+   non-null rows, judged on the screen the questions actually ask for rather than on the
+   bare column.
+2. **Exactly one viable reading → ship it alone**, and say in the description why the other
+   was rejected, with the number that rejects it. `High-Conviction Portfolio` is this case:
+   `holdingpct` is a 0-1 fraction (max 1.0105), so `> 8` selects 0 of 2297 top holdings and
+   only `> 0.08` (743) is viable. So is `Appraisal Ratio`, where R-squared is 0-100 and the
+   KB's `sqrt(1 - R²)` is undefined unless the model divides by 100 first.
+3. **Two viable readings → ship both**, asymmetrically named per the rule above, with the
+   bare name on the reading the questions' vocabulary favours and a `(Percent Scale)`-style
+   qualifier on the other. Each description must name its twin. Do not silently pick one:
+   a threshold is the one thing a caller cannot recover from a result they can't see.
+4. **Quote the KB verbatim before stating the resolution.** Descriptions already open with
+   `KB '<Term>': …`; the original wording, including its unit, must survive into that text
+   so the caller can see a decision was made and check it against the question. A
+   description that reinterprets a cutoff without carrying the KB's own phrasing is a
+   build defect — it is mechanically checkable, so don't leave it to review.
+
+Gold is not a tiebreak here, and can disagree with itself: on `etf_18` gold phase 1 filters
+`Turnover_Ratio < 0.3` and phase 2 filters `< 30`, the same KB term (id 12, "less than
+30%") read both ways in one task. Contrarian Value Play counts 53 under the first reading
+and 145 under the second, so no single reading wins both phases — which is precisely why
+both must exist as named objects rather than one being chosen for the caller.
+
 Do not read any other semantic model on this machine, nor its git history. If you open
 one by accident, say so in your report.
 

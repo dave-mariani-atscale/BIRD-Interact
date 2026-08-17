@@ -73,8 +73,10 @@ ASK_USER_TIP = (
 # AINTERACT_INSTRUCTION has always listed them.
 KNOWLEDGE_TOOLS_TIP = (
     "- get_all_external_knowledge_names (0.5) lists the task's glossary of defined domain terms; get_knowledge_definition (0.5) returns one entry's formula and thresholds; get_all_knowledge_definitions (1) returns every entry at once and can be long.\n"
-    "- Call get_all_external_knowledge_names FIRST, before any column search. The user's question is written in this glossary's vocabulary, and an entry states the exact thresholds a phrase like 'bargain-bin', 'beaten down' or 'patient, cheap strategy' stands for. Reading the definition tells you which columns to look for, so it makes the model search shorter rather than adding to it — and the numbers in it are not derivable from the model or recoverable by asking the user.\n"
-    "- A term absent from that list has no official definition: that is when to ask_user. Do not ask the user to define a term the glossary already defines, and do not infer a threshold from a column description when the glossary states one — where they disagree, the glossary is what the answer is graded against."
+    "- Search the semantic model FIRST. It is built from this same glossary and already encodes it: a named term usually exists as its own column whose description quotes the glossary entry it came from, so explore_columns/focus_columns normally answer the definitional question and the query-construction question in one call. Paying for a glossary entry you then have to go and find in the model anyway is the most common way to waste budget here.\n"
+    "- Reach for the glossary when the model does NOT settle it: the term is nowhere in the model, or the description names a condition without its threshold, or the description says it resolved an ambiguity (a unit, a scale, which of two readings) and you need the original wording to check that reading against the question. When you want more than one entry, call get_all_knowledge_definitions once (1) rather than get_knowledge_definition repeatedly (0.5 each) — past runs have spent 15 coins one entry at a time.\n"
+    "- Where a column description and a glossary entry genuinely disagree, the glossary is what the answer is graded against; prefer it, and compute from the underlying columns rather than the precomputed flag that encodes the other reading.\n"
+    "- A term in neither the model nor that list has no official definition: that is when to ask_user. Do not ask the user to define a term either source already defines."
 )
 
 # ── a-interact instruction ──

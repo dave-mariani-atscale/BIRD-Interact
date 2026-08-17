@@ -123,6 +123,24 @@ float columns), `exchange_traded_funds`, `households`,
 `labor_certification_applications` and `solar_panel` (no `::numeric` at all).
 ## archeology_scan
 
+### Unit-ambiguous-threshold audit: no change needed, 2026-08-17
+
+Audited against the new build-prompt rule that a KB threshold whose unit is ambiguous
+against the stored column must ship both readings (see the ETF and crypto entries of this
+date). **This model has no such case, verified against live data rather than assumed:**
+
+- Every percent-labelled KB field is stored on the 0-100 scale the KB labels it with —
+  `Cover_Pct` 80–99.9, `Lap_Pct` 30.1–69.8, `Hume_Pct`, `Proc_CPU`, `Proc_GPU`. KB 11's
+  *"Coverage (%) ≥ 95 and Overlap (%) ≥ 30"* therefore applies with no conversion, and
+  the `Comprehensive Coverage` description already states both thresholds in the KB's own
+  units.
+- Every `/100` and `* 10^4` in `generator/sqls.py` is the KB formula's own arithmetic
+  (KB 1 SCE, KB 3 SQS, KB 34 SDI), transcribed rather than reinterpreted.
+- The one non-percent threshold, KB 40's *"Surface Area (m²) > 100"*, matches the stored
+  unit: `Area_M2` runs 1.2–999.5 and `> 100` selects 300 of 342 sites.
+
+Recorded so the audit is not repeated. No files changed.
+
 **2026-08-11 - initial build from `create_bird_model_prompt.v2.md`, prompt-only.**
 Full rationale, exclusions and evidence in the model folder's `SPEC.md`.
 Published at `bird_atscale_models_catalog_main`.
@@ -441,6 +459,45 @@ change in one of those layers.
 ---
 
 ## exchange_traded_funds
+
+### Unit-ambiguous KB thresholds: both readings shipped, KB wording quoted, 2026-08-17
+
+Implements the new build-prompt rule "A threshold whose unit is ambiguous against the
+stored column gets both readings, and the KB's own words verbatim"
+(`docs/create_bird_model_prompt.md`). A KB cutoff stated in prose ("less than 30%") does
+not say whether it means the literal number or the number on the stored column's scale,
+and the model was resolving that silently — the caller saw a Yes/No flag and no sign that
+a decision had been made.
+
+**New attribute `Low-Turnover Strategy (Percent Scale)`** (`low_turnover_pct_scale_flag`
+in `datasets/fund_analytics.yml`), the literal reading `turnover_ratio < 30` of KB 12.
+The bare `Low-Turnover Strategy` keeps `< 0.3` as the PRIMARY reading and every composite
+(Ideal Index Fund, Strategic Beta) still builds from it.
+
+Both readings are viable, which is why this one is twinned rather than resolved: on the
+Contrarian Value Play screen they give **53 funds and 145**. The deciding evidence is that
+**gold itself uses both** — `etf_18` phase 1 filters `Turnover_Ratio < 0.3` and phase 2
+filters `< 30`, same task, same KB term. No single reading can win both phases, so the
+model cannot pick for the caller. Note this also corrects the premise of tracker **M-01**,
+which attributed an off-by-one to the model reading 0.3 where gold read 30: gold phase 1
+reads 0.3 too, the same as the model. (M-01's own 2026-08-13 note already records that it
+no longer reproduces and that `etf_18`'s live cause is Q-26.)
+
+**Descriptions now quote the KB verbatim before stating the resolution**, on the three
+attributes that reinterpret a cutoff, each naming the number that rejected the other
+reading:
+
+| attribute | KB wording | shipped | why not the literal reading |
+|---|---|---|---|
+| `Low-Turnover Strategy` | "annual portfolio turnover is less than 30%" | `< 0.3` | both viable — literal reading shipped as the `(Percent Scale)` twin |
+| `High-Conviction Portfolio` | "largest holding is greater than 8%" | `> 0.08` | `> 8` selects 0 of 2297 top holdings; `holdingpct` is a 0-1 fraction, max 1.0105 |
+| `High-Quality Credit Portfolio` | "exceeds 60% of its total bond holdings" | `> 0.6` | `> 60` selects 0 of 382 funds with bond allocations; max sum 1.0156 |
+
+`Market-Tracking Fund` needed no change — KB says "R-squared greater than 90" and the
+column is already 0-100. `Appraisal Ratio` already recorded its own resolution (R-squared
+divided by 100, since the KB's `sqrt(1 - R²)` is undefined on the 0-100 scale).
+
+Not yet deployed at the time of writing.
 
 ### Fund attribute says how to count funds, 2026-08-12 (E-01)
 
@@ -1110,6 +1167,28 @@ the agent will make the remaining choices correctly. Budget model work on that b
 ---
 
 ## crypto_exchange
+
+### Smart Money Flow: both readings of "by at least 20%", 2026-08-17
+
+Same build-prompt rule as the ETF entry of this date. KB 15 states *"smart-money force
+exceeds both retail-flow share and institutional-flow share by at least 20%"*, and the
+three forces are signed values from **-1 to 1**, not percentages — so "20%" admits a
+multiplicative reading (`* 1.2`) and an absolute-margin reading (`+ 0.2`).
+
+**New attribute `Smart Money Flow (Absolute Margin)`** (`is_smart_money_flow_absolute`
+in `generator/sql_spec.py`, described in `generator/model_spec.py`). The bare
+`Smart Money Flow` keeps `* 1.2` as PRIMARY, because **the KB disambiguates itself**:
+KB 50 `Flow Dominance` spells the same "20%" out explicitly as `* 1.2`.
+
+Both readings are viable, which is why this is twinned rather than resolved: **203 of 714
+fully-measured snapshots are Yes under `* 1.2`, 158 under `+ 0.2`, and they disagree on
+45.** Worth recording because it is a live trap — the multiplicative form **inverts on
+negative values**: 346 snapshots carry a negative retail flow, and there `retail * 1.2`
+sits *below* `retail`, so the condition gets easier to satisfy the more negative the
+comparison flow is. Both descriptions quote KB 15 verbatim and name each other.
+
+Regenerated with `python3 crypto_exchange/generator/generate.py`; do not hand-edit the
+emitted YAML.
 
 **2026-08-14 — initial build.** Generated by `crypto_exchange/generator/`
 (`sql_spec.py` → `model_spec.py` → `generate.py`), built from

@@ -349,8 +349,26 @@ raw is unaffected, so its stored runs remain valid comparators, provided you
 re-grade them onto today's grader first (see §0).
 
 A 7-task A/B was set up on 2026-08-11 against `iter7_postmerge_atscale` — same
-commit, same flags, KB tools the only difference. **Baseline to beat: 1.00
-total / 0.1429 mean.** Check whether that run completed before repeating it.
+commit, same flags, KB tools the only difference. **It completed — don't repeat
+it.** `results/iter7_kb_atscale_20260811_090909.json`: **1.70 total / 0.2429
+mean vs the 1.00 / 0.1429 baseline**, the entire delta being `etf_4` phase 1
+flipping 0 → 0.7; the other six tasks scored identically. The agent did use the
+tools on all 7 tasks and paid **4.29 coins/task** for them — essentially the
+same 4.24 raw pays, so the channel is not cheaper for the semantic arm, just
+present. `etf_9` spent 29 definition calls and still scored 0, which is what
+B-12's masking correction predicts.
+
+**Re-graded 2026-08-17 (free, both arms).** Both reproduce their recorded
+totals and both are **flag-invariant** — 0.1429 and 0.2429 under pre-0814,
+under today's 0814 flags, and under upstream-all-off, zero flips anywhere. So
+the `etf_4` +0.7 is not a grading-epoch artifact and no grading change explains
+it away. The KB run also made **13 submissions against the baseline's 17** —
+fewer submits, higher score, which is the discovery-efficiency story rather
+than a lucky flip.
+
+Still n=1 per arm against A-03 variance, so the remaining way to know is a
+re-run: the 19-task ETF atscale arm with the flag on at n≥2, against a raw
+baseline re-graded onto the same flags. Nothing cheaper is left.
 
 Watch for the interaction with **M-25**: ask-trigger language in the model has a
 measured opportunity cost, redirecting a fixed ask budget onto conditions the
