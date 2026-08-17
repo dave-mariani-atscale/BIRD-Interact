@@ -1586,3 +1586,36 @@ is wider now that more attributes live on dimensions - the subquery form the
 agents favour works. (5) The masked terms, unstated constants, invented
 weights, WIDTH_BUCKET and the KB-contradicting urgency mapping are untouched
 by this change; 9 of 19 tasks stay unreachable on those grounds.
+
+**2026-08-17 - first post-restructure run (n=1): 0.0000, and the zero is
+infrastructure, not the model.** Three of nineteen tasks - including
+`organ_transplant_22`, the only task that ever passes and the source of the
+entire prior score - were killed mid-flight by empty LLM completions: task 22
+stopped after 3 tool calls with 13 coins unspent and an empty final response,
+task 7 stopped directly after an ask_user answer, task 13 stopped after a
+successful run_query with 5 coins left. None submitted. The other 16 tasks ran
+normally (27 submissions, zero grading flips under all flag settings, query
+error rate DOWN to 7% from 17%, no name misses on any moved attribute), so the
+restructure introduced no regression; a run without the three agent deaths
+would have been expected to score in the prior 0.037-0.053 band or above.
+
+**The restructure is visibly working where it was exercised.** Task 2's
+submission now returns exactly the reference's 15-row population (was 18 before
+the change) - the allocation and clinical joins fired structurally; its values
+still fail on the masked allocation-policy ordering, which is the firewall
+class. Task 17's agent wrote precisely the attribute-form ratio query the
+restructure serves, asked the closed status question the Match Status
+description prescribes (and got "only Completed"), then asked for the
+short-trip threshold - **and the user simulator answered 10 miles where gold
+uses 50**. That task was unwinnable this run regardless of any model (the
+check-the-simulator class), and it would still face gold's phantom
+function_and_recovery join. Task 18's agent happened to choose the metric form
+this run (the form is stochastic across runs; three of five prior submissions
+were attribute-form), which does not force the joins.
+
+Conclusion unchanged from the per-task breakdown: the structural fix removes
+the population blocker for attribute-form queries, the remaining failures sit
+in the masked / unstated-constant / simulator-contradiction classes, and this
+run's headline measures an LLM-availability incident plus known caps, not the
+change. Before the next scored run, check the agent-side logs for the empty
+completions; a run where a fifth of tasks die unsubmitted measures nothing.
