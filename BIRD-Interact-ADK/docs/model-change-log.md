@@ -1335,9 +1335,87 @@ Where each arm gained, against its own previous baseline:
     atscale  _2 _9 _10 _11 (0.00 -> 0.70), _6 _17 (0.00 -> 1.00)
     raw      _9 _17 (0.00 -> 0.70), _1 _6 _8 _19 (0.00 -> 1.00), _16 (1.00 -> 0.70)
 
-Note `_6` gained in the **raw** arm too, on B-42 alone — M-34 and M-35 are model-side and
-invisible to it. And the atscale gain on `_11` is the probe-only prediction converting, as
-was `_10`, which B-39 had filed as unreachable.
+The atscale gain on `_11` is the probe-only prediction converting, as was `_10`, which B-39
+had filed as unreachable.
+
+**Only about half of raw's movement is attributable to the guidance.** Read submission by
+submission against `crypto_n1_raw_20260814_085602` (free — `failing_sql.py`), and each
+task's diff says plainly which rule it obeyed:
+
+| task | Δ | attributable to | evidence in the submitted SQL |
+|---|---|---|---|
+| `_9` | +0.70 | **B-37** | second submit drops the `md_ref` identifier; it asked "should the output also include a market identifier column" |
+| `_17` | +0.70 | **B-37 + B-41** | one column on the first submit, with gold's exact `'Liquidity Crisis'`/`'Normal Market Conditions'`; asked for the wording |
+| `_19` | +1.00 | **B-37 + B-41** | one column where the old run projected value + label; asked "what exact text" |
+| `_6` | +0.30 of +1.00 | **B-42** | phase 2 adds `ORDER BY mood`. Its phase-1 +0.70 is *not* ours — the old run scaled `PERCENT_RANK() * 100` and the new one did not |
+| `_1` | +1.00 | **no** | changed the id column (`EXCH_SPOT` → `exchNote`) and dropped an invented tiebreak sort; B-27 says gold is non-deterministic here, so this is largely luck |
+| `_8` | +1.00 | **no** | same query plus a `NULLIF` divide-by-zero guard |
+| `_16` | −0.30 | **no** | phase 2 deduped `analyticsindicators` with `DISTINCT ON`, removing the fan-out gold has (B-30) |
+
+**+2.70 of raw's +5.10 reward points is attributable; +2.40 is not.** So of raw's +25.5 pp,
+about **+13.5 pp is the guidance and about +12 pp is unattributed run-to-run movement** —
+which is the same conclusion as the `_19` flip, arrived at independently and from the other
+arm. On the atscale side almost every gain was individually validated beforehand, so its
++24.0 pp is better anchored.
+
+Consequence for the lift: with ±12 pp of unattributed movement in one arm at n=1, the true
+lift could sit anywhere from about 0 to +6 pp. **+0.5 pp is a data point, not a measurement.**
+
+#### This is not a crypto-only concern — exposure per database
+
+`RESULT_SHAPE_TIP` and `ASK_USER_TIP` are appended to the raw arm's `AINTERACT_INSTRUCTION`
+(agent.py:118) *and* to every semantic backend's instruction (agent.py:143). They are
+global. So **every baseline on every database measured before 2026-08-17 14:54 is stale, in
+both arms** — not just crypto's.
+
+Counted over the shipped Query-task golds, phases each rule can touch (`B42!` = phases where
+the new grouped-sort rule can *hurt*, i.e. gold groups and does not sort):
+
+    database                          phases   B38   B42  B42!   B37   B41
+    labor_certification_applications      38     2    22     1     0     6
+    archeology_scan                       20     0    11     0     0    12
+    polar_equipment                       40     0    12     0     0     8
+    reverse_logistics                     40     0    19     0     0     0
+    crypto_exchange                       40     5     2     0     5     4
+    fake_account                          48     4     6     3     0     3
+    virtual_idol                          38     0    13     0     0     2
+    museum_artifact                       40     0     8     0     0     7
+    cold_chain_pharma_compliance          36     1    11     0     0     2
+    organ_transplant                      38     0     9     0     3     1
+    mental_health                         40     1     7     1     1     2
+    solar_panel                           40     0     3     0     7     0
+    insider_trading                       42     1     6     0     2     1
+    households                            42     1     3     0     5     0
+    ... (all 22 databases; totals B38 23, B42 159, B42! 5, B37 26, B41 59)
+
+Definitions, so these can be re-derived: **B38** = order-sensitive phase whose gold has no
+top-level `ORDER BY` (the rule now suppresses an invented sort → helps). **B42** = gold
+groups *and* sorts (the rule now demands a sort → helps). **B42!** = gold groups and does
+not sort (the rule now costs). **B37** = one-column gold where the question names a quoted
+literal. **B41** = gold's top-level projection is a `CASE … THEN '<label>'`.
+
+**crypto_exchange is a low-exposure database for the biggest of these rules.** It has 2 B-42
+phases; `labor_certification_applications` has 22, `reverse_logistics` 19, `virtual_idol`
+13, `polar_equipment` 12, and `archeology_scan` 11 out of only 20 phases. `archeology_scan`
+also has 12 B-41 phases out of 20. Expect movement on those databases **larger** than what
+crypto saw, in both arms.
+
+`fake_account` is the one to watch for a regression: 3 phases where gold groups without
+sorting, so the B-42 rule can only lose there.
+
+#### One more global change, not ours
+
+`3a72ba5` (2026-08-17 09:18, David) raised the system agent's `max_tokens` from a hardcoded
+4096 to a configurable 16384. It applies to both arms through `build_adk_model`, so it is
+symmetric in principle, but its own commit message records the asymmetry it fixed: three of
+nineteen atscale tasks had been ending unsubmitted when an extended-thinking turn spent the
+whole completion budget inside the thinking block. Checked on crypto: **zero tasks in either
+raw run ended with no submission**, so it explains none of the raw movement here — but on a
+database where the agent thinks longer it will lift the semantic arm specifically, and any
+baseline predating 09:18 that day is stale for that reason too.
+
+`945e2b4` (11:57) touched only `KNOWLEDGE_TOOLS_TIP`, which is semantic-backend-only and
+gated behind `SEMANTIC_LAYER_KNOWLEDGE_TOOLS` (off) — inert for now, in both arms.
 
 **Do not read ±0.5 pp as a result.** Run-to-run variance on identical code is larger than
 the gap: `_19` scored 0.70 in `crypto_0818_validate` and **0.00** in the arm forty minutes

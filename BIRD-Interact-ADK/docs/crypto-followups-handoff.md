@@ -80,8 +80,21 @@ Where each arm gained against its own previous baseline:
     atscale  _2 _9 _10 _11 (0.00 -> 0.70), _6 _17 (0.00 -> 1.00)
     raw      _9 _17 (0.00 -> 0.70), _1 _6 _8 _19 (0.00 -> 1.00), _16 (1.00 -> 0.70)
 
-`_6` gained in the **raw** arm too, on B-42 alone — M-34 and M-35 are model-side and
-invisible to it.
+**But only +2.70 of raw's +5.10 reward points is attributable to the guidance** — `_9` and
+`_17` to B-37/B-41, `_19` to both, and `_6`'s phase 2 to B-42 (its phase-1 gain came from
+the old run scaling `PERCENT_RANK() * 100`, which is nothing to do with us). `_1`, `_8` and
+the `_16` regression are unattributed. Per-task evidence, read from the submitted SQL, is in
+the change-log section. So of raw's +25.5 pp, roughly **+13.5 pp is the guidance and +12 pp
+is run-to-run movement** — and with that much noise in one arm, the true lift could be
+anywhere from about 0 to +6 pp.
+
+**The tips are global, so this hits every database, not just crypto.** Exposure counted over
+the shipped Query golds, and crypto is *low*-exposure for the biggest rule (B-42): it has 2
+such phases where `labor_certification_applications` has 22, `reverse_logistics` 19,
+`virtual_idol` 13, `polar_equipment` 12 and `archeology_scan` 11 out of only 20.
+`archeology_scan` also carries 12 of the 59 B-41 phases. Full table and the counting
+definitions are in `docs/model-change-log.md`; `fake_account` is the one with regression
+exposure (3 phases where gold groups without sorting).
 
 **THE NEW GATING ITEM: ±0.5 pp is inside the noise, and n=1 cannot tell you otherwise.**
 Two tasks flipped on identical code within forty minutes: `_19` scored 0.70 in
