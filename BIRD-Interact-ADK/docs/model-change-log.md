@@ -1528,3 +1528,61 @@ ratio at one life-year with "divide by Y" in the description is the only shape
 that serves both, and it was chosen from the KB before any gold was read. Task 3
 still fails because the projected value carries the unstated 5, even though
 NTILE ordering is scale-invariant.
+
+**2026-08-16 - round 3: satellites become dimensions (the population fix,
+structural this time).** Round 2 failed because it asked the agent to *opt in*
+to a population restriction no question names. Round 3 makes the restriction
+the *default semantics of the query the agent already writes*, using a
+mechanism the engine already has: dimension relationships are INNER joins
+(verified in outbound SQL - a bare `JOIN`, not `LEFT JOIN`). The wide
+denormalized fact was erasing exactly that behaviour.
+
+Each optional source record is now its own dimension at its own grain: six at
+match grain (Compatibility Assessment 870, Risk Evaluation 774, Administrative
+Review 641, Allocation Detail 561, Transport Logistics 518, Data Quality Record
+859), two at recipient grain (Clinical 607, Immunology 645), three at donor
+grain (Medical Record 575, HLA Typing 534, Organ Recovery 513). 91 attributes
+moved off the fact and the Donor/Recipient dimensions onto them, keeping their
+names; single-record formulas are recomputed on their record's dataset;
+cross-record computed attributes stay degenerate on Match, where their nulls
+already encode joint presence. Metrics still ride the wide fact, and a query
+mixing a metric with record attributes restricts the metric through the joins.
+
+**Why this is not answer-fitting.** The mechanism is the engine's own star-join
+semantics; the placement is what the build rules prescribe (degenerate
+dimensions are for genuinely fact-grain attributes; these are entity-grain
+records); and the per-query narrowing it produces is derived from which columns
+a question references, not from any reference answer's contents.
+
+**Verified live after deploy** (list_models healthy, 8 models, all 18 dimension
+groups conforming):
+
+- `Match Count` alone: 947. Grouped by Transport Method: no null group, totals
+  518. Metric averages through the logistics join: exact to the warehouse's own
+  inner join at 6 decimal places.
+- **The natural attribute-form query for task 18 - no presence filters, no
+  special knowledge, just the four columns the question asks about - now
+  reproduces gold cell-for-cell**: buckets 12/60/14/5, HLA 2.75/3.13/2.79/2.60,
+  wait 397/511/567/399, EGS 0.5496/0.4791/0.4622/0.3958. Before the change the
+  same reasoning produced 166 recipients and failed.
+- Task 22's stored passing submission replays unchanged (7 rows).
+- The agents' stored metric-form submissions shift toward gold (task 18's
+  Very High bucket lost its null-PRA rows, task 8 lost its null-transport row)
+  but do not fully converge - metrics do not force joins for records whose
+  attributes are never referenced.
+
+**Known limits, so the next run is read correctly.** (1) The fix reaches the
+population only when the agent references record *attributes*; a metrics-only
+query still averages per-column. In the measured runs 65% of submissions used
+the attribute/subquery form. (2) Count semantics stays the agent's choice:
+gold counts match rows, agents sometimes count distinct recipients (91 rows vs
+87 recipients on task 18's population). (3) Phantom joins remain capped: task
+17's gold joins function_and_recovery without referencing any of its columns,
+so no reference-driven mechanism can reproduce it. (4) The engine's
+`We already handled attribute values` planner assertion rejects the DIRECT
+`AVG(attr) ... GROUP BY attr` form (no subquery); this predates the restructure
+(9 direct-form attempts across the old runs, only 2 succeeded) but its surface
+is wider now that more attributes live on dimensions - the subquery form the
+agents favour works. (5) The masked terms, unstated constants, invented
+weights, WIDTH_BUCKET and the KB-contradicting urgency mapping are untouched
+by this change; 9 of 19 tasks stay unreachable on those grounds.
