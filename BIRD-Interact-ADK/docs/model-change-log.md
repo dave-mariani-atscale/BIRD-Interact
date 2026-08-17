@@ -1168,6 +1168,159 @@ the agent will make the remaining choices correctly. Budget model work on that b
 
 ## crypto_exchange
 
+### The open follow-ups worked, 2026-08-17 (second sitting) — +2.70 reward over 3 tasks, $1.18
+
+Picked up from `docs/crypto-followups-handoff.md`. Three of its open items closed, and two
+of its diagnoses turned out to be wrong. Everything below is live-measured or probed
+through the live grader; nothing is inferred.
+
+| task | before | after | what moved it |
+|---|---|---|---|
+| `_17` | 0.00 | **1.00** | B-41: the ask trigger keyed on the agent's own answer (harness) |
+| `_19` | 0.00 | **0.70** | B-41, same clause |
+| `_6` | 0.00 | **1.00** | M-34 `Buy Pressure`, M-35 percentile grain (model), grouped ORDER BY (harness) |
+
+`results/crypto_0818_validate_20260817_153608.json` ($0.71, 3 tasks),
+`results/crypto_0818_v2_20260817_154056.json` ($0.23, `_6` after M-35) and
+`results/crypto_0818_v3_20260817_154532.json` ($0.24, `_6` after the grouped ORDER BY rule).
+`_6` was re-run one change at a time on purpose: three mechanisms, three attributable steps
+of 0.00 → 0.00 → 0.70 → 1.00.
+
+#### M-34 — `_6` returned 840 rows against gold's 1000 because a row-level column was missing
+
+The handoff offered two hypotheses, `filter_empty` on the sentiment hierarchy and the
+self-join dropping unmatched rows. **Both are wrong.** No snapshot has a null sentiment
+(0 of 1000) and the join to `analyticsindicators` is 1000 = 1000. The gap is the semantic
+layer's implicit GROUP BY: a projection of attributes groups by them, and the agent's
+projection carried `Average Buy Pressure` where gold projects the per-row `buy_force`, so
+nothing in the row distinguished one snapshot of a market from another.
+`distinct(market pair, spread, sentiment)` is **exactly 840**; adding buy force makes it
+**1000**. Confirmed live too: the same query plus the snapshot key returns 1000 rows, and
+all 1000 match gold on every value including the windowed per-sentiment average and the
+percentile, to 1e-5.
+
+So this was never a population problem or an ordering problem — it was a **grain**
+problem, and the handoff's parenthetical worry ("the model has no row-level Buy Pressure
+attribute … this may be harmless") was in fact the whole defect. Its reasoning failed
+because the average is per *snapshot* and there are 1.65 snapshots per market.
+
+Fix (models `5620b2a`): row-level `Buy Pressure` and `Sell Pressure` secondary attributes
+on the Market Snapshot hierarchy, bare-named per the row-value convention. `Sell Pressure`
+ships for symmetry only — no task needs it. Both `Average Buy/Sell Pressure` descriptions
+now point at the row-level sibling, and `Buy Pressure`'s own description names the failure
+mode: swapping the average in for the row value silently collapses rows.
+
+#### M-35 — and then the percentile population became binding, in one submission
+
+With `Buy Pressure` deployed, `_6` found and used it on its first attempt — and failed on
+the next choice up: it took `Spread Percentage Percentile Rank (All Markets)` for a
+listing that projects sentiment and buy force, i.e. at snapshot grain, where gold's
+`PERCENT_RANK` runs over the 1000 joined rows. The `(All Markets)` description named only
+its `(Within Market Sentiment)` sibling and never `(All Snapshots)`; the `(All Snapshots)`
+description explains the distinction well, but the agent had already read the other one.
+
+Fix (models `7cdee91`): `(All Markets)` now says it weighs each market once and is for
+market-grain listings, and names `(All Snapshots)` as the reading for a listing that
+projects any snapshot property. Re-run of `_6` alone: `(All Snapshots)` chosen, phase 1
+**passed**, 0.00 → 0.70.
+
+This is the standing pattern twice in one task, and worth noting as the *counter*-example
+to the prior in the handoff's §8: two description-level fixes in a row each converted,
+because each removed a wrong *object choice*, not a wrong value.
+
+#### B-41 — trigger the label ask off your own answer, not off the question's wording
+
+`_17` and `_19` both compute the right condition at the right grain and then print the
+wrong cell text: the model's `Liquidity Crisis` / `Arbitrage Window` are Yes/No flags and
+gold wants `'Liquidity Crisis'`/`'Normal Market Conditions'` and `'Arbitrage
+Opportunity'`/`'Normal Market'`. Neither label pair is in the knowledge base — KB 16 and
+KB 12 state the conditions and no wording — so the **model side is not available**:
+putting gold's labels in a description would be gold-peeking. Both questions do carry the
+wording as an *open* (unmasked) ambiguity, which is the benchmark saying to ask.
+
+Fixed harness-side, `ASK_USER_TIP` (this commit): a clause that fires on the agent's own
+draft answer rather than on the question's phrasing — if the question asks for a state or
+an assessment and the value you are about to return is a Yes/No flag or a phrase you chose,
+you are inventing the wording; ask for the literal text of both cases. Symmetric across
+arms.
+
+Measured the same day: `_17` **0.00 → 1.00** (both phases; the phase-1 probe predicted
+0.70), `_19` **0.00 → 0.70**. This is the second ask-trigger prescription to be measured
+and it lands, against M-25's prior that they rarely do. The difference looks like the
+trigger surface: M-25's keyed on question wording, this one keys on what the agent was
+about to submit.
+
+#### Grouped results: gold nearly always sorts them
+
+`_6` phase 2 then failed on row order alone — the correlation values were right.
+`config/order_undetermined.json` exempts `crypto_exchange_6` **phase 1** only, and gold's
+phase 2 carries `ORDER BY d.sentiment`. Probed: with `ORDER BY "Market Sentiment"` it
+grades **1**, without it **0**.
+
+The ORDER BY rule shipped in `f3ba423` said not to invent a sort, which is right for a
+row-level listing and wrong here. Counted over the shipped golds: of the
+**order-sensitively graded phases whose reference has a GROUP BY, 184 of 189 carry a
+top-level ORDER BY** and only 5 do not (`labor_certification_applications_12` p2,
+`mental_health_1` p2, `fake_account_22` p2, `fake_account_24` p1/p2). 20 of the 184 sort
+by the grouping key and 164 by something else, usually the ranked measure.
+`RESULT_SHAPE_TIP` now carves that out: on a grouped result always sort — by the measure
+when the question ranks, by the grouping key ascending otherwise. Measured on `_6`
+immediately: it added `ORDER BY "Market Sentiment"` and phase 2 passed, 0.70 → **1.00**.
+
+#### Two of the handoff's blockers do not exist
+
+Both of §4's tasks were filed as blocked on **Q-26** (scalar subquery inlined as a
+per-row self-reference). Neither is. Probed through the live grader against the deployed
+model:
+
+| task | form that grades **1** | note |
+|---|---|---|
+| `_15` p2 | `SELECT ROUND("Orders At High Liquidation Risk" * 100.0 / "Orders With A Liquidation Price", 2)` | plain inline ratio of two shipped metrics; returns 100.00 |
+| `_5` p2 | one discovery query (`"Exchange User"` × `"Maximum Margin Utilization"`, 2 rows) then `SELECT "Total Profitable Realized PnL", "Total Losing Realized PnL", "Profit Factor" … WHERE "Exchange User" = 'U485932'` | no subquery needed at all |
+
+No scalar subquery is required in either, and no model change is needed for either. What
+actually cost `_15` its phase 2 in the 0817 run was **budget**: three submissions spent on
+the phase-1 column count (the thing `f3ba423` addresses) left nothing for the follow-up.
+`_5` lost its phase 2 to a hallucinated `"Account Balance" = 425` filter and its own
+invented profit-factor arithmetic, with `NULLIF` (Q-28) and one conformance error on the
+way. Both are now probe-proven reachable, and the honest denominator `_15` needs
+(`Orders With A Liquidation Price`, 2 of 970) is already documented as such in the model.
+Also worth recording from the `_5` probes: an outer filter on a metric alias over a
+derived table (`WHERE t.mu > 80`) is rejected, the Q-30 shape, while grouping by
+`"Exchange User"` with `"Maximum Margin Utilization"` projected is fine.
+
+#### Q-31 — every percentile metric in the catalog is unexecutable
+
+Found while reading `_2`'s phase-2 failure, not by sweeping. `Median Order Fill Rate`
+cannot be queried by its own name ("Column [Median Order Fill Rate] not found" — the
+engine exposes it as `Median Order Fill Rate_instance_0.5`), and under the real name it
+hard-errors: **"In query planning stage EnsureQuantileSupported: Quantile function not
+supported for Postgresql-9.4.5"**. Checked all six `calculation_method: percentile`
+metrics in the catalog and every one fails identically:
+
+    crypto_exchange              Median Spread Percentage, Median Order Fill Rate
+    exchange_traded_funds        Median 1-Year Return, Median 3-Year Sharpe Ratio
+    labor_certification_apps     Median Processing Days, Median Wage Differential Rate
+
+They are pure discovery traps: advertised, unqueryable, and they cost two failed calls
+each to find out. This caps `_2` at 0.70 — its phase 2 asks for the average *and* median
+fill rate. Filed as Q-31 and **not fixed here**: the fix is a precomputed median column
+per population, named the way the percentile ranks already are (`… (All Snapshots)`),
+across three models, and it is a bigger change than this sitting should make unmeasured.
+
+#### Where the arm stands now
+
+Proven live and not yet in an arm number: `_2` +0.70, `_9` +1.00 (previous sitting), `_6`
++1.00, `_17` +1.00, `_19` +0.70 = **+4.40 reward**, i.e. 0.360 → **0.580** if it all
+holds. Probe-only on top: `_15` p2 and `_5` p2 +0.30 each. That is above the 0.565 the
+handoff's arithmetic put on solving B-41, because `_17` and `_6` both took their phase 2 as
+well. Structural ceiling is unchanged at about 0.605 (`_1 _3 _7 _10 _18` unreachable,
+`_4 _16 _20` capped at 0.70), and Q-31 is what caps `_2`.
+
+**No lift number is quotable yet.** `RESULT_SHAPE_TIP` and `ASK_USER_TIP` are shared by
+both arms, so the raw arm has to be re-run under the current code before any comparison —
+see §1 of the handoff, still open.
+
 ### n=1 re-measurement 2026-08-17, and what reading every failing submission found
 
 **atscale 0.360 against raw 0.340 — lift +2.0 pp**, on the 20 Query tasks, Sonnet both
