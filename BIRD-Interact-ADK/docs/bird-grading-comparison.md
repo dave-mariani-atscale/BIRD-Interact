@@ -437,7 +437,27 @@ gold, no judgment required**, and the lint verifies each fix:
 | `ROW_NUMBER`/`RANK` picking one row per group | ~4 | add a tiebreak inside the window's `ORDER BY` |
 | `LEAD`/`LAG` over a non-total order | 1 | same |
 | `string_agg`/`array_agg` with no `ORDER BY` | 2 | `ORDER BY` inside the aggregate |
-| `SUM` over `::real`, order-dependent in float32 | ~3 | drop the `::real` — already proposed as B1 (§3) |
+| `SUM` over `::real`, order-dependent in float32 | 1 | drop the `::real` — already proposed as B1 (§3) |
+
+Counts are by the construct present in gold and are approximate where a gold
+carries more than one; the classes, not the arithmetic, are the point.
+
+**None of this is reachable from the grading side, and that is measurable.**
+Across the 25: **19** differ non-numerically or in row count, so no tolerance
+can ever absorb them — the two plans return `f440` against `f429`, or a
+different number of rows. Of the 6 that are purely numeric, five sit
+**5.6e-2 to 1.9e+0 apart in relative terms** — different answers, not noise.
+Exactly **one**, `polar_equipment_4` p1, is in tolerance range at all
+(7.47e-06), and it needs ~1e-5: above our 1e-6 and at the 2e-5 rejected in §11.
+Even there a tolerance would not fix gold, only make grading blind to gold
+disagreeing with itself.
+
+**This is why defect F cannot be handled the way defect A was.** A's ambiguity
+is confined to the SEQUENCE of a fixed set of rows, so a grader can decline to
+grade the sequence and lose nothing. F's ambiguity is in WHICH ROWS AND VALUES
+the answer contains, and a grader that declined to grade those would be grading
+nothing. The two populations do not even overlap: **0 phases** are in both the
+68 of §2 and the 25 here.
 
 *Answerability* — a solver must be able to know which of the tied answers is
 wanted. Determinism does not give you this: pinning `f440` over `f429` makes the
