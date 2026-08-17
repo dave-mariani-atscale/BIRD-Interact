@@ -2884,3 +2884,44 @@ the raw block now running, not to anything earlier.
   every earlier block; the new per-task outcome lines just made a
   long-standing condition visible. Query error rate 19-21%, planner assertion
   still present.
+
+**2026-08-17 - epoch-1 head-to-head complete (sonnet simulator, 16384 tokens,
+round-4 model; n=3 per arm).**
+
+| arm | runs | mean | sd | scoring tasks |
+|---|---|---|---|---|
+| raw | 0.1053 / 0.1053 / 0.0526 | **0.0877** | 0.025 | 22 (3/3 both phases), 8 (2/3 both phases) |
+| atscale | 0.0526 / 0.0000 / 0.0368 | **0.0298** | 0.022 | 22 (1 both, 1 phase-1) |
+
+Gap -0.058 average reward; exact Mann-Whitney U=0.5, two-sided p ~= 0.1 (the
+floor of a 3v3 design - raw ahead in every pairing except one exact tie).
+Budget exhaustion: raw 16-18 of 19, atscale 13-14 of 19, both unchanged from
+their historical shapes.
+
+**What drove the gap - two mechanisms, both now understood.**
+
+1. *Task 22 stability.* Raw reproduces gold's arbitrary tie order by
+   construction (same engine, same plan shape) and passed both phases all three
+   times. The atscale arm's tie order depends on the agent's window-function
+   choices and on simulator tie-break advice, and it converted only once.
+2. *Task 8, the epoch's discovery.* The sonnet simulator, asked which ischemia
+   field applies, DISCLOSED THE FORMULA: the donor's recorded recovery ischemia
+   plus the transport time (fr.org_isch_time + cm.exp_time). The raw agent
+   assembled it directly and passed both phases twice - the first passes ever
+   on this task. The atscale agent, given the same disclosure, CANNOT assemble
+   it: the model ships total-ischemia variants for exp_isch+exp_time and
+   org_isch+exp_isch, but expected transport minutes exists only inside metrics,
+   not as a row-grain attribute. That violates the standing "row-level attribute
+   beside every measure" rule and is now the top model fix for the next epoch:
+   publish Expected Cold Ischemia Minutes and Expected Transport Minutes as
+   Compatibility Assessment attributes so any simulator-disclosed combination is
+   assemblable. Legitimately sourced: the definition came through the
+   benchmark's own ask channel, not from gold.
+
+**Symmetric caps confirmed symmetric.** The simulator answered "10 miles" on
+task 17 to both arms (five observations now, two simulator models); task 2
+failed all six runs of the epoch (raw included - the arbitrary-tie rank on
+Region_9 bit raw too this time, where under the haiku simulator raw had passed
+it twice). Next: the harness's simulator-fidelity fix (the parameterization
+bug), the MCP branch deploy, and the model round - one epoch boundary, then
+re-measure both arms.
