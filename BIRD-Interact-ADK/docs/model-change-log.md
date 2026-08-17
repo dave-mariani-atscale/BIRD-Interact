@@ -1692,3 +1692,32 @@ constant out of the WHERE clause it is holding. The remedy is USER_SIM_MODEL in
 .env (no code change), but it changes the benchmark's answers for both arms, so
 it requires a full two-arm re-baseline and should be decided deliberately, not
 patched mid-comparison.
+
+**2026-08-17 - final-config atscale block (sonnet simulator, 16384 tokens,
+round-4 model; n=3): 0.0526 / 0.0000 / 0.0368, mean 0.0298 (sd 0.022).** The
+first block on the configuration the head-to-head will use; comparable only to
+the raw block now running, not to anything earlier.
+
+- **Round 4 confirmed in a scored run**: run 1's task 22 passed BOTH phases -
+  the first atscale phase-2 pass on this database - and its phase-2 SQL is
+  character-for-character the query that previously failed on the "(Per Match)"
+  name, now written bare. Run 3's task 22 passed phase 1 with its last coin and
+  never got to attempt phase 2 (budget), and run 2's was steered off the
+  passing tie-order by the simulator itself ("no tiebreaker needed").
+- **The ask machinery is now reliable on task 2**: all three runs extracted the
+  masked allocation rule (urgency tier order, HLA tiebreak, Pending) and the
+  numerals-as-tiers mapping. Run 2 reproduced the reference's 15-row population
+  and matched **14 of 15 rows exactly**, failing on a single two-row tie:
+  ROW_NUMBER where gold's RANK gives both rows rank 1, plus the arbitrary order
+  between two rows with identical sort keys. One clarifying question (or one
+  luckier draw) from a second never-to-pass conversion.
+- **The sonnet simulator did not fix task 17**: "10 miles" against gold's
+  >= 50, now observed four times across two simulator models. The fidelity
+  failure is the v2 prompt design, not model tier - the simulator invents a
+  plausible constant instead of consulting the ground truth it is handed.
+  Upstream-worthy. It also introduced a new variance source: its decisive
+  wrong answer on run 2's tiebreaker question is what broke task 22 there.
+- Budget exhaustion (14/13/13 of 19) and coin allocation are unchanged from
+  every earlier block; the new per-task outcome lines just made a
+  long-standing condition visible. Query error rate 19-21%, planner assertion
+  still present.
