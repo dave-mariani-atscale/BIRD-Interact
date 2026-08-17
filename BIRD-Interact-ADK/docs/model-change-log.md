@@ -1430,3 +1430,50 @@ task 7's gold urgency mapping contradicts KB 25; task 11 invents five weights;
 task 13 buckets by WIDTH_BUCKET and returns 6 rows to a 5-group question; task
 14 gates on an unannounced `HAVING COUNT(*) > 1`. That is 9 of 19 before the
 agent writes a line of SQL.
+
+**2026-08-16 - round 2 measured, and withdrawn.** One atscale run after the
+round-2 changes: **0.0526** average reward, 1 of 19 phase-1 passes, phase 2 1.
+That is exactly the maximum the three pre-change runs already reached (0.0368,
+0.0368, 0.0526), and the same single task passes (`organ_transplant_22`). The
+prediction of zero payoff held.
+
+The mechanism is unambiguous rather than merely null. Across **129** query and
+submit calls the agent referenced a `Has ... Record` attribute **zero** times,
+while `explore_columns` surfaced one **18** times. They were discovered and
+ignored - which is the correct behaviour, because no question ever asks for
+"matches that have a risk record". The attributes answered a question nobody
+poses; the population narrowing lives in gold's join chain, not in the user's
+words, so no amount of making it *expressible* makes an agent *want* it.
+
+Every cost metric meanwhile landed at or above its pre-change maximum: error
+rate 23% (prior range 11-21%), budget exhaustion 74% (42-68%), budget used
+17.66 (15.58-17.21), `explore_columns` 2.89 per task (2.16-2.68). n=1, so each
+of those is within a whisker individually - but all four moving the same way
+while the score does not is what 11 never-used objects look like.
+
+**Withdrawn**, per "an added object must earn its place twice" and the standing
+preference for withholding columns no question touches. The derived fact
+columns went with them.
+
+The other two changes were kept because they add no objects, and both were also
+inert: asks mentioning match status ran 46% before and 47% after, and the
+agent's chosen status filter matched gold on 21 of 42 before against 8 of 14
+after - indistinguishable, and in any case the agent already picked the status
+correctly about half the time *and still failed*, because the population also
+needs the record restriction it never applies.
+
+**The increased error count was checked and is not a regression from the
+change**: the extra `not found` errors are `ProjectContext` resolution failures
+and the agent referencing columns its own nested subquery did not project -
+agent-side SQL bugs, with zero mentions of any new attribute name.
+
+**Conclusion for this database.** Three model changes have now been tried
+against a measured baseline and none moved a task. The failure classes that
+remain are, in order: reference populations defined by gold's join chain rather
+than by the question; conditions stated nowhere (an unannounced `HAVING`, five
+invented weights, `WIDTH_BUCKET` returning 6 rows to a 5-group question); a gold
+urgency mapping contradicting KB 25; and four masked terms. None of those is
+reachable from the semantic layer, and the raw arm scores 0.072 against its
+~0.30 baseline elsewhere for the same reasons. **Recommend no further model
+work on organ_transplant, and a decision on whether it belongs in the
+comparison at all.**
