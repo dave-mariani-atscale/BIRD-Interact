@@ -1667,3 +1667,28 @@ measured under the truncating 4096 config; this run is the first on the fixed
 harness, and the arms are no longer comparable across that boundary. A clean
 head-to-head needs n>=3 per arm on the new config (raw first - its old numbers
 are also suspect, though no raw task ever died of truncation).
+
+**2026-08-17 - round 4: bare-name ownership + engine-behaviour documentation
+(not yet measured).** Twenty-two row-level attributes drop the "(Per Match)"
+qualifier; nothing owned the bare names, questions use the bare form, and both
+phase-2 failures in the last run were bare-name guesses made with no coins
+left. Verified sufficient before shipping: task 22's stored phase-2 SQL with
+the bare name returns NULL, identical to gold's own NULL. Center Performance
+Score keeps its qualifier (the bare name belongs to the group calculation).
+The model description gains two engine facts: the planner assertion that
+rejects direct attribute aggregation, with the FROM-subquery form that works;
+and the metric-versus-attribute population semantics, with the single-subquery
+form that holds every figure to one population. Prediction, per the standing
+rule: the name change reliably removes a known-wrong outcome (a dead
+submission) rather than guaranteeing a pass; the description guidance is the
+weaker mechanism and is documentation of engine behaviour either way.
+
+**Simulator fidelity finding.** Task 17's wrong constant is a harness-side
+defect in the strict sense: the user simulator's stage-2 prompt receives the
+full ground-truth SQL and its segments, ran on the recommended v2 prompt, and
+still answered "10 miles" against gold's >= 50 - twice, consistently. The
+plumbing is intact; the simulator model (claude-haiku-4-5) fails to read the
+constant out of the WHERE clause it is holding. The remedy is USER_SIM_MODEL in
+.env (no code change), but it changes the benchmark's answers for both arms, so
+it requires a full two-arm re-baseline and should be decided deliberately, not
+patched mid-comparison.
