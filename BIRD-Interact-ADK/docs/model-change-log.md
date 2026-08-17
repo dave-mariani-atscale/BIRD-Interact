@@ -1619,3 +1619,51 @@ in the masked / unstated-constant / simulator-contradiction classes, and this
 run's headline measures an LLM-availability incident plus known caps, not the
 change. Before the next scored run, check the agent-side logs for the empty
 completions; a run where a fifth of tasks die unsubmitted measures nothing.
+
+**2026-08-17 - second post-restructure run (n=1), with SYSTEM_AGENT_MAX_TOKENS
+fixed: 0.0737** - the best atscale run of the five, above the prior 0.037-0.053
+band, equal to raw's median and inside raw's range. Single-run noise is ±0.10,
+so the score alone claims nothing; the composition is the evidence.
+
+- **Harness fix verified.** 259 agent calls, zero at the old 4096 ceiling (max
+  completion 6573), zero empty-final agent deaths, 19 of 19 tasks submitted.
+- **organ_transplant_2 passed phase 1 for the first time in any atscale run**
+  (0 for 4 before), and its trajectory composes every mechanism built across
+  the three rounds: the agent asked the masked allocation-ordering question and
+  the simulator handed over the rule (the firewall behaving as the benchmark
+  intends); asked the numerals-as-tiers question straight from the Medical
+  Urgency Status description and applied the confirmed ALT mapping inline;
+  asked recorded-versus-computed HLA (the asymmetric-names design); and the
+  allocation+clinical+compatibility joins fired structurally, producing the
+  15-row population the restructure was verified to reach. The
+  always/never/flaky discipline supports attribution: the task moved
+  never-to-pass immediately after a change that touched exactly the objects it
+  references.
+- **Phase 2 went 0 for 2, both on name guesses made with no coins left to
+  explore**: the agents wrote "Expected Graft Survival Score" and "Surgical
+  Risk Score" where the published attributes carry "(Per Match)". Task 22's
+  follow-up is a proven pure name-miss: gold's own answer is NULL (TC212 has no
+  Completed match with a risk record), and the agent's exact SQL with the
+  correct name returns NULL - identical. Task 2's follow-up also mis-scoped the
+  population (gold averages over all matches of the listed recipients, not
+  pancreas-pending matches), so the name alone would not have saved it.
+- **Candidate next change, grounded in the name-ownership rule rather than
+  gold**: nothing currently owns the bare names "Surgical Risk Score" or
+  "Expected Graft Survival (EGS) Score" - the attributes carry "(Per Match)"
+  and the metrics carry "Average ...". The rule says exactly one reading takes
+  the bare name, chosen from the questions' vocabulary; the questions say the
+  bare form. Stripping "(Per Match)" where the bare label is unclaimed would
+  have flipped task 22's follow-up this run (+0.3 reward, verified sufficient
+  for free above).
+- Task 17 is confirmed permanently capped: the simulator answered "10 miles"
+  to the short-trip question in both runs that asked; gold uses 50.
+- Task 18 drew the attribute form this time - the form the restructure serves -
+  and died on the agent's own SQL bug (an alias referenced across subquery
+  scopes: `column t_51.pra does not exist`). Bad luck of a different flavour
+  than last run's metric-form draw.
+
+**Where this leaves the comparison.** Every prior atscale/raw number was
+measured under the truncating 4096 config; this run is the first on the fixed
+harness, and the arms are no longer comparable across that boundary. A clean
+head-to-head needs n>=3 per arm on the new config (raw first - its old numbers
+are also suspect, though no raw task ever died of truncation).
