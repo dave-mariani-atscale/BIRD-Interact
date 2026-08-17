@@ -1249,6 +1249,43 @@ words, so the remaining phrase has to cover the other two. Both descriptions now
 the phrase is plural and name each other. Proven before shipping — the five-column
 projection grades **1**, the agent's four-column one grades **0**.
 
+#### Validated, 3 tasks, 2026-08-17 — 2 of 3 moved, $0.49
+
+`results/crypto_0817_validate_20260817_150357.json`, one task per mechanism rather than
+three of the same, so a null result is attributable.
+
+| task | mechanism under test | before | after |
+|---|---|---|---|
+| `_2` | the ORDER BY rule | 0.00 | **0.70** |
+| `_9` | the M-33 description fix | 0.00 | **1.00** |
+| `_17` | the projection rule | 0.00 | 0.00 |
+
+`_9` beat its prediction: phase 2 passed as well, so the fix was worth 1.00 and not the
+0.70 the phase-1 probe established.
+
+**`_17` is the interesting one, because the fix worked and the task still lost.** Its
+first submission was `SELECT "Liquidity Crisis" ... WHERE "Exchange Spot Market" =
+'EX203'` — one column, first try, where the previous run opened with three and never got
+below two. The projection rule did exactly what it was written to do. What blocks the
+task now is one layer up: the model publishes `Liquidity Crisis` as a **Yes/No flag** and
+gold wants the status wording `'Liquidity Crisis'` / `'Normal Market Conditions'`. The
+agent submitted the raw flag three times, then invented `'Normal'` on the fourth, and
+never spent 2 coins asking what the label should say — even though ASK_USER_TIP already
+prescribes exactly that ask, because it read the flag as *being* the answer rather than
+as encoding it.
+
+So the projection saving is real but it did not convert here; it bought four submissions
+at the wrong label instead of two submissions at the wrong shape. This is the standing
+pattern — remove one binding constraint and the next one up the stack becomes binding —
+and it is the reason `_17` should not be counted as reachable until the flag-versus-label
+gap is addressed, either by a description that says a Yes/No flag is not an output label,
+or by an ASK_USER_TIP trigger keyed on the flag rather than on the question's wording.
+Neither is attempted here: M-25 measured ask-trigger prescriptions as landing rarely, and
+this run should not spend its conclusion on an untested second guess.
+
+Net on the three: **+1.70 reward**, which if it holds across the arm is `_2` and `_9`
+alone worth +8.5 pp on the 20-task arm.
+
 #### Read but deliberately not fixed
 
 - **`_10` — gold ignores its own question.** The question says "based on the latest
