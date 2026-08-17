@@ -96,7 +96,11 @@ async def run_parallel_evaluation(
         nonlocal total_reward, p1_count, p2_count, completed
         instance_id = td["instance_id"]
         async with semaphore:
-            logger.info("=== Task %d/%d: %s ===", i + 1, len(tasks), instance_id)
+            question = " ".join((td.get("amb_user_query") or "").split())
+            if len(question) > 150:
+                question = question[:150] + "..."
+            logger.info("=== Task %d/%d: %s ===\n    Q: %s",
+                        i + 1, len(tasks), instance_id, question)
             try:
                 r = await run_single_task(td)
             except Exception as e:
@@ -112,6 +116,12 @@ async def run_parallel_evaluation(
             if r.get("phase2_passed"):
                 p2_count += 1
             completed += 1
+            outcome = ("PASS both phases" if r.get("phase2_passed")
+                       else "PASS phase 1" if r.get("phase1_passed")
+                       else "error" if r.get("error") else "fail")
+            logger.info("<== %s: %s  reward=%.1f  (%d/%d done, avg %.4f)",
+                        instance_id, outcome, r.get("total_reward", 0),
+                        completed, len(tasks), total_reward / completed)
             if completed % 5 == 0 or completed == len(tasks):
                 await _save()
 
