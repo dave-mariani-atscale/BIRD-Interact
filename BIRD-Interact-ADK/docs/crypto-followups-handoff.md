@@ -18,11 +18,22 @@ Companion documents, not repeated here:
 
 ## 0. State as of the end of the second sitting
 
-**Last full-arm measurement.** atscale **0.360** against raw **0.340** on the 20 Query
-tasks, `results/crypto_0817_atscale_20260817_142931.json`, arm cost $5.14. Sonnet both
-roles. That number is now **stale in the agent's favour and the lift is unknown** — see §1.
+**Both arms measured 2026-08-17, same sitting, same code:**
 
-**Proven live since, task by task, and not yet in any arm number:**
+| arm | previous | now | movement | run |
+|---|---|---|---|---|
+| atscale | 0.360 | **0.600** | +24.0 pp | `crypto_0818_atscale_20260817_161538` ($4.32) |
+| raw | 0.340 | **0.595** | +25.5 pp | `crypto_0818_raw_20260817_162631` ($3.08) |
+
+**Lift +0.5 pp** (relative +0.8%), against +2.0 pp before. Sonnet both roles, 20 Query
+tasks, flags as in `.env` (tie+rel+lint+decimal+casefold on, `FREE_WASTED_ACTIONS` and
+`SEMANTIC_LAYER_KNOWLEDGE_TOOLS` off).
+
+**Read that as: the guidance work is worth ~+25 pp and is symmetric, so the semantic
+layer's advantage on this database is now indistinguishable from zero.** And do not read
+±0.5 pp as a finding — see §1.
+
+The five task-level fixes behind it, each validated on its own task before the arm:
 
 | task | before | after | mechanism | run |
 |---|---|---|---|---|
@@ -31,8 +42,6 @@ roles. That number is now **stale in the agent's favour and the lift is unknown*
 | `_17` | 0.00 | 1.00 | B-41 label ask | `crypto_0818_validate_20260817_153608` |
 | `_19` | 0.00 | 0.70 | B-41, same clause | same |
 | `_6` | 0.00 | 1.00 | M-34, then M-35, then B-42 | `…v2_154056`, `…v3_154532` |
-
-**+4.40 reward = 0.360 → 0.580 if it holds on a full arm.** Structural ceiling ~0.605.
 
 **Shipped and live.**
 
@@ -58,27 +67,41 @@ The gate has caught silently-voided runs three times. Do not skip it. It is `8` 
 
 ---
 
-## 1. STILL THE GATING ITEM — the raw arm has to be re-measured before any lift number
+## 1. CLOSED, and the answer was the uncomfortable one — plus the new gating item
 
-Unchanged from the first writing, and now with more code in it. `RESULT_SHAPE_TIP` and
-`ASK_USER_TIP` in `system_agent/agent.py` are shared by **both** arms, and since the
-recorded raw 0.340 they have gained: the projection rule, the ORDER BY rule (B-38), the
-grouped-ORDER-BY carve-out (B-42) and the label-ask clause (B-41). Raw has 5 phases in the
-no-top-level-ORDER-BY bucket and its own share of the 189 grouped ones, so several of these
-plausibly help it too. **The lift is unknown — not +2.0 pp, not +8.5 pp, not +24 pp.**
+The first writing made re-measuring raw the gating item on the grounds that
+`RESULT_SHAPE_TIP` and `ASK_USER_TIP` are shared by both arms. That was right and the
+result is above: **raw gained more than atscale did (+25.5 pp against +24.0 pp) and the
+lift fell from +2.0 pp to +0.5 pp.** Had only the atscale arm been re-run, this sitting
+would have reported "+24 pp of lift" and been wrong by a factor of fifty.
 
-Re-grading cannot answer this: the changes alter what the agent *does*, not how it is
-graded, so `regrade_flags.py` is the wrong instrument (CLAUDE.md, "Grading changes:
-re-grade, don't re-run").
+Where each arm gained against its own previous baseline:
 
-    python -m orchestrator.runner --mode a-interact --backend raw --query-only \
-      --databases crypto_exchange --output results/crypto_0818_raw.json
+    atscale  _2 _9 _10 _11 (0.00 -> 0.70), _6 _17 (0.00 -> 1.00)
+    raw      _9 _17 (0.00 -> 0.70), _1 _6 _8 _19 (0.00 -> 1.00), _16 (1.00 -> 0.70)
 
-Cost ~$3, ~20 min. Do it in the same sitting as the atscale re-measure (§5) so both arms
-see the same code, and never concurrently — the two arms share one set of services and
-usage is attributed by timestamp window.
+`_6` gained in the **raw** arm too, on B-42 alone — M-34 and M-35 are model-side and
+invisible to it.
 
-**Do not put a lift number in the sheet until both arms have run post-B-42.**
+**THE NEW GATING ITEM: ±0.5 pp is inside the noise, and n=1 cannot tell you otherwise.**
+Two tasks flipped on identical code within forty minutes: `_19` scored 0.70 in
+`crypto_0818_validate` and **0.00** in the arm (where it bisected the projection four times
+and never asked for the labels), and `_9` went 1.00 → 0.70 the same way. Nothing in this
+sitting's numbers separates +0.5 pp from 0. A lift claim on crypto_exchange needs **n≥3 per
+arm, roughly $22**:
+
+    python -m orchestrator.runner --mode a-interact --backend atscale --repeat 3 \
+      --databases crypto_exchange --output results/cryptoNNNN_atscale_n3.json
+    python -m orchestrator.runner --mode a-interact --backend raw --query-only --repeat 3 \
+      --databases crypto_exchange --output results/cryptoNNNN_raw_n3.json
+
+Sequentially, never concurrently — the arms share one set of services and usage is
+attributed by timestamp window. **Do not put a lift number in the sheet from n=1.**
+
+Also revise, in both directions: raw won `_1` (filed under B-27 as gold-non-deterministic)
+and atscale won `_10` (filed under B-39 as winnable only by disobeying the question).
+Neither is as structural as the tracker records, and the ~0.605 ceiling estimate below is
+built partly on those two rows.
 
 ---
 
@@ -159,58 +182,56 @@ description text.
 
 ---
 
-## 5. When to re-measure the arm
+## 5. Re-measuring: done at n=1, and what the next run should be
 
-Now is reasonable. Five tasks have moved on their own tasks, each attributable, and nothing
-else is queued that changes agent behaviour. Both arms, same sitting, same code:
+Both arms ran post-B-42 (§0). `scripts/run_crypto_0818_both.sh` is the recipe — untracked
+per `.gitignore`, and it carries the reasoning in its header. Reuse it with `--repeat 3` for
+the n=3 pair §1 now calls for; ~$22, ~2h, sequential.
 
-    bash scripts/gate_run.sh 8
-    python -m orchestrator.runner --mode a-interact --backend atscale \
-      --databases crypto_exchange --output results/cryptoNNNN_atscale.json
-    python -m orchestrator.runner --mode a-interact --backend raw --query-only \
-      --databases crypto_exchange --output results/cryptoNNNN_raw.json
+Set `GRADING_AUDIT_PATH` per run so the trajectory stays re-gradable. Report lift in
+**percentage points**, relative alongside, never as a fraction.
 
-~$8 for the pair. Set `GRADING_AUDIT_PATH` per run so the trajectory stays re-gradable.
-Report lift in **percentage points**, relative alongside, never as a fraction.
-
-Do Q-31 (§2) first only if you are willing to pay for a third arm later; otherwise run the
-pair now and take `_2`'s 0.70 as the cap for this round.
+Before spending that, the honest question is whether crypto_exchange is the database to
+spend it on: both arms are now within 0.005 of each other and within 0.01 of the estimated
+reachable ceiling, so there is very little headroom left for a lift to appear in. The
+cross-database levers in `docs/lift-levers-handoff.md` are the better use of $22 unless a
+crypto lift figure is specifically wanted.
 
 ---
 
 ## 6. Per-task ledger
 
-Baseline column is the 0817 run. "Evidence" says how strongly the target is known.
+All four columns are live arm numbers. `as` = atscale, `raw` = raw arm.
 
-| task | 0817 | target | evidence | blocker / note |
-|---|---|---|---|---|
-| `_1` | 0.00 | — | — | **B-27** gold non-deterministic, `TimeTrack` has 1 distinct value over 605 rows |
-| `_2` | 0.00 | **0.70** | measured live | ORDER BY rule (B-38); capped at 0.70 by **Q-31**, §2 |
-| `_3` | 0.00 | — | — | **B-27**, ties on `FundSpot` |
-| `_4` | 0.70 | 0.70 | — | **B-29**, the two golds disagree about `marg_sum`; p2 unreachable |
-| `_5` | 0.70 | 1.00 | probe only | p2 needs no fix, §3 |
-| `_6` | 0.00 | **1.00** | measured live | M-34 + M-35 + B-42, all three needed |
-| `_7` | 0.00 | — | — | needs a forward/lagged price series; none exists in the schema |
-| `_8` | 1.00 | 1.00 | passing | canary |
-| `_9` | 0.00 | **1.00** | measured live | M-33 |
-| `_10` | 0.00 | — | — | **B-39** gold ignores the latest-snapshot filter its question states |
-| `_11` | 0.00 | 0.70 | probe only | bare scalar, no GROUP BY — should follow from B-37, untested live |
-| `_12` | 0.70 | 1.00 | probe only | needs the agent to ask which "account"; §4 |
-| `_13` | 1.00 | 1.00 | passing | canary |
-| `_14` | 1.00 | 1.00 | passing | canary |
-| `_15` | 0.70 | 1.00 | probe only | p2 needs no fix, §3 |
-| `_16` | 0.70 | 0.70 | — | **B-30** p2 gold fans out on the market, 993 rows from 970 orders |
-| `_17` | 0.00 | **1.00** | measured live | B-41 |
-| `_18` | 0.00 | — | — | **B-40** gold's PVaR contradicts KB 2 by 100x and rebinds volatility |
-| `_19` | 0.00 | **0.70** | measured live | B-41. p2 wants a comma-separated string — unreachable |
-| `_20` | 0.70 | 0.70 | — | p2 gold is a `STRING_AGG` at full float precision in gold's own emission order |
+| task | as0817 | **as0818** | raw0814 | **raw0818** | note |
+|---|---|---|---|---|---|
+| `_1` | 0.00 | 0.00 | 0.00 | **1.00** | filed **B-27** non-deterministic; raw won it, so revisit |
+| `_2` | 0.00 | 0.70 | 0.00 | 0.00 | B-38; capped at 0.70 by **Q-31**, §2 |
+| `_3` | 0.00 | 0.00 | 0.00 | 0.00 | **B-27**, ties on `FundSpot` |
+| `_4` | 0.70 | 0.70 | 0.70 | 0.70 | **B-29**, the two golds disagree about `marg_sum` |
+| `_5` | 0.70 | 0.70 | 0.70 | 0.70 | p2 probe-proven reachable, §3 — did not convert live |
+| `_6` | 0.00 | 1.00 | 0.00 | **1.00** | M-34 + M-35 in atscale; raw got there on B-42 alone |
+| `_7` | 0.00 | 0.00 | 0.00 | 0.00 | needs a forward/lagged price series; none in the schema |
+| `_8` | 1.00 | 1.00 | 0.00 | 1.00 | canary, now passing in both |
+| `_9` | 0.00 | 0.70 | 0.00 | 0.70 | M-33; scored 1.00 in validate, 0.70 in the arm — variance |
+| `_10` | 0.00 | 0.70 | 0.00 | 0.00 | filed **B-39** unreachable; atscale won it, so revisit |
+| `_11` | 0.00 | 0.70 | 0.00 | 0.00 | the B-37 probe converting live |
+| `_12` | 0.70 | 0.70 | 0.70 | 0.70 | needs the agent to ask which "account"; §4 |
+| `_13` | 1.00 | 1.00 | 1.00 | 1.00 | canary |
+| `_14` | 1.00 | 1.00 | 1.00 | 1.00 | canary |
+| `_15` | 0.70 | 0.70 | 1.00 | 1.00 | raw takes p2; atscale's p2 is probe-proven, §3 |
+| `_16` | 0.70 | 0.70 | 1.00 | 0.70 | **B-30** p2 gold fans out on the market |
+| `_17` | 0.00 | 1.00 | 0.00 | 0.70 | B-41, in both arms |
+| `_18` | 0.00 | 0.00 | 0.00 | 0.00 | **B-40** gold's PVaR contradicts KB 2 by 100x |
+| `_19` | 0.00 | 0.00 | 0.00 | **1.00** | B-41 landed in raw and in validate; **missed in the atscale arm** |
+| `_20` | 0.70 | 0.70 | 0.70 | 0.70 | p2 gold is a `STRING_AGG` at full float precision |
+| **mean** | 0.360 | **0.600** | 0.340 | **0.595** | lift **+0.5 pp** |
 
-**Ceiling arithmetic.** Structurally unreachable: `_1 _3 _7 _10 _18` at 0.00 and
-`_4 _16 _20` capped at 0.70. That is 7.9 of a possible 20 already gone, so the arm's
-ceiling is about **0.605**. Measured 0817: 0.360. Proven live and not yet in an arm number:
-+4.40 → **0.580**. Probe-only if they convert: +0.90 → 0.625, i.e. above the ceiling
-estimate, which means one of the "capped" rows is wrong or a probe will not convert —
-expect the truth near 0.58–0.60.
+**Ceiling arithmetic, and why it is now shaky.** The estimate was ~0.605 from `_1 _3 _7 _10
+_18` unreachable at 0.00 and `_4 _16 _20` capped at 0.70. Both arms are now within 0.01 of
+that, *and* two of its rows were falsified in this very run (`_1` in raw, `_10` in atscale).
+Treat 0.605 as a lower bound on the ceiling, not the ceiling — but also note that neither
+arm has much headroom left in practice, which is §5's point.
 
 ---
 

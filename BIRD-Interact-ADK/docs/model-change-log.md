@@ -1168,7 +1168,13 @@ the agent will make the remaining choices correctly. Budget model work on that b
 
 ## crypto_exchange
 
-### The open follow-ups worked, 2026-08-17 (second sitting) — +2.70 reward over 3 tasks, $1.18
+### The open follow-ups worked and the lift did not, 2026-08-17 (second sitting)
+
+**Headline: atscale 0.600 against raw 0.595 — lift +0.5 pp, down from +2.0 pp.** Four
+guidance fixes worth ~+25 pp landed on *both* arms. Full arm numbers at the end of this
+section; the per-task work that got there is below. Sitting cost $8.58 all in.
+
+#### The fixes: +2.70 reward over 3 tasks, $1.18
 
 Picked up from `docs/crypto-followups-handoff.md`. Three of its open items closed, and two
 of its diagnoses turned out to be wrong. Everything below is live-measured or probed
@@ -1308,18 +1314,40 @@ fill rate. Filed as Q-31 and **not fixed here**: the fix is a precomputed median
 per population, named the way the percentile ranks already are (`… (All Snapshots)`),
 across three models, and it is a bigger change than this sitting should make unmeasured.
 
-#### Where the arm stands now
+#### Both arms re-measured, same sitting, same code — the lift is gone
 
-Proven live and not yet in an arm number: `_2` +0.70, `_9` +1.00 (previous sitting), `_6`
-+1.00, `_17` +1.00, `_19` +0.70 = **+4.40 reward**, i.e. 0.360 → **0.580** if it all
-holds. Probe-only on top: `_15` p2 and `_5` p2 +0.30 each. That is above the 0.565 the
-handoff's arithmetic put on solving B-41, because `_17` and `_6` both took their phase 2 as
-well. Structural ceiling is unchanged at about 0.605 (`_1 _3 _7 _10 _18` unreachable,
-`_4 _16 _20` capped at 0.70), and Q-31 is what caps `_2`.
+`results/crypto_0818_atscale_20260817_161538.json` ($4.32) and
+`results/crypto_0818_raw_20260817_162631.json` ($3.08), Sonnet both roles, 20 Query tasks.
 
-**No lift number is quotable yet.** `RESULT_SHAPE_TIP` and `ASK_USER_TIP` are shared by
-both arms, so the raw arm has to be re-run under the current code before any comparison —
-see §1 of the handoff, still open.
+| arm | before | after | movement |
+|---|---|---|---|
+| atscale | 0.360 | **0.600** | +24.0 pp |
+| raw | 0.340 | **0.595** | +25.5 pp |
+
+**Lift +0.5 pp** (relative +0.8%), against +2.0 pp before. This is exactly what §1 of the
+handoff predicted and the reason it was written as a gating item: `RESULT_SHAPE_TIP` and
+`ASK_USER_TIP` are shared, and the four guidance changes are worth about **+25 pp on this
+database to *both* arms**. They are the right changes and the arm-level result is that the
+semantic layer's advantage on crypto_exchange is now **indistinguishable from zero**.
+
+Where each arm gained, against its own previous baseline:
+
+    atscale  _2 _9 _10 _11 (0.00 -> 0.70), _6 _17 (0.00 -> 1.00)
+    raw      _9 _17 (0.00 -> 0.70), _1 _6 _8 _19 (0.00 -> 1.00), _16 (1.00 -> 0.70)
+
+Note `_6` gained in the **raw** arm too, on B-42 alone — M-34 and M-35 are model-side and
+invisible to it. And the atscale gain on `_11` is the probe-only prediction converting, as
+was `_10`, which B-39 had filed as unreachable.
+
+**Do not read ±0.5 pp as a result.** Run-to-run variance on identical code is larger than
+the gap: `_19` scored 0.70 in `crypto_0818_validate` and **0.00** in the arm forty minutes
+later — in the arm it bisected the projection four times and never asked for the labels at
+all — and `_9` went 1.00 → 0.70 the same way. A real lift claim on this database needs
+n≥3 per arm, roughly $22.
+
+Reachable-ceiling estimates need revising too, in both directions: raw won `_1` (filed
+under B-27 as gold-non-deterministic) and atscale won `_10` (filed under B-39 as winnable
+only by disobeying the question). Neither is as structural as recorded.
 
 ### n=1 re-measurement 2026-08-17, and what reading every failing submission found
 
