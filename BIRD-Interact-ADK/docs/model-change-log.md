@@ -1168,6 +1168,131 @@ the agent will make the remaining choices correctly. Budget model work on that b
 
 ## crypto_exchange
 
+### n=1 re-measurement 2026-08-17, and what reading every failing submission found
+
+**atscale 0.360 against raw 0.340 — lift +2.0 pp**, on the 20 Query tasks, Sonnet both
+roles, flags as of this date (tie+rel+lint+decimal+casefold). Run
+`results/crypto_0817_atscale_20260817_142931.json`, arm cost $5.14.
+
+The raw arm was **not** re-run and does not need to be. `scripts/regrade_flags.py raw`
+re-scored all 38 submissions of `crypto_n1_raw_20260814_085602.json` under the current
+flag set, the 2026-08-11 re-baseline and upstream-all-off: **0.3400 in all three, zero
+flips.** Raw on this database is flag-invariant, so 0.340 carries forward.
+
+Against the 08-14 n2 arm (0.410) this is **down 5 pp**, and the movement is two tasks,
+both of them the same tasks n2 had *gained*: `_17` 1.00 → 0.00 and `_19` 0.70 → 0.00,
+against `_5` 0.00 → 0.70 (the rel-tolerance flag, as B-20 predicted). `_17` and `_19`
+are the two tasks n2 won by spending its leftover budget asking the user for the output
+labels. In this run neither had leftover budget, for the reason below. Treat the 0.410
+as the same measurement with a luckier budget, not as a regression to hunt.
+
+#### The dominant failure shape: the agent projects the entity it was handed
+
+Six of the twenty tasks name their entity as a literal in the question — "for order
+'OR6015391', assess its liquidation risk", "for market 'EX203', check its market
+health" — and for every one of them **gold returns the asked-for value and nothing
+else, one column**. The agent projected the identifier alongside it every time, and
+then bisected: `_15` submitted 4 columns, then 2, then 1, and passed on the third at a
+cost of 12 coins; `_16` and `_20` each paid one wasted submit to learn the same thing;
+`_17` and `_19` ran out of budget before reaching one column and scored 0.00.
+
+`output_type` in the shipped dataset predicts this exactly — **all 9 crypto tasks
+declaring `scalar` have a one-column gold, 9 of 9** — and it is read by nothing, in
+this harness or upstream (same family as B-33). Surfacing it to the agent is not done
+here: it would be a real deviation, giving the agent a field upstream withholds, and
+that decision is not the model's to take.
+
+Proved offline through the live grader (`scripts/probe_pred.py`, free — MCP replay plus
+`ex_base_external_pred`), holding the trajectory otherwise fixed:
+
+| task | as submitted | one column, same value | note |
+|---|---|---|---|
+| `_17` | 0 (3 cols) | **1** | also needs gold's label wording, which ASK_USER_TIP already covers |
+| `_19` | 0 (3 cols) | **1** | same |
+| `_11` | 0 (grouped by user) | **1** | `SELECT "Average Margin Utilization (Available Balance Basis)"`, no GROUP BY |
+
+Fixed harness-side, not model-side: `RESULT_SHAPE_TIP` in `system_agent/agent.py` now
+states that a question naming its entity does not want the identifier back, and that a
+question asking for one overall figure does not want a GROUP BY. Symmetric — the tip is
+shared by both arms.
+
+#### An ORDER BY the question did not ask for is not free, and our own guidance said it was
+
+`RESULT_SHAPE_TIP` claimed "a sensible ORDER BY never costs you anything", and the
+atscale instruction opened with SORT BY THE MEASURE, NOT THE LABEL. Both are wrong when
+gold has no top-level `ORDER BY` of its own, because then the reference row order is
+whatever gold happened to emit. Measured on `_2`, same query both ways:
+
+    ... WHERE "Is Latest Execution" = 'Yes' ORDER BY "Order Fill Rate" DESC   -> 0
+    ... WHERE "Is Latest Execution" = 'Yes'                                   -> 1
+
+Exposure, counted over the shipped golds with parenthesised scope stripped so window
+and sub-select `ORDER BY`s do not mask a missing top-level one: **23 of 820 graded
+phases (2.8%) are compared order-sensitively while gold has no top-level ORDER BY** —
+`crypto_exchange` 5 (`_1` p1/p2, `_2` p1/p2, `_20` p2), `labor_certification_applications`
+2, `exchange_traded_funds` 1, `households` 1. On those, any ORDER BY the agent invents
+can only lose. Both tips now say: sort when the question ranks, otherwise leave the
+order alone. Distinct from B-31, which is about gold orders that are not reproducible
+at all; this is about an order gold *does* determine and the agent overwrites.
+
+#### The model fix: "the relevant technical value" is plural (`_9`)
+
+`_9` asks for "the relevant technical value, Bollinger Band width, the technical meter
+direction, and the calculated technical signal strength" — four nouns, five gold
+columns, because the first covers **both** raw technical readings. `RSI 14`'s
+description said "Also asked as the relevant technical value" and `MACD Histogram`'s
+said nothing, so the agent projected four columns and failed twice on it.
+
+Derivable without gold: KB Technical Signal Strength is a function of RSI, MACD
+histogram and Bollinger width; the question names the width and the meter in their own
+words, so the remaining phrase has to cover the other two. Both descriptions now say
+the phrase is plural and name each other. Proven before shipping — the five-column
+projection grades **1**, the agent's four-column one grades **0**.
+
+#### Read but deliberately not fixed
+
+- **`_10` — gold ignores its own question.** The question says "based on the latest
+  market-depth snapshot data, i.e. the one with maximum market stats id"; gold joins
+  orders to `marketdata` on `exchSpot` with no such filter. Dropping the agent's
+  (correct, obedient) `"Is Latest Snapshot" = 'Yes'` filter grades **1**, 454 rows.
+  Winnable only by disobeying the question. Filed, not modelled.
+- **`_18` — gold's PVaR contradicts KB 2, twice.** KB 2 is `notional × volatility
+  rating × 0.01`; gold computes `notional × (priceShiftDay/100) × 0.01`, an extra
+  factor of 100 the KB does not license, and binds "volatility rating" to
+  `priceShiftDay`, which the column-meaning file documents as the day's price shift,
+  not as volatility. Arithmetic confirmed exactly on OR6015391: gold's own
+  −6.934913774857141 reproduces from `AVG(pnl) / (notional × 0.0796 × 0.01 × risk_pct)`,
+  and the model's −0.009919481338340138 reproduces from the same expression with
+  `vol_meter` (55.65) and no `/100`. Matching gold needs both the rebinding *and* the
+  extra `/100`. This also sharpens the 08-14 note "rebinding would not win either task":
+  correct conclusion, but the reason is the scale factor, not the column.
+- **`_12` p2 — the model is already right.** Gold's account ID is `UserRef`; the agent
+  used `Account Balance`. The `Account Balance` description already says in as many
+  words that it is not the user identity, that `Exchange User` is, that "the account" is
+  ambiguous between 1000 records and 201 users, and to confirm with the user. The
+  `Exchange User` form grades **1**. Nothing to add — the trigger is there and the agent
+  did not take it, which is M-25's pattern, not a description gap.
+
+#### New engine facts, probed live against the deployed catalog
+
+Added to the atscale instruction; none were in the recorded dialect inventory.
+
+- **`NULLIF` is rejected** — "Unexpected AExpr: AEXPR_NULLIF" — while `COALESCE` is
+  accepted. The KB formulas are written full of `NULLIF` as a divide-by-zero guard, so
+  it bites on literal transcription. Cost `_5` a query.
+- **`ORDER BY` must name a bare projected column.** Sorting on `"M"` when the projection
+  is `ROUND(CAST("M" AS numeric(18,6)),2) AS m` fails with "Could not find correct column
+  to sort by"; projecting `"M" AS sortkey` alongside and sorting on that works. Cost
+  `_16` a query.
+- **Filter inside the derived table, not outside it.** The outer form can fail with "One
+  or more constraints [t.&lt;name&gt;] have been incorrectly constructed" — it did for `_12`
+  — though not universally: an outer filter on a short alias resolved fine on a re-probe,
+  so the trigger is narrower than the message suggests and is not characterised here.
+  The inner form always works.
+- **`IN (subquery)` over a string attribute** fails with "Only boolean Values can be
+  Constraints ... found ... StringType" (`_6`), and a CASE/OR predicate over two measures
+  returns "An internal error occurred during query planning" (`_10`, 2 calls).
+
 ### Smart Money Flow: both readings of "by at least 20%", 2026-08-17
 
 Same build-prompt rule as the ETF entry of this date. KB 15 states *"smart-money force
