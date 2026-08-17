@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Dict, List, Tuple
 
 from fastapi import FastAPI, HTTPException
@@ -97,6 +98,48 @@ def _parse_action(state: TaskSimState, question: str) -> str:
     return action
 
 
+def _extract_response(content: str) -> str:
+    """Extract the <s>...</s> response, handling truncated output."""
+    if "</s>" in content:
+        extracted = content.split("</s>")[0].strip()
+        if "<s>" in extracted:
+            return extracted[extracted.find("<s>"):].replace("<s>", "").strip()
+        return extracted
+    elif "<s>" in content:
+        return content.split("<s>")[1].strip()
+    return "I'm not sure I understand your question."
+
+
+_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _numeric_values(text: str) -> set:
+    vals = set()
+    for m in _NUMBER_RE.finditer(text or ""):
+        try:
+            vals.add(float(m.group()))
+        except ValueError:
+            pass
+    return vals
+
+
+def _unsupported_numbers(state: TaskSimState, question: str, response: str) -> List[str]:
+    """Numbers in the response that appear in none of the ground-truth sources.
+
+    The simulator holds the ground-truth SQL yet has been observed paraphrasing
+    its constants wrong (saying "10 miles" where the SQL filters on >= 50 — seen
+    5 times across two models). Any number it states must be traceable to the GT
+    SQL, the labeled ambiguity points, the clear query, or the agent's own
+    question; compared as float values so "50" matches "50.0".
+    """
+    allowed = _numeric_values(state.get_gt_sql_str())
+    allowed |= _numeric_values(state.get_ambiguity_json())
+    allowed |= _numeric_values(state.clear_query)
+    allowed |= _numeric_values(question)
+    bad = _numeric_values(response) - allowed
+    return [format(v, "g") for v in sorted(bad)]
+
+
 def _generate_response(state: TaskSimState, question: str, action: str) -> str:
     """Stage 2: Response Generator — produces user response from action + context."""
     template = USER_SIMULATOR_RESPONSE_GENERATOR[PROMPT_VERSION]
@@ -107,16 +150,34 @@ def _generate_response(state: TaskSimState, question: str, action: str) -> str:
     prompt = prompt.replace("[[GT_SQL]]", state.get_gt_sql_str())
     prompt = prompt.replace("[[SQL_Glot]]", state.get_all_sql_segments())
     prompt = prompt.replace("[[DB_schema]]", state.db_schema)
-    content = _call_llm(prompt, max_tokens=1024)
-    # Extract response: handle both complete and truncated cases
-    if "</s>" in content:
-        extracted = content.split("</s>")[0].strip()
-        if "<s>" in extracted:
-            return extracted[extracted.find("<s>"):].replace("<s>", "").strip()
-        return extracted
-    elif "<s>" in content:
-        return content.split("<s>")[1].strip()
-    return "I'm not sure I understand your question."
+    response = _extract_response(_call_llm(prompt, max_tokens=1024))
+
+    # Numeric-consistency guard: regenerate once if the response states numbers
+    # that no ground-truth source contains. Fail-open on the second draft so a
+    # false positive (e.g. a legitimate unit conversion) never stalls the run.
+    bad = _unsupported_numbers(state, question, response)
+    if bad:
+        logger.warning(
+            f"Regenerating: response contained unsupported number(s) {bad}: {response[:120]!r}"
+        )
+        retry_prompt = (
+            prompt + response + "</s>\n\n"
+            "[Correction] Your response above was rejected because it contains the "
+            f"value(s) {', '.join(bad)}, which appear in none of the ground-truth "
+            "sources (Ground-truth SQL, Labeled Ambiguity Points, Original "
+            "Text-to-SQL Question, or the AI collaborator's question). Every "
+            "specific value you state must be copied exactly from those sources; "
+            "if they do not pin the detail down, say the choice is up to the AI "
+            "collaborator. Rewrite your response now, in the same format.\n<s>"
+        )
+        response = _extract_response(_call_llm(retry_prompt, max_tokens=1024))
+        still_bad = _unsupported_numbers(state, question, response)
+        if still_bad:
+            logger.warning(
+                f"Regenerated response still contains unsupported number(s) {still_bad}; "
+                "returning it unchanged (fail-open)."
+            )
+    return response
 
 
 @app.post("/init_task")

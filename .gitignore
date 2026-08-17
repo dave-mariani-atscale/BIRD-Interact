@@ -14,3 +14,4 @@ bird_interact_conv/results/
 
 # Local key-rotation helper
 update-api-key-anthropic.sh
+BIRD-Interact-ADK/logs/

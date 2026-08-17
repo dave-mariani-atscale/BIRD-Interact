@@ -2925,3 +2925,38 @@ Region_9 bit raw too this time, where under the haiku simulator raw had passed
 it twice). Next: the harness's simulator-fidelity fix (the parameterization
 bug), the MCP branch deploy, and the model round - one epoch boundary, then
 re-measure both arms.
+
+## 2026-08-17 - Epoch 2 boundary: MCP fix deploy, model round 5, simulator fidelity guard
+
+All three planned changes landed together as one epoch boundary; no result
+before this point is comparable to any result after it.
+
+**MCP server (branch model-creation-combined, commit 43b4dbb, image
+model-creation-combined).** Live smoke on the deployed build disproved the
+CTE premise: the ENGINE rejects CTEs ("CTEs are not supported yet in pgsql
+queries"), so the client guard removal bought nothing - the tool now
+intercepts WITH-queries with that verdict plus the FROM-subquery rewrite.
+The new join-grouping detector had a real bug (GROUP BY ordinals compared
+textually), falsely rejecting the canonical membership join written with
+GROUP BY 1; fixed by resolving ordinals to projections and matching columns
+alias-insensitively. NULLIF and dimension-attribute-aggregation detectors
+verified live, including that the suggested rewrites execute.
+
+**Model round 5 (bird-atscale-models f23aa4a, deployed).** Expected Cold
+Ischemia Time and Expected Transport Time published as row-grain attributes
+on the Compatibility Assessment satellite - closing the task-8 gap logged
+above; the disclosed org_isch + exp_time formula now assembles at row grain
+(verified live: per-organ averages 565-613 minutes). Description item (5)
+rewritten to attribute the CTE rejection to the engine, and NULLIF added to
+the engine-rejects list with the CASE rewrite. 144 queryable attributes.
+
+**Simulator fidelity fix (the parameterization bug).** Two layers: (a) the
+v2 response generator now carries guideline 4 - every stated value must be
+copied exactly from GT SQL / labeled ambiguity / the original question;
+(b) server-side numeric-consistency guard extracts every number from the
+draft response and regenerates once, with the offending values named, if any
+number appears in no ground-truth source (GT SQL, ambiguity JSON, clear
+query, or the agent's question). Fail-open on the second draft; both
+triggers logged so the regeneration rate is measurable. This targets the
+"10 miles vs gold >= 50" defect observed five times across two simulator
+models. Next: n>=3 both arms on the new stack.

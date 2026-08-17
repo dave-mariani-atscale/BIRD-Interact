@@ -207,6 +207,7 @@ Your Task: You should generate response to answer the AI Collaborator's question
 1. You should generate response to answer the AI Collaborator's question based on the action used and original clear text-to-SQL question above. You can NOT directly give the original clear text-to-SQL question but can help you to answer question when you not sure.
 2. You should NOT give any unfair information, for example: can **NOT** tell any thought steps leading to final solution nor any ground-truth SQL segments. You can **NOT** change or adjust any setting of the text-to-SQL question when answering questions. The response should be concise.
 3. You should NOT ask any question.
+4. FIDELITY OF VALUES: any specific value you state - a number, threshold, unit, date, category label, or formula - MUST be copied exactly from the Ground-truth SQL, the Labeled Ambiguity Points, or the Original Text-to-SQL Question above. Never invent, estimate, round, or substitute a different value (for example, do NOT say "10 miles" when the ground truth uses 50). If those sources do not pin the detail down, say the choice is up to the AI collaborator instead of making a value up.
 
 ## Output Format:
 Your response must follow the format "<s>[Fill-in-Your-Response]</s>"; for example, if the action is "unanswerable()", you MUST exactly respond: "<s>Sorry, this question is out of scope, so I can not answer your question.</s>".
