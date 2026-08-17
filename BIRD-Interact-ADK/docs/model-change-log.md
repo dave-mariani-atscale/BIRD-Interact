@@ -1477,3 +1477,54 @@ reachable from the semantic layer, and the raw arm scores 0.072 against its
 ~0.30 baseline elsewhere for the same reasons. **Recommend no further model
 work on organ_transplant, and a decision on whether it belongs in the
 comparison at all.**
+
+### organ_transplant - per-task AtScale failure breakdown (4 runs pooled)
+
+Primary blocker = the first thing that must change for the task to pass. Shapes
+are the last replayed phase-1 submission against the reference.
+
+| task | passed | ref shape | agent shape | primary blocker | category | model-fixable |
+|---|---|---|---|---|---|---|
+| 1 | 0/4 | 198x5 | 238x5 | masked AMR risk stratification | masked term | no - firewall |
+| 2 | 0/4 | 15x5 | 18x5 | masked allocation-policy ordering | masked term | no - firewall |
+| 3 | 0/4 | 3x4 | 3x4 | unstated 5-year QALY constant | unstated constant | no |
+| 4 | 0/4 | 2x6 | - | masked optimal-match classification | masked term | no - firewall |
+| 6 | 0/4 | 4x4 | - | join-chain population (4 satellites) | population | expressible, unused |
+| 7 | 0/4 | 60x5 | - | gold urgency ELSE-2 contradicts KB 25 | KB contradiction | no |
+| 8 | 0/4 | 4x3 | 4x3 | join-chain population (4) + unstated Completed | population | expressible, unused |
+| 9 | 0/4 | 4x3 | - | engine parse failure on 2 of 4 finals | engine/agent SQL | partly |
+| 10 | 0/4 | 5x5 | 5x5 | join-chain population + unstated Pending | population | expressible, unused |
+| 11 | 0/4 | 10x2 | 10x4 | five invented weights | unstated constants | no |
+| 13 | 0/4 | 6x3 | 5x3 | WIDTH_BUCKET, so 6 rows to a 5-group question | bucketing method | no |
+| 14 | 0/4 | 3x4 | 10x4 | unannounced HAVING COUNT(*) > 1 | unstated gate | no |
+| 16 | 0/4 | 34x4 | 280x4 | masked marginal-donor framework | masked term | no - firewall |
+| 17 | 0/4 | 4x4 | 4x4 | join-chain population (3 satellites) | population | expressible, unused |
+| 18 | 0/4 | 4x5 | 4x5 | join-chain population (4) + unstated Completed | population | proven expressible, unused |
+| 19 | 0/4 | 3x2 | 2x2 | join-chain population + locus semantics | population | expressible, unused |
+| 20 | 0/4 | 51x5 | 80x5 | join-chain population + unstated Pending | population | expressible, unused |
+| 21 | 0/4 | 6x3 | 4x2 | omitted the count column | output shaping | no |
+| 22 | 4/4 | 7x3 | 7x3 | - passes every run | - | - |
+
+**Totals.** Masked term 4; unstated constant, gate or method 5; join-chain
+population 7; output shaping 1; engine/agent SQL 1; passing 1. **Nine of
+nineteen are unreachable before the agent writes a line of SQL**, and the seven
+population failures are reachable in principle but were not reached even with
+explicit attributes published (round 2, withdrawn). Phase 2 was entered on one
+task only, `_22`.
+
+**Two findings that validate the model rather than indict it.**
+
+*Task 21 is right and still fails.* Gold computes `cost_est / (qol_val * 8)`.
+The published `Cost-Effectiveness Ratio Per Life-Year (Per Match)` divided by 8
+reproduces gold's per-urgency averages **cell-for-cell** (12 at 13345.44, 17 at
+30832.02, 27 at 22505.34 for the first three groups). The task fails because the
+agent projected 2 columns where the reference has 3. The model does not control
+the caller's SELECT list.
+
+*The per-life-year parameterisation was the correct call.* Gold uses a 5-year
+gain on task 3 and an 8-year gain on task 21 - two different constants for the
+same knowledge-base formula, neither stated in either question. Publishing the
+ratio at one life-year with "divide by Y" in the description is the only shape
+that serves both, and it was chosen from the KB before any gold was read. Task 3
+still fails because the projected value carries the unstated 5, even though
+NTILE ordering is scale-invariant.
