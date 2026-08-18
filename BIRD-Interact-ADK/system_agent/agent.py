@@ -46,6 +46,21 @@ Strategy:
 - After a successful Phase 1, you may receive a follow-up question for Phase 2.
 """
 
+# ── PROMPT FROZEN 2026-08-18 (tracker B-49) ────────────────────────────────
+# The instruction text below and in config/environment_backends.yaml is frozen.
+# No new guidance rule goes in without a decision recorded on B-49, because this
+# family has cost two self-inflicted defects already — B-42 was a rule invented
+# to repair B-38, and B-47 was the un-narrowed half of B-38 left in one arm — and
+# because a prompt that keeps growing makes the framework, not the semantic
+# model, the thing under measurement.
+#
+# The test any future rule must pass: is it derivable from the QUESTION alone?
+# B-37 passes (the question names the entity). B-41 passes (the question asks for
+# a state; only the user knows the wording). B-42 failed it — its justification
+# was a count of gold ORDER BYs — and is gone. Helping one arm more than the
+# other is NOT a reason to cut a rule: B-37 and B-41 both help raw more, which is
+# what makes the lift number defensible rather than tuned.
+# ───────────────────────────────────────────────────────────────────────────
 # Shared across both a-interact instructions below so they can never drift out
 # of sync — the grading function (shared/db_utils.py ex_base/ex_base_external_pred)
 # compares result ROWS as exact tuples against a reference answer for BOTH
