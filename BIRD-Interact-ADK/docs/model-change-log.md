@@ -3366,3 +3366,50 @@ phases would obeying it LOSE (exposure sweep over gold). B-42 had 98% compliance
 losing phases and still shipped on the strength of a single conversion, because a
 conversion is what a validation run shows you and neither of the other two numbers was
 being asked for.
+
+### The atscale arm's own always-sort rule, removed 2026-08-18 (B-45)
+
+Recorded here because it changes what every atscale run does on all 22 databases, and
+because the section above argues the arms are given identical grading guidance — which was
+not true when it was written.
+
+`config/environment_backends.yaml:239` (David Mariani, `8d3256c`, 2026-08-06) opened with a
+grading rule — *"don't rely on the question text alone to decide whether to sort… as a
+default habit, include an explicit ORDER BY on every multi-row (non-scalar) final
+submission"* — and then continued into real AtScale ORDER BY mechanics. On 2026-08-17
+`f3ba423` added the opposite instruction 39 lines earlier in the same prompt (*"SORT ONLY
+WHEN ASKED TO RANK"*), so the atscale arm held both orders at once while the raw arm held
+only the second. That is also what the file's own header at line 40 exists to prevent:
+*"Rules about grading… are NOT backend-specific — they live in agent.py so the backends
+cannot drift apart."*
+
+**Split, not deleted.** The mechanics stay in the backend config, where dialect facts
+belong: the sort key must appear in that query's own SELECT list, the intermittent
+`Unmatched physical type AttributeValue(FlatAttribute(...))` failure when the sort key is a
+calculated metric, and the derived-table wrap for sorting by a column the answer must not
+project. Only the two whether-to-sort sentences are gone. Both arms now take whether-to-sort
+from the shared `RESULT_SHAPE_TIP` and nowhere else.
+
+**Why, measured.** Compliance census over 122 stored runs, order-graded phases only:
+
+| arm | had the always-sort line | sorts when gold sorts | invents a sort when gold has none |
+|---|---|---|---|
+| atscale | yes | 509/543 = **94%** | 6/10 = **60%** |
+| raw | no | 298/312 = **96%** | 3/8 = **38%** |
+
+The arm without the instruction complied *more*. The only difference moving in the
+instruction's direction is the harmful one. Caveat kept deliberately: the left column is
+large-n but observational across two different toolchains, and the right column is n=10 and
+n=8 — the claim is "no measurable benefit, and the only measurable difference is the cost",
+not an effect size.
+
+**Exposure where the removed rule was wrong**, gold only, so it covers databases with no
+stored runs: crypto_exchange 5 of 15 order-graded phases, labor_certification_applications 2
+of 30, households 1 of 12, organ_transplant 0 of 16, cybermarket_pattern 0 of 13,
+archeology_scan 0 of 14, exchange_traded_funds 0 of 18, solar_panel 0 of 9. The cost was
+concentrated in crypto_exchange; three phases across the four databases owned by the other
+modeller.
+
+Every atscale number recorded before this date was produced under the removed instruction.
+Re-baseline before comparing across it — ~$0.216/task atscale and $0.154/task raw measured
+2026-08-17, so about $4 per 20-task arm.
