@@ -3050,3 +3050,55 @@ Fixes shipped, all blind until the API cap lifts:
   Time (Recovery + Transport) attribute + Average metric, sourced from the
   task-8 ask-channel disclosure; CER descriptions now demand the year-
   horizon ask. 102 metrics / 14 calculations / 166 attributes.
+
+## 2026-08-18 - households: the failure class is the task set, not the model
+
+Audited 21 shared tasks x 3 atscale runs (2026-08-13, last valid pair; the
+overnight files are void from the API cap) against gold.
+
+**Head-to-head, shared ids only** (raw was run without --query-only, 29 vs
+21 tasks, so raw's headline totals are not comparable as recorded):
+atscale 2.00/1.70/2.00 = 0.0905; raw 1.00/1.70/2.00 = 0.0746. Only 3 of 21
+tasks ever score: _16 (both arms), _19 (atscale only, 3/3), _4 (raw only).
+
+**17 of 21 are 'wrong-answer' in BOTH arms, every run** - queries execute
+and return wrong values. Not a semantic-layer failure.
+
+**Root cause: the question and the gold answer different questions.** 11 of
+21 households Query tasks pose a plural/per-row request while gold returns
+one row, one number, or a value over a column the question never mentions -
+versus 0 of 19 on organ_transplant. Verified against upstream
+(bird_interact_agent/data/...): our file matches byte-for-byte, so this is
+BIRD-Interact data, not our merge. Examples:
+  _1  'typical bathroom ratio for each area, show area code and ratio'
+      -> gold returns SUM of car counts in the top-ranked region.
+  _6  'list the household ID and its crowding metric'
+      -> gold returns the AVERAGE VEHICLE COUNT of those households.
+  _8/_9 'average rating per zone, show the location tag and value'
+      -> gold returns one concatenated string 'topregion | bottomregion'.
+  _10 'list the home IDs for all highly mobile homes'
+      -> gold returns one REGION name.
+  _15 'listing their unique house codes' -> gold returns one region by
+      at-risk ratio.
+The question describes the setup CTE; gold's payload is a further step the
+question never states. These are high_level tasks, so the ask channel is
+the only route - but the labeled ambiguities do not cover the missing
+payload either.
+
+**The model is not the problem.** Vehicle Ownership Index is exactly gold's
+Auto+Bike+Motor sum, Average Bathroom Ratio is the mean-of-ratios gold uses
+(with the pooled twin separated), and the incomplete-KB formulas are
+deliberately unshipped with ask-triggers. One real gap found and fixed: 12
+tool calls died reaching for the entity by its domain noun ('Household',
+'Household ID', 'Household Size', 'Residents'), so the description now
+names House Number, Resident Count and Household Count up front.
+
+**Guidance (all databases): ask what the final output is.** New bullet -
+when a question names a per-row calculation, ranking or filtered population
+without naming an unambiguous final result, spend one open ask on the
+output shape itself. Grounded in the 11 measured cases.
+
+**Recommendation for measurement**: report the 11 shape-mismatched tasks
+separately from the head-to-head, as with the B-34 under-determined golds.
+Both arms score ~0 on them by construction, so they dilute every households
+comparison without carrying signal.
