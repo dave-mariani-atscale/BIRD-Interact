@@ -37,6 +37,8 @@ shared/_legacy_*.py
 # Local-only run scripts (personal task subsets, local endpoints)
 scripts/[0-9]*run.sh
 scripts/run_*.sh
+# One-off task lists for --tasks, same reason as the runner scripts above
+scripts/tasks_*.txt
 
 # Holds a live Apps Script deployment URL + write token
 scripts/sheet.py
