@@ -3465,3 +3465,49 @@ double-counted the point, which is what first showed this as +1.40 — and the r
 through `U.grade_raw_submission`, not `U.ex_base`, so gold and prediction get the same step-1
 cleanup. Re-running the corpus after the grading fix changed no number; the `t_b41` fix
 changed only B-41.
+
+### Frozen-prompt validation of B-37 and B-41, 2026-08-18 (B-49)
+
+The prompt is frozen as of `5b7b8e9` — a comment block above `RESULT_SHAPE_TIP`, instruction
+bytes unchanged (verified by hashing the two constants before and after). The test any future
+rule must pass is written there: **is it derivable from the question alone?** B-37 and B-41
+pass; B-42 did not and is gone. Helping one arm more than the other is explicitly not grounds
+for cutting a rule.
+
+**The run.** `scripts/tasks_frozen_b37_b41.txt`, 11 tasks, n=1, both arms, $6.15 (atscale
+$3.68, raw $2.47). Tasks chosen by rule precondition via `scripts/rule_exposure.py`, not by
+hand: B-37 fires on 0 archeology and 0 ETF phases, so crypto is the only place it is testable;
+B-41 is testable in all three; crypto `_15/_17/_19` fire both rules on one phase, the stacked
+case `counterfactual.py` structurally cannot resolve.
+
+**B-37 lands, and the counterfactual's direction reproduces live.** Columns in the *first*
+submission, where gold wants exactly one:
+
+| task | atscale pre → now | raw pre → now |
+|---|---|---|
+| crypto_15 | 4 → 3 | 4 → **1** |
+| crypto_16 | 2 → **1** | 2 → **1** |
+| crypto_17 | 3 → **1** | 3 → 2 |
+| crypto_18 | 2 → **1** | 1 → **1** |
+| crypto_19 | 3 → 2 | 2 → **1** |
+
+One-column-first-try: atscale 0/5 → 3/5, raw 1/5 → 4/5. Raw converted `_15` and `_19` to 1.00
+where atscale stalled at 0.70 — the shrink-lift effect happening rather than being inferred.
+
+**B-41's trigger works and is arm-selective by design**: a label-wording ask on 5 of 9 B-41
+tasks in the atscale arm against 3 of 9 in raw, because the clause keys off the agent's own
+answer being a flag and a flag is what the model publishes. It converted nothing outside
+crypto: all five archeology and ETF tasks scored 0.00 in both arms, three after the ask fired.
+Not a weak rule — a gated one. See B-50.
+
+**The subset mean was atscale 0.255 vs raw 0.309, −5.5 pp. That is not a lift estimate and
+must never be quoted as one**: the tasks were selected precisely where these two rules fire,
+which is where raw had the most headroom. A lift number still needs a full-database run at
+n≥3 (B-43).
+
+**The finding that outranks both rules (B-50).** Tasks ending with ≤0.5 coins:
+crypto_0818_atscale 16/20, crypto_0818_raw 17/20, frozen atscale 10/11, frozen raw 9/11 —
+**80–91%, both arms.** The benchmark is largely a race to get furthest before the coins run
+out, which is why guidance rules keep landing behaviourally without converting: the task was
+already lost. It is roughly symmetric, so it may not move lift directly, but it is what makes
+lift unmeasurable at n=1. Not a prompt change, so the freeze does not block work on it.
