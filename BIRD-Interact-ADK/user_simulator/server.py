@@ -166,10 +166,12 @@ def _generate_response(state: TaskSimState, question: str, action: str) -> str:
             "[Correction] Your response above was rejected because it contains the "
             f"value(s) {', '.join(bad)}, which appear in none of the ground-truth "
             "sources (Ground-truth SQL, Labeled Ambiguity Points, Original "
-            "Text-to-SQL Question, or the AI collaborator's question). Every "
-            "specific value you state must be copied exactly from those sources; "
-            "if they do not pin the detail down, say the choice is up to the AI "
-            "collaborator. Rewrite your response now, in the same format.\n<s>"
+            "Text-to-SQL Question, or the AI collaborator's question). FIRST "
+            "re-read the Ground-truth SQL: if it contains the constant, weight, "
+            "horizon, or filter the question asks about, answer with THAT value, "
+            "copied exactly. Only if the ground truth genuinely does not contain "
+            "the detail, say the choice is up to the AI collaborator. Rewrite "
+            "your response now, in the same format.\n<s>"
         )
         response = _extract_response(_call_llm(retry_prompt, max_tokens=settings.user_sim_max_tokens))
         still_bad = _unsupported_numbers(state, question, response)

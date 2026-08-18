@@ -3016,3 +3016,37 @@ tasks 3+4 full passes) survived without a raw pair. The overnight script
 now carries a circuit breaker: a run with >=50% tasks dead without a tool
 call, or a fresh workspace-cap message in the agent log, aborts the whole
 night instead of burning the remaining databases into void files.
+
+## 2026-08-18 - The gold-only-constants class, split and attacked (rounds continue)
+
+Audited all 27 trajectories (9 tasks x 3 overnight runs) against gold. The
+class is five sub-buckets, not one:
+(A) unasked constants the sim discloses when asked - tasks 3/21 (CER year
+    horizons: gold divides by qol x 5 and x 8; six runs, zero asks), 17
+    (ischemia basis: gold uses org_isch + exp_time), 10 (Pending population
+    + percent-rank cut), half of 20 (supply-side population);
+(B) partial disclosure without a value follow-up - task 7 (gold's else-
+    bucket urgency value is 2; KB says 1; sim described the bucket, agent
+    never asked the number);
+(C) sim fidelity defects - task 11: invented weights caught by the numeric
+    guard, then the regeneration took the "up to you" exit although gold
+    HAS weights; plus unanswerable() misroutes (11, 13) and one run-to-run
+    contradiction (21);
+(D) a real model gap - task 13 needs a DSS<->EGS correlation the model had
+    no paired terms for;
+(E) under-determined gold - task 14's 41-way tie, B-34 class (relay to the
+    tracker; not fixable model-side).
+
+Fixes shipped, all blind until the API cap lifts:
+- Sim action parser: constants/thresholds/horizons/field-choices present in
+  the GT segments must route labeled/unlabeled, never unanswerable.
+- Sim response generator + guard correction: check the ground truth FIRST
+  and quote its value; "up to you" only when gold genuinely lacks it.
+- Guidance: new slot-enumeration bullet ahead of the formula ask -
+  population, basis, constants incl. time horizons, ranking definition -
+  plus a follow-up rule for half-answered formulas.
+- Model round 8 (deployed, verified live): DSS To Graft Survival
+  Correlation + six paired terms (0.0541 over Completed); Total Ischemia
+  Time (Recovery + Transport) attribute + Average metric, sourced from the
+  task-8 ask-channel disclosure; CER descriptions now demand the year-
+  horizon ask. 102 metrics / 14 calculations / 166 attributes.
