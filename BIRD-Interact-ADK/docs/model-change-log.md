@@ -3413,3 +3413,30 @@ modeller.
 Every atscale number recorded before this date was produced under the removed instruction.
 Re-baseline before comparing across it — ~$0.216/task atscale and $0.154/task raw measured
 2026-08-17, so about $4 per 20-task arm.
+
+### B-47: the other half of the same asymmetry, removed 2026-08-18
+
+B-45 (above) removed the atscale-only *always-sort* rule. It missed the mirror image sitting
+39 lines earlier in the same instruction: `config/environment_backends.yaml:200`, added by
+`f3ba423`, told the atscale arm that *"a question that merely says display/show/list some
+columns does not [want an ORDER BY]"* — the **un-narrowed** form, with no "one row per
+underlying record with no grouping" clause. That is the exact wording that made
+`crypto_exchange_6` phase 2 drop its ORDER BY and forced B-42 into existence, and `6302d18`
+had already narrowed the shared version precisely to stop it reaching grouped results.
+
+Net state before this change: atscale got the narrow shared rule *and* the broad
+backend-only one; raw got the narrow one alone. So between `4ca1580` and now, the arms were
+still asymmetric on whether to sort — in the opposite direction from B-45.
+
+Removed rather than reworded, because both of its halves are already in the shared
+`RESULT_SHAPE_TIP`: the ranking trigger words, and sorting by the measure being ranked. The
+atscale instruction now says nothing about whether to sort and keeps only the mechanics of
+how, with a pointer stating where the decision lives. One caveat recorded deliberately: the
+removed bullet also warned that *"sorting by the identifier is the commonest way a submission
+with entirely correct columns and values still fails"* — the shared tip implies that by
+saying "on the measure being ranked" but does not spell out the anti-pattern. Port that
+clause into the shared tip if a later run shows the sort key being missed.
+
+Both arms now take whether-to-sort from exactly one place, for the first time since
+2026-08-06. Services restarted, all three gates re-passed. Every atscale number recorded
+before today predates both B-45 and this.
