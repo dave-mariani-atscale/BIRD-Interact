@@ -44,15 +44,35 @@ from shared.mcp_client import MCPClient, MCPEndpoint
 # Arm-paired runs that predate f3ba423 (2026-08-17 14:54), so the agent was
 # never told any of the four rules. Both arms, three databases.
 DEFAULT_RUNS = [
+    # crypto_exchange
     "results/crypto_n1_atscale_20260814_084450.json",
     "results/crypto_n1_raw_20260814_085602.json",
+    # exchange_traded_funds
     "results/postb25_atscale_r1_20260813_165413.json",
     "results/postb25_raw_r1_20260813_174743.json",
     "results/postb25_atscale_r2_20260813_212403.json",
     "results/postb25_raw_r2_20260813_213412.json",
+    "results/guidance0813_atscale_r1_20260813_095443.json",
+    "results/guidance0813_raw_r1_20260813_100632.json",
+    "results/rebase0811_atscale_r1.json",
+    "results/rebase0811_raw_r1.json",
+    "results/iter7_postmerge_atscale_20260811_084411.json",
+    "results/iter7_postmerge_raw_20260811_085034.json",
+    # archeology_scan
     "results/archeology_n1_atscale_20260812_094731.json",
     "results/archeology_n1_raw_20260812_095452.json",
+    "results/archeology_n1_atscale_20260811_112847.json",
+    "results/archeology_n1_raw_20260811_113830.json",
 ]
+
+# Older ETF pair (2026-08-06), a different agent era. Off by default because its
+# atscale SQL was written against an earlier deployed model, so dispatch errors
+# there measure model drift rather than the rule. --runs-old adds it.
+OLD_RUNS = [
+    "results/etf_prompt_only_full_0806.json",
+    "results/etf_raw_full_0806.json",
+]
+
 
 MODEL_SCHEMAS = ("bird_atscale_models_catalog_main", "bird_etf_prompt_only_main",
                  "bird_atscale_models_catalog")
@@ -248,16 +268,44 @@ def submissions(path, tasks):
             yield dict(run=os.path.basename(path), iid=iid, td=td, sql=sql, phase=phase)
 
 
+def diagnose(arm, new_sql, pred, sol, db, conn, cond):
+    """Shape-level description of a still-failing probe, via the grader's own
+    diagnose_rows. Answers the question a bare zero cannot: was the rule
+    irrelevant, or was it one of several things wrong at once?"""
+    try:
+        gt, err, to, _ = U.execute_queries(
+            U.remove_round(U.remove_distinct(U.remove_comments(list(sol)))), db, conn)
+        if err or to or not gt:
+            return "gold did not execute"
+        if arm == "raw":
+            pred, perr, pto, _ = U.execute_queries([new_sql], db, conn)
+            if perr or pto:
+                return f"pred errored: {str(perr)[:70]}"
+        if not pred:
+            return "pred returned no rows"
+        dp = U.resolve_decimal_places(cond)
+        return U.diagnose_rows(U.preprocess_results(pred, dp),
+                               U.preprocess_results(gt, dp), cond, cell=U.canonical_cell)
+    except Exception as e:
+        return f"diagnose failed: {type(e).__name__}"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rules", default="B37,B38,B42,B41")
     ap.add_argument("--runs", default="")
     ap.add_argument("--limit", type=int, default=0, help="cap graded probes per rule/arm (0 = no cap)")
+    ap.add_argument("--runs-old", action="store_true",
+                    help="also include the 2026-08-06 ETF pair (different agent era)")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--diagnose", action="store_true",
+                    help="on a probe that still fails, say HOW its rows differ from gold — "
+                         "separates 'rule useless' from 'rule necessary but not sufficient'")
     a = ap.parse_args()
 
     rules = [r.strip() for r in a.rules.split(",") if r.strip() in RULES]
-    runs = [r for r in (a.runs.split(",") if a.runs else DEFAULT_RUNS) if os.path.exists(r)]
+    wanted = a.runs.split(",") if a.runs else (DEFAULT_RUNS + (OLD_RUNS if a.runs_old else []))
+    runs = [r for r in wanted if os.path.exists(r)]
 
     tasks = {}
     for line in open(settings.data_path):
@@ -279,15 +327,24 @@ def main():
           f"casefold={settings.grading_casefold} rel={settings.grading_rel_tolerance} "
           f"lint={settings.grading_order_lint}\n")
 
-    tally = {r: {"raw": dict(elig=0, dedup=0, graded=0, recovered=0, gain=0.0, capped=0),
-                 "atscale": dict(elig=0, dedup=0, graded=0, recovered=0, gain=0.0, capped=0)}
-             for r in rules}
+    def blank():
+        return dict(elig=0, dedup=0, graded=0, err=0, recovered=0, gain=0.0, capped=0)
+
+    tally = {r: {"raw": blank(), "atscale": blank()} for r in rules}
+    per_db = {}          # (db, rule, arm) -> counters
+    census = {}          # (db, arm) -> failed submissions seen
+
+    def cell(db, rule, arm):
+        return per_db.setdefault((db, rule, arm), blank())
+
     seen = set()
     try:
         for path in runs:
             for s in submissions(path, tasks):
                 sql, td, phase = s["sql"], s["td"], s["phase"]
                 arm = arm_of(sql)
+                census[(td["selected_database"], arm)] = \
+                    census.get((td["selected_database"], arm), 0) + 1
                 tree = parse(sql)
                 if tree is None:
                     continue
@@ -301,22 +358,23 @@ def main():
                     new_sql, note = RULES[rule](sql, tree, gold_tree, td, phase)
                     if new_sql is None:
                         continue
-                    T = tally[rule][arm]
-                    T["elig"] += 1
+                    dbname = td["selected_database"]
+                    T, D = tally[rule][arm], cell(dbname, rule, arm)
+                    T["elig"] += 1; D["elig"] += 1
                     key = (rule, arm, s["iid"], phase, new_sql)
                     if key in seen:
-                        T["dedup"] += 1
+                        T["dedup"] += 1; D["dedup"] += 1
                         continue      # same transform reached twice = same evidence
                     seen.add(key)
                     if a.limit and T["graded"] >= a.limit:
-                        T["capped"] += 1
+                        T["capped"] += 1; D["capped"] += 1
                         continue
 
-                    dbname = td["selected_database"]
                     db, conn = scratch(dbname)
                     try:
                         if arm == "raw":
                             verdict = U.ex_base([new_sql], sol, db, conn, cond)
+                            pred = None
                         else:
                             txt = cli.call_tool("run_query", {"query": new_sql})
                             pred = U.parse_semantic_layer_rows(str(txt)) or None
@@ -326,27 +384,61 @@ def main():
                         if a.verbose:
                             print(f"  [{rule}/{arm}] {s['iid']} p{phase} ERR "
                                   f"{type(e).__name__}: {str(e)[:90]}")
-                        T["graded"] += 1
+                        T["graded"] += 1; D["graded"] += 1
+                        T["err"] += 1; D["err"] += 1
                         continue
-                    T["graded"] += 1
+                    T["graded"] += 1; D["graded"] += 1
                     if verdict:
-                        T["recovered"] += 1
-                        T["gain"] += 0.7 if phase == 1 else 0.3
+                        T["recovered"] += 1; D["recovered"] += 1
+                        g = 0.7 if phase == 1 else 0.3
+                        T["gain"] += g; D["gain"] += g
                         print(f"  RECOVERED [{rule}/{arm}] {s['iid']} p{phase} ({note}) — {s['run']}")
+                    elif a.diagnose:
+                        print(f"  no  [{rule}/{arm}] {s['iid']} p{phase} ({note}) "
+                              f"— {diagnose(arm, new_sql, pred, sol, db, conn, cond)}")
                     elif a.verbose:
                         print(f"  no  [{rule}/{arm}] {s['iid']} p{phase} ({note})")
     finally:
         for d, db in dbs.items():
             U.drop_task_db(db)
 
-    print(f"\n{'rule':<6}{'arm':<9}{'eligible':>9}{'dupes':>7}{'graded':>7}"
-          f"{'recovered':>10}{'reward':>8}{'capped':>8}")
+    print("\ncorpus census (failed submissions by database and arm):")
+    for (d, arm), n in sorted(census.items()):
+        print(f"  {d:<26}{arm:<9}{n:>4}")
+
+    hdr = (f"{'rule':<6}{'arm':<9}{'eligible':>9}{'dupes':>7}{'graded':>7}{'err':>5}"
+           f"{'recovered':>10}{'reward':>8}{'capped':>8}")
+    print("\nPOOLED, all databases")
+    print(hdr)
     for rule in rules:
         for arm in ("raw", "atscale"):
             T = tally[rule][arm]
-            print(f"{rule:<6}{arm:<9}{T['elig']:>9}{T['dedup']:>7}{T['graded']:>7}"
+            print(f"{rule:<6}{arm:<9}{T['elig']:>9}{T['dedup']:>7}{T['graded']:>7}{T['err']:>5}"
                   f"{T['recovered']:>10}{T['gain']:>8.2f}{T['capped']:>8}")
-    print("\nlift reading: a rule only moves atscale-vs-raw lift to the extent its")
+
+    for d in sorted({k[0] for k in per_db}):
+        print(f"\nPER DATABASE: {d}")
+        print(hdr)
+        for rule in rules:
+            for arm in ("raw", "atscale"):
+                D = per_db.get((d, rule, arm))
+                if not D:
+                    continue
+                print(f"{rule:<6}{arm:<9}{D['elig']:>9}{D['dedup']:>7}{D['graded']:>7}{D['err']:>5}"
+                      f"{D['recovered']:>10}{D['gain']:>8.2f}{D['capped']:>8}")
+        print("  lift direction here:")
+        for rule in rules:
+            r = (per_db.get((d, rule, "raw")) or {}).get("gain", 0.0)
+            s_ = (per_db.get((d, rule, "atscale")) or {}).get("gain", 0.0)
+            if not (r or s_):
+                er = (per_db.get((d, rule, "raw")) or {}).get("elig", 0)
+                ea = (per_db.get((d, rule, "atscale")) or {}).get("elig", 0)
+                print(f"    {rule}: no recovery either arm (eligible raw {er}, atscale {ea})")
+                continue
+            v = "lift-neutral" if abs(r - s_) < 0.35 else \
+                ("SHRINKS lift" if r > s_ else "GROWS lift")
+            print(f"    {rule}: raw {r:+.2f} vs atscale {s_:+.2f}  ->  {v}")
+    print("\nPOOLED lift reading: a rule only moves atscale-vs-raw lift to the extent its")
     print("recovered reward is ASYMMETRIC between the two arms. Equal columns = lift-neutral.")
     for rule in rules:
         r, s_ = tally[rule]["raw"]["gain"], tally[rule]["atscale"]["gain"]
