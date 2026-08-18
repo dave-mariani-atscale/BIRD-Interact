@@ -3102,3 +3102,40 @@ output shape itself. Grounded in the 11 measured cases.
 separately from the head-to-head, as with the B-34 under-determined golds.
 Both arms score ~0 on them by construction, so they dilute every households
 comparison without carrying signal.
+
+## 2026-08-18 (afternoon) - CTE adoption arrives; the noise floor is the real finding
+
+**CTEs went from 0 to heavy use** on the atscale arm once the contradictory
+"this SQL dialect does NOT support CTEs" bullet was removed (it had sat
+twelve lines under the new dialect bullet saying the opposite): 32 CTE-led
+run_query calls and 10 CTE-led submits over 8 of 19 tasks. Raw uses them too.
+
+**CTE queries errored at 50% against 18% for non-CTE queries in the same
+run** - but the cause is depth, not CTEs. Verified live by running each
+failing shape with and without the WITH clause: byte-identical outcomes
+every time (SELECT * over a doubly-nested derived table with ORDER BY on an
+attribute fails as "Unmatched physical type" either way; a literal UNION ALL
+derived table fails either way; the shapes that work, work either way). The
+inliner from engine PR #9795 is faithful. Median SELECTs per query: 4 with a
+CTE, 2 without - agents simply write more ambitious queries with them. No
+CTE error was fatal: 0 tasks ended on one and 7 of 8 CTE-using tasks
+recovered; the only scoring task (_22) used CTEs; coins/task was identical
+(17.74, budget-saturated in both regimes).
+
+**Both arms fell today at n=1: atscale 1.60 -> 0.70, raw 1.13 -> 0.00.** Raw
+cannot be explained by any change we made - the guidance edits are in the
+atscale backend block only, raw's prompt lives in agent.py, and raw's task
+_22 (which passed 3/3 last night) made ZERO ask_user calls today, so the
+simulator was not involved. Last night's raw run 2 also made zero asks and
+scored 1.0 with identical coins. It is variance.
+
+**Quantified, over four runs per arm:** raw sd 0.0371, atscale sd 0.0437,
+noise gate (2x larger sd) 0.0874 per-task reward. The atscale-raw gap is
++0.0276 = 0.32x gate; today's atscale drop is 0.54x gate. Every effect we
+are chasing sits inside the noise on a 19-task set where only 1-3 tasks ever
+score. n=3 is not enough here; treat single runs as behavioural reads only.
+
+**Option A shipped** (guidance, no redeploy): CTEs stay enabled, with an
+explicit depth warning - one level of nesting, ORDER BY/LIMIT inside the
+scope that projects the sort column, prefer a CTE when it REPLACES nesting
+rather than adding a layer.
