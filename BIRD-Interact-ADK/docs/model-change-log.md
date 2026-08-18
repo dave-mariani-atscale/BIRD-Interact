@@ -3188,3 +3188,38 @@ Concurrency, since it comes up: each individual run executes at
 orchestrator.runner by hand. The batch's own loops - database by database,
 arm by arm - are sequential on purpose, so a full 8-database sweep is long
 by construction rather than by inefficiency.
+
+## 2026-08-18 - post-revert run, and the derived-table expression defect
+
+**Run (n=1, CTEs blocked, aggregates live, all fixes in): 1.70/19 = 0.0895.**
+Tasks _2 (0.7) and _22 (1.0) scored. Against last night's three no-CTE runs
+(0.70/1.70/2.40, mean 1.60) this is mid-range; against today's CTE run (0.70)
+it is better, but all of it sits inside the 0.087 noise gate. What did move
+cleanly: CTE queries 0, run_query error rate 21% (from 27.9% with CTEs, and
+close to the 17.6% no-CTE baseline), budget-exhausted tasks 12/19 (from
+15-16), median nesting 2 (from 4).
+
+**The dominant remaining waste is one engine defect, now characterised.**
+9 of 16 failed queries were `column "t_NN.X" must appear in the GROUP BY
+clause`. Bisected live to a minimal repro:
+
+  works : SELECT "R", CASE WHEN "P" >= 80 THEN 'a' ELSE 'b' END FROM <model>
+  FAILS : SELECT t."R", CASE WHEN t."P" >= 80 THEN 'a' ELSE 'b' END
+          FROM (SELECT "R","P" FROM <model>) t
+  FAILS : SELECT t."R", t."P" + 1 FROM (SELECT "R","P" FROM <model>) t
+  works : SELECT t."R", t.risk FROM (SELECT "R", CASE ... AS risk FROM <model>) t
+
+So: an outer SELECT over a derived table may project only BARE COLUMNS; any
+expression over them fails, with no join and no aggregate anywhere in the
+statement. The message names grouping, but grouping is not the problem -
+adding a GROUP BY changes the rows and still fails. The join is irrelevant
+(2 of the 9 had none); the self-join-on-MAX pattern the guidance recommends
+is NOT at fault and works fine until a CASE is added to its outer SELECT.
+
+Shipped as config (no redeploy): a new error_hint on
+'must appear in the GROUP BY clause' carrying the repro and the fix, plus a
+proactive sentence in the ENGINE DIALECT bullet - expressions belong in the
+scope that touches the model, the outer scope only names columns.
+
+Worth filing against the engine separately: this is a folding defect, not a
+user error. The equivalent SQL runs fine on plain Postgres.
