@@ -292,3 +292,32 @@ second sitting is evidence for a sharper version: **fixes that remove a wrong OB
 pay too.** M-34 and M-35 are both pure description/attribute work and both converted, one
 after the other on the same task — and `_6` needed all three of its fixes, each exposing the
 next. Predict "one fix reveals one more constraint", not "fixes don't pay".
+
+---
+
+## §7 B-42 is gone and B-38 is narrower, 2026-08-18
+
+Read §0, §6 and the `_6` row of the ledger against this. `scripts/counterfactual.py`
+(16 arm-paired pre-rule runs, 375 failed submissions, crypto + ETF + archeology) and
+`scripts/rule_exposure.py` (all 22 databases, gold only, no run) between them showed:
+
+- **B-42 was redundant.** 259 of 264 submissions on its firing phases across 122 stored
+  runs already sorted their grouped result unprompted. Its one conversion, `_6` phase 2,
+  was a regression B-38 caused. Cut in ADK `6302d18`; B-38 narrowed to flat row-level
+  listings in the same commit, so grouped results get no instruction and revert to the
+  behaviour the agent already had. Gates re-passed, services restarted.
+- **B-37 stays**, and it shrinks lift rather than inflating it: raw recovers +2.80 to
+  atscale's +1.40, entirely on `_17` and `_19`, where raw had one defect (the extra column)
+  and atscale had two (the Yes/No flag instead of the wording). 55 fires / 1 risk over 22
+  databases.
+- **B-41 is untested, not disproved.** 13 probes got gold's own labels substituted and none
+  recovered — but `--diagnose` shows every one failed on column count, row count or other
+  values, never on wording alone, so the corpus holds no labels-only failure to recover.
+  Its live `_17` 0.00 → 1.00 stands as the only evidence either way.
+- **Every recovery in the whole 375-submission corpus is crypto_exchange.** ETF (257
+  submissions) and archeology (61) recovered nothing from any of the four rules — for B-37
+  because its precondition never fires in either gold, for the others because their
+  failures are stacked. Do not read the crypto numbers as cross-database effect sizes.
+
+**Next**: any lift claim still needs n≥3 (B-43), and teammates still need to re-baseline
+(B-44) — now against `6302d18` rather than `8c9b08d`.

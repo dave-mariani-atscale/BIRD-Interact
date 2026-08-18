@@ -3305,3 +3305,58 @@ the raw block now running, not to anything earlier.
   every earlier block; the new per-task outcome lines just made a
   long-standing condition visible. Query error rate 19-21%, planner assertion
   still present.
+
+### B-42 cut, B-38 narrowed, 2026-08-18 — and what that says about the rest of the guidance
+
+A harness change, recorded here because the block above (§ "The open follow-ups worked
+and the lift did not") credits B-42 with a conversion and quotes its gold statistic. Both
+of those readings are superseded; the lines that count `184 of 189`, the `_6` attribution
+row, and the crypto exposure paragraph should be read against this section.
+
+**Two new instruments, both free.** `scripts/counterfactual.py` takes stored submissions
+from runs that PREDATE a rule, applies the rule as a sqlglot transform, and re-grades
+offline — the trajectory is held fixed, so it is immune to redeploys, flags and run-to-run
+variance, and it reports per arm because a rule appended to both instructions can only move
+lift through an asymmetric failure rate. It now covers 16 arm-paired pre-rule runs on the
+three databases that have both arms recorded (375 failed submissions: ETF 257, archeology
+61, crypto 57). `scripts/rule_exposure.py` counts each rule's precondition against gold
+alone, so it covers all 22 databases with no run — and counts the phases where obeying the
+rule LOSES a point next to the ones where it wins.
+
+**What they found, per rule.**
+
+| rule | recovered raw / atscale | exposure over 22 dbs | verdict |
+|---|---|---|---|
+| B-37 | +2.80 / +1.40 | 55 fires, **1** risk | keep — it SHRINKS lift |
+| B-38 | +0.70 / +1.40 | 30 fires, 0 risk | keep, narrowed |
+| B-42 | 0.00 / 0.00 (2 eligible in 375) | 167 fires, 3 risk | **cut** |
+| B-41 | 0.00 / 0.00 | 121 fires, 0 risk | keep on live evidence; instrument blind |
+
+**Why B-42 went.** Over 122 stored pre-rule run files, 264 submissions land on phases where
+its precondition fires (order graded, gold groups and sorts). **259 of them already carried
+the ORDER BY** with nothing telling them to — 5 misses, 4 raw and 1 atscale. And the single
+live conversion B-42 could claim, `crypto_exchange_6` phase 2, is a regression **B-38
+caused**: that submission carried an ORDER BY before f3ba423, dropped it after, and got it
+back with 8c9b08d. A second rule repairing the first, on behaviour the agent already had,
+buying 3 phases across the 22 databases where obeying it loses (fake_account_24,
+labor_certification_applications_12, mental_health_1). B-38 now says what it meant — leave
+the order alone on a FLAT row-level listing, read narrowly — and grouped results get no
+instruction at all. Both gold-corpus statistics left the prompt with it.
+
+**Why B-37 stays even though it helps raw twice as much.** Its whole asymmetry is
+`crypto_exchange_17` and `_19`. On the raw arm those two had already derived the correct
+label wording from the KB thresholds (`'Liquidity Crisis'`, `'Arbitrage Opportunity'`) and
+their only defect was projecting the number beside the label; narrowing the projection
+recovers both. The atscale arm could not get there because the model publishes that
+condition as a Yes/No flag, so it had TWO defects. Cutting B-37 would not close that gap,
+it would hide it behind a shared column-count error and manufacture roughly 7 pp of lift
+(4 × 0.7 vs 2 × 0.7 over 20 tasks) out of raw echoing an identifier. The legitimate route
+to that 7 pp is B-41's ask, which already took `_17` to 1.00 live; the model route is closed
+because neither label pair is in the KB.
+
+**The generalisable lesson.** A guidance rule needs two numbers before it ships, and both
+are free: does the agent already comply (compliance census over stored runs), and how many
+phases would obeying it LOSE (exposure sweep over gold). B-42 had 98% compliance and 3
+losing phases and still shipped on the strength of a single conversion, because a
+conversion is what a validation run shows you and neither of the other two numbers was
+being asked for.
