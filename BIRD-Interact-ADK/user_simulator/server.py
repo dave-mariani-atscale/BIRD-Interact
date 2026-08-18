@@ -84,8 +84,9 @@ def _parse_action(state: TaskSimState, question: str) -> str:
     prompt = prompt.replace("[[amb_json]]", state.get_ambiguity_json())
     prompt = prompt.replace("[[SQL_Glot]]", state.get_all_sql_segments())
     prompt = prompt.replace("[[DB_schema]]", state.db_schema)
-    # v2 includes <think> reasoning, needs more tokens
-    max_tok = 500 if PROMPT_VERSION == "v2" else 200
+    # v2 includes <think> reasoning (plus the model's native thinking), which is
+    # spent before the answer - budget generously or the action never arrives.
+    max_tok = settings.user_sim_max_tokens if PROMPT_VERSION == "v2" else 200
     content = _call_llm(prompt, max_tokens=max_tok)
     # Extract action from <s>...</s> (skip <think>...</think> if present)
     if "</s>" in content:
@@ -150,7 +151,7 @@ def _generate_response(state: TaskSimState, question: str, action: str) -> str:
     prompt = prompt.replace("[[GT_SQL]]", state.get_gt_sql_str())
     prompt = prompt.replace("[[SQL_Glot]]", state.get_all_sql_segments())
     prompt = prompt.replace("[[DB_schema]]", state.db_schema)
-    response = _extract_response(_call_llm(prompt, max_tokens=1024))
+    response = _extract_response(_call_llm(prompt, max_tokens=settings.user_sim_max_tokens))
 
     # Numeric-consistency guard: regenerate once if the response states numbers
     # that no ground-truth source contains. Fail-open on the second draft so a
@@ -170,7 +171,7 @@ def _generate_response(state: TaskSimState, question: str, action: str) -> str:
             "if they do not pin the detail down, say the choice is up to the AI "
             "collaborator. Rewrite your response now, in the same format.\n<s>"
         )
-        response = _extract_response(_call_llm(retry_prompt, max_tokens=1024))
+        response = _extract_response(_call_llm(retry_prompt, max_tokens=settings.user_sim_max_tokens))
         still_bad = _unsupported_numbers(state, question, response)
         if still_bad:
             logger.warning(
