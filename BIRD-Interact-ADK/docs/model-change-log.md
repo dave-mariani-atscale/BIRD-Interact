@@ -2960,3 +2960,36 @@ query, or the agent's question). Fail-open on the second draft; both
 triggers logged so the regeneration rate is measurable. This targets the
 "10 miles vs gold >= 50" defect observed five times across two simulator
 models. Next: n>=3 both arms on the new stack.
+
+## 2026-08-17 evening - Round 6+7 and the formula-ask guidance (pre-overnight)
+
+**Round 6 (e4b3fb3, deployed).** Description item (5) now says CTEs work -
+verified live through the full stack (engine pr9795 inlining + MCP
+passthrough): chained, twice-referenced and model-JOINed CTEs return results
+identical to their FROM-subquery spellings. WITH RECURSIVE and IN-subqueries
+stay rejected. No other model's description mentions CTEs, so all 8 models
+are CTE-enabled via the MCP skill text; the raw arm always had them.
+
+**Round 7 (3c0dcf0, deployed).** Audit found 36 metric columns with no
+row-grain sibling; 21 were real task-8-class gaps and now ship as
+attributes: 14 on Risk Evaluation (organ quality, expected patient
+survival, five stored risks, cost effectiveness, three center scores,
+resource availability/consumption, staff hours), 2 on Data Quality Record
+(quality + completeness scores), 4 on Compatibility Assessment (three
+recorded sub-scores, distance km), 1 fact degenerate (match duration
+seconds). Verified live: AVG(oq * (1 - mr)) assembles at row grain.
+
+**Guidance: the formula ask.** New bullet ahead of the ambiguity-trigger
+bullet: when the question paraphrases a formula, ask for the formula itself
+- once, openly - then select each disclosed term at row grain in one
+FROM-subquery and aggregate outside. Grounded in the measured task-8 pair
+(asked-and-assembled 0.7 vs guessed-between-bases 0.0).
+
+**Also fixed: call_llm None-content crash (5e16093).** Five live crashes
+surfaced as EMPTY simulator answers that still cost 2 coins and silently
+suppressed disclosures. One retry then '', callers' fallbacks engage.
+
+Baseline note for the next runs: single-run organ_transplant on this stack
+scored 0.70/19 twice today (task 22, then task 8 via the round-5
+attributes). Everything above is one epoch; nothing before 2026-08-17
+evening compares.
