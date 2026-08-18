@@ -55,11 +55,11 @@ scripts/sheet.py
 # note, a plan, an investigation record or a session handoff.
 #
 # CAVEAT, because a rule that looks stronger than it is will get trusted too far:
-# .gitignore has NO effect on a file git already tracks. docs/create_bird_model_prompt.md,
-# docs/lift-levers-handoff.md and docs/crypto-followups-handoff.md are tracked and
-# stay that way, deliberately — untracking them would delete a teammate's working
-# copy on their next merge. Edits to those three still get committed. Put ongoing
-# notes in a NEW file, which this rule ignores by default.
+# .gitignore has NO effect on a file git already tracks. Adding a line here does
+# not untrack anything — that takes `git rm --cached`, and that deletion reaches a
+# teammate's working copy when they next merge, so it is a coordinated move, not a
+# tidy-up. Nothing in docs/ is tracked-but-ignored as of 66e0ab2; keep it that way
+# by putting a new working note in a NEW file, which this rule ignores on creation.
 docs/*
 !docs/architecture.png
 !docs/architecture.svg

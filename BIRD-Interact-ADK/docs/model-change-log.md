@@ -5,6 +5,12 @@ Post-build changes to the AtScale semantic models in
 one section per model. Record the kind of change and why; name the Workarounds
 row when a change works around a tracked defect.
 
+Sections below sometimes cite `docs/create_bird_model_prompt.md`,
+`docs/lift-levers-handoff.md` or `docs/crypto-followups-handoff.md`. Those are
+local working documents and are deliberately not in this repo — the build-prompt
+content lives on Google Drive, the handoffs are single-author session notes. The
+citation records where a decision came from; nothing here depends on reading them.
+
 ## Workarounds
 
 Engine/tool defects the models deliberately work around. Check whether a row
