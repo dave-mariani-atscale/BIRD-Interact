@@ -3170,3 +3170,21 @@ runs. Two riders:
     Liver 187). If a task's VALUES ever move between run 1 and run 3 with
     nothing else changed, suspect aggregate routing first - that is the
     signature of such a bug.
+
+## 2026-08-18 - scripts/run_overnight_all.sh renamed to scripts/run_both_arms.sh
+
+The name described when it was run, not what it does: it drives BOTH ARMS
+(atscale then raw, --query-only for task-set parity) over one or more
+databases, and it is the batch driver behind every head-to-head number in
+this log. Run it at RUNS=1 for a regression gate or RUNS=3 for measurement.
+
+Its results prefix changed with it: new batches write
+results/batch<stamp>_<db>_<arm>*.json. Every set produced before this rename
+uses results/overnight<stamp>_... - glob both when comparing across the
+boundary.
+
+Concurrency, since it comes up: each individual run executes at
+--concurrency 5 by default (CONCURRENCY=N to override), exactly as running
+orchestrator.runner by hand. The batch's own loops - database by database,
+arm by arm - are sequential on purpose, so a full 8-database sweep is long
+by construction rather than by inefficiency.

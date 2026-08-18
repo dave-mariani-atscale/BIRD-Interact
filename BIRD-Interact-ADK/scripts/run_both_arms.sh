@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Both arms, every modeled database, unattended. Designed to run overnight:
+# Runs BOTH ARMS (atscale and raw) over one or more databases, unattended -
+# the batch driver behind every head-to-head measurement. Long enough for a
+# full sweep to be an overnight job:
 #
-#   ./scripts/run_overnight_all.sh                    # all 8 databases, n=3 per arm
-#   ./scripts/run_overnight_all.sh organ_transplant   # one database (regression test)
-#   RUNS=1 ./scripts/run_overnight_all.sh organ_transplant   # quick single-pass check
+#   ./scripts/run_both_arms.sh                    # all 8 databases, n=3 per arm
+#   ./scripts/run_both_arms.sh organ_transplant   # one database (regression test)
+#   RUNS=1 ./scripts/run_both_arms.sh organ_transplant   # quick single-pass check
+#
+# Each individual run is executed by orchestrator.runner at CONCURRENCY tasks
+# in parallel (default 5, same as running the runner by hand); the batch's
+# own loops - database by database, then arm by arm - are deliberately
+# SEQUENTIAL, so a full sweep is slow by construction, not by inefficiency.
 #
 # Positional args: databases to run (default: all 8 with deployed models).
 # Env: RUNS (repetitions per arm per database, default 3),
@@ -35,7 +42,8 @@ ALL_DBS=(organ_transplant archeology_scan crypto_exchange cybermarket_pattern
 DBS=("$@"); [ ${#DBS[@]} -eq 0 ] && DBS=("${ALL_DBS[@]}")
 
 STAMP="$(date +%Y%m%d_%H%M)"
-PREFIX="overnight${STAMP}"
+PREFIX="batch${STAMP}"   # results/batch<stamp>_<db>_<arm>*.json ; runs before
+                         # 2026-08-18 used the "overnight<stamp>_" prefix
 
 # Keep every run re-gradable offline later (CLAUDE.md: re-grade, don't re-run).
 export GRADING_AUDIT_PATH="results/${PREFIX}_audit.jsonl"
