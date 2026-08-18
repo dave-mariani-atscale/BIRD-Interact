@@ -3139,3 +3139,34 @@ score. n=3 is not enough here; treat single runs as behavioural reads only.
 explicit depth warning - one level of nesting, ORDER BY/LIMIT inside the
 scope that projects the sort column, prefer a CTE when it REPLACES nesting
 rather than adding a layer.
+
+## 2026-08-18 (evening) - aggregates are live; measurement convention for them
+
+The BIRD connections were recreated after a stack rebuild by
+`bird-atscale-models/utilities/create_bird_connections.sh`, which now creates
+an `aggregates` schema in each of the 22 BIRD databases before pointing the
+connection's Aggregate Schema at it. Verified: schema present in 22/22
+databases, and all 22 `bird_*` connection groups carry
+aggregateSchema="aggregates".
+
+**This changes the atscale arm's cost profile.** Before, the aggregate schema
+did not exist, so every aggregate build failed instantly and cost nothing.
+Now the engine really builds them - organ_transplant had 28 tables in its
+aggregates schema within minutes of the first run, with 88 aggregate events
+in the engine log over 20 minutes. Builds run CREATE TABLE AS against the
+same small Postgres the live queries hit, so run 1 pays a cost the raw arm
+never pays.
+
+**Convention (decided 2026-08-18):** measure at n=3 and keep run 1 cold.
+Run 1 pays the build cost, runs 2 and 3 get the benefit; the 3-run mean
+therefore includes one cold run. This is deliberate - it is what a real
+deployment experiences, and a permanently-cold configuration is one nobody
+runs. Two riders:
+  - Report wall-clock PER RUN, not only the mean. A mean over one cold and
+    two warm runs describes no state that exists, and wall-clock per question
+    is a reported slide metric.
+  - Accuracy should be unaffected: aggregates are transparent, and the
+    post-rebuild values match every prior run (Kidney 207 / Lung 199 /
+    Liver 187). If a task's VALUES ever move between run 1 and run 3 with
+    nothing else changed, suspect aggregate routing first - that is the
+    signature of such a bug.
