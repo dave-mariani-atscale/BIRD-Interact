@@ -15,9 +15,8 @@ Per rule, per database:
   fires  phases where obeying the rule is what gold wants
   risk   phases where obeying it makes a correct answer wrong
 
-Both arms see identical gold, so exposure is arm-blind by construction — which
-is the point: an arm-blind rule can only move lift through an asymmetric
-FAILURE rate, never through the rule's own reach.
+Both arms see identical gold, so exposure is arm-blind by construction. What the
+recovery numbers mean per arm is counterfactual.py's docstring.
 """
 import json, os, re, sys, collections
 
@@ -51,7 +50,7 @@ def filtered_and_projected(sel) -> bool:
         return False
     return any(_name(e) in keys for e in sel.expressions)
 
-rows = collections.defaultdict(lambda: collections.Counter())
+rows = collections.defaultdict(collections.Counter)
 
 for line in open(settings.data_path):
     td = json.loads(line)
@@ -61,15 +60,12 @@ for line in open(settings.data_path):
         if not sol:
             continue
         cond = U.apply_order_lint(cond, td["instance_id"], phase)
-        t = C.parse(sol[-1])
-        if t is None:
-            rows[db]["unparseable"] += 1
-            continue
-        sel = C.outer_select(t)
-        if sel is None:
-            rows[db]["unparseable"] += 1
-            continue
         R = rows[db]
+        t = C.parse(sol[-1])
+        sel = C.outer_select(t) if t is not None else None
+        if sel is None:
+            R["unparseable"] += 1
+            continue
         R["phases"] += 1
         ordered = bool(cond.get("order"))
         sorts = bool(t.args.get("order") or sel.args.get("order"))

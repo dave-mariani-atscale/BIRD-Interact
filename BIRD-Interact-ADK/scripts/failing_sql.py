@@ -5,9 +5,8 @@ Usage:  python scripts/failing_sql.py <results.json> [instance_id ...]
 
 The iteration loop this serves is "read the submitted SQL for every failing
 task, then fix the model / MCP / guidance" — so the default is failures only,
-and each task prints in the order the evidence is needed: the question, the
-gold, what the agent submitted per phase, and the tool calls that errored on
-the way there.
+and each task prints in the order the evidence is needed: the question, the tool
+calls that errored, then each phase's submission beside its gold.
 
 No LLM calls, no queries. Reads the results file only.
 """

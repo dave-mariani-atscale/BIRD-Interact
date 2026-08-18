@@ -40,14 +40,19 @@ for line in open(settings.data_path):
 cli = MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url,
                             bearer_token=settings.semantic_layer_mcp_token))
 
-# One scratch DB per database touched. Gold executes here; the template stays
-# pristine (shared.db_utils refuses writes against *_template — B-25).
+# One scratch DB per database touched, created on first use so a batch that dies
+# at dispatch pays for no copies, and inside the try below so none leaks. Gold
+# executes here; the template stays pristine (shared.db_utils refuses writes
+# against *_template — B-25).
 dbs, conns = {}, {}
-for p in probes:
-    d = p["database"]
-    if d not in dbs:
-        dbs[d] = U.create_task_db(d, "probe")
-        conns[d] = U.get_connection_for_phase(dbs[d])
+
+
+def scratch(dbname):
+    if dbname not in dbs:
+        dbs[dbname] = U.create_task_db(dbname, "probe")
+        conns[dbname] = U.get_connection_for_phase(dbs[dbname])
+    return dbs[dbname], conns[dbname]
+
 
 print(f"flags: tie={settings.grading_tie_tolerance} dec={settings.grading_honor_decimal} "
       f"casefold={settings.grading_casefold} rel={settings.grading_rel_tolerance} "
@@ -79,11 +84,10 @@ try:
         if pred is None:
             print(f"  no rows parsed; raw head: {str(txt)[:300]}")
             continue
-        verdict = U.ex_base_external_pred(pred, sol, dbs[p["database"]],
-                                          conns[p["database"]], cond)
-        print(f"  rows={len(pred)} cols={len(pred[0]) if pred else 0}  "
-              f"first={pred[0] if pred else None}")
+        db, conn = scratch(p["database"])
+        verdict = U.ex_base_external_pred(pred, sol, db, conn, cond)
+        print(f"  rows={len(pred)} cols={len(pred[0])}  first={pred[0]}")
         print(f"  VERDICT: {verdict}")
 finally:
-    for d, db in dbs.items():
+    for db in dbs.values():
         U.drop_task_db(db)

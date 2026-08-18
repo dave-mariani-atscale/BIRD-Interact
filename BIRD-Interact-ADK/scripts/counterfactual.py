@@ -28,7 +28,7 @@ Usage:
 Default corpus: the pre-rule arm-paired runs on the three databases that have
 both arms recorded (crypto_exchange, exchange_traded_funds, archeology_scan).
 """
-import argparse, json, os, re, sys, glob
+import argparse, collections, functools, json, os, re, sys
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
@@ -39,7 +39,7 @@ from sqlglot import expressions as exp
 
 from shared.config import settings
 from shared import db_utils as U
-from shared.mcp_client import MCPClient, MCPEndpoint
+from outbound_sql import client as mcp_client
 
 # Arm-paired runs that predate f3ba423 (2026-08-17 14:54), so the agent was
 # never told any of the four rules. Both arms, three databases.
@@ -78,10 +78,10 @@ MODEL_SCHEMAS = ("bird_atscale_models_catalog_main", "bird_etf_prompt_only_main"
                  "bird_atscale_models_catalog")
 
 
-# --------------------------------------------------------------------------
-# parsing helpers
-# --------------------------------------------------------------------------
+@functools.lru_cache(maxsize=None)
 def parse(sql):
+    """Cached: the same gold is re-parsed for every submission of its task, and
+    every transform copies the tree before mutating it."""
     try:
         return sqlglot.parse_one(sql, dialect="postgres")
     except Exception:
@@ -99,9 +99,8 @@ def outer_select(tree):
         return tree
     if isinstance(tree, (exp.Subquery, exp.Paren)):
         return outer_select(tree.this)
-    for cls in (exp.Union, exp.Except, exp.Intersect):
-        if isinstance(tree, cls):
-            return None          # set ops: leave alone
+    if isinstance(tree, (exp.Union, exp.Except, exp.Intersect)):
+        return None              # set ops: leave alone
     if isinstance(tree, exp.With):
         return outer_select(tree.this)
     return tree.find(exp.Select)
@@ -118,10 +117,9 @@ def gold_of(td, phase):
     return sol, cond
 
 
-# --------------------------------------------------------------------------
-# the four transforms. each returns (new_sql, note) or (None, why-not)
-# --------------------------------------------------------------------------
-def t_b37(sql, tree, gold_tree, td, phase):
+# Each transform returns (new_sql, note), or (None, why-not) when its rule
+# does not fire on this phase.
+def t_b37(tree, gold_tree, gold_sql, td, phase):
     """B-37: the question named the entity, so return the value alone.
 
     Fires only where the rule itself fires: the question hands over a quoted
@@ -155,7 +153,7 @@ def t_b37(sql, tree, gold_tree, td, phase):
         f"{len(sel.expressions)} cols -> 1 ({'computed' if computed else 'last'})"
 
 
-def t_b38(sql, tree, gold_tree, td, phase):
+def t_b38(tree, gold_tree, gold_sql, td, phase):
     """B-38: gold has no top-level ORDER BY, so strip the invented one."""
     gsel = outer_select(gold_tree) if gold_tree is not None else None
     if gsel is None:
@@ -175,7 +173,7 @@ def t_b38(sql, tree, gold_tree, td, phase):
     return new.sql(dialect="postgres"), "stripped invented ORDER BY"
 
 
-def t_b42(sql, tree, gold_tree, td, phase):
+def t_b42(tree, gold_tree, gold_sql, td, phase):
     """B-42: gold groups AND sorts; add ORDER BY on the grouping keys."""
     gsel = outer_select(gold_tree) if gold_tree is not None else None
     if gsel is None:
@@ -192,7 +190,6 @@ def t_b42(sql, tree, gold_tree, td, phase):
     grp = sel.args.get("group")
     keys = list(grp.expressions) if grp else []
     if not keys:
-        # no GROUP BY in pred: sort by its first projection instead
         if not sel.expressions:
             return None, "pred has no projection to sort by"
         first = sel.expressions[0]
@@ -206,7 +203,7 @@ def t_b42(sql, tree, gold_tree, td, phase):
 LABELS = re.compile(r"THEN\s+'([^']*)'|ELSE\s+'([^']*)'", re.I)
 
 
-def t_b41(sql, tree, gold_tree, td, phase):
+def t_b41(tree, gold_tree, gold_sql, td, phase):
     """B-41: substitute gold's status labels into the predicted CASE.
 
     This is the ceiling of the ask, not the ask itself: it answers "if the agent
@@ -215,7 +212,7 @@ def t_b41(sql, tree, gold_tree, td, phase):
     if gold_tree is None:
         return None, "gold unparseable"
     gsel = outer_select(gold_tree)
-    gold_labels = [a or b for a, b in LABELS.findall(gsel.sql(dialect="postgres") if gsel else "")]
+    gold_labels = [a or b for a, b in LABELS.findall(gold_sql)]
     if not gold_labels:
         return None, "gold projects no CASE labels"
     sel = outer_select(tree)
@@ -238,9 +235,6 @@ def t_b41(sql, tree, gold_tree, td, phase):
 RULES = {"B37": t_b37, "B38": t_b38, "B42": t_b42, "B41": t_b41}
 
 
-# --------------------------------------------------------------------------
-# corpus
-# --------------------------------------------------------------------------
 PHASE_RE = re.compile(r"[Pp]hase (\d)")
 
 
@@ -273,12 +267,13 @@ def diagnose(arm, new_sql, pred, sol, db, conn, cond):
     diagnose_rows. Answers the question a bare zero cannot: was the rule
     irrelevant, or was it one of several things wrong at once?"""
     try:
-        gt, err, to, _ = U.execute_queries(
-            U.remove_round(U.remove_distinct(U.remove_comments(list(sol)))), db, conn)
+        clean = lambda qs: U.remove_round(U.remove_distinct(U.remove_comments(list(qs))))
+        gt, err, to, _ = U.execute_queries(clean(sol), db, conn)
         if err or to or not gt:
             return "gold did not execute"
         if arm == "raw":
-            pred, perr, pto, _ = U.execute_queries([new_sql], db, conn)
+            # both sides cleaned, matching grade_raw_submission
+            pred, perr, pto, _ = U.execute_queries(clean([new_sql]), db, conn)
             if perr or pto:
                 return f"pred errored: {str(perr)[:70]}"
         if not pred:
@@ -312,8 +307,7 @@ def main():
         d = json.loads(line)
         tasks[d["instance_id"]] = d
 
-    cli = MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url,
-                                bearer_token=settings.semantic_layer_mcp_token))
+    cli = mcp_client()
     dbs, conns = {}, {}
 
     def scratch(dbname):
@@ -327,15 +321,17 @@ def main():
           f"casefold={settings.grading_casefold} rel={settings.grading_rel_tolerance} "
           f"lint={settings.grading_order_lint}\n")
 
-    def blank():
-        return dict(elig=0, dedup=0, graded=0, err=0, recovered=0, gain=0.0, capped=0)
+    # (db, rule, arm) -> counters. The pooled table is this summed, so it is
+    # derived at print time rather than incremented alongside.
+    per_db = collections.defaultdict(collections.Counter)
+    census = collections.Counter()
 
-    tally = {r: {"raw": blank(), "atscale": blank()} for r in rules}
-    per_db = {}          # (db, rule, arm) -> counters
-    census = {}          # (db, arm) -> failed submissions seen
-
-    def cell(db, rule, arm):
-        return per_db.setdefault((db, rule, arm), blank())
+    def pooled(rule, arm):
+        total = collections.Counter()
+        for (_, r, m), c in per_db.items():
+            if (r, m) == (rule, arm):
+                total.update(c)
+        return total
 
     seen = set()
     try:
@@ -343,8 +339,8 @@ def main():
             for s in submissions(path, tasks):
                 sql, td, phase = s["sql"], s["td"], s["phase"]
                 arm = arm_of(sql)
-                census[(td["selected_database"], arm)] = \
-                    census.get((td["selected_database"], arm), 0) + 1
+                dbname = td["selected_database"]
+                census[(dbname, arm)] += 1
                 tree = parse(sql)
                 if tree is None:
                     continue
@@ -355,25 +351,31 @@ def main():
                 cond = U.apply_order_lint(cond, s["iid"], phase)
 
                 for rule in rules:
-                    new_sql, note = RULES[rule](sql, tree, gold_tree, td, phase)
+                    new_sql, note = RULES[rule](tree, gold_tree, sol[-1], td, phase)
                     if new_sql is None:
                         continue
-                    dbname = td["selected_database"]
-                    T, D = tally[rule][arm], cell(dbname, rule, arm)
-                    T["elig"] += 1; D["elig"] += 1
+                    D = per_db[(dbname, rule, arm)]
+                    D["elig"] += 1
                     key = (rule, arm, s["iid"], phase, new_sql)
                     if key in seen:
-                        T["dedup"] += 1; D["dedup"] += 1
+                        D["dedup"] += 1
                         continue      # same transform reached twice = same evidence
                     seen.add(key)
-                    if a.limit and T["graded"] >= a.limit:
-                        T["capped"] += 1; D["capped"] += 1
+                    if a.limit and pooled(rule, arm)["graded"] >= a.limit:
+                        D["capped"] += 1
                         continue
 
                     db, conn = scratch(dbname)
                     try:
                         if arm == "raw":
-                            verdict = U.ex_base([new_sql], sol, db, conn, cond)
+                            # grade_raw_submission, never ex_base: ex_base does
+                            # none of step 1's cleanup, so gold keeps its ROUND()
+                            # while the prediction loses its own and the two are
+                            # compared at different precisions. Its docstring
+                            # names two offline tools that already walked into
+                            # this; a counterfactual that grades differently from
+                            # the run it replays measures the grader.
+                            verdict = U.grade_raw_submission([new_sql], sol, db, conn, cond)
                             pred = None
                         else:
                             txt = cli.call_tool("run_query", {"query": new_sql})
@@ -384,14 +386,13 @@ def main():
                         if a.verbose:
                             print(f"  [{rule}/{arm}] {s['iid']} p{phase} ERR "
                                   f"{type(e).__name__}: {str(e)[:90]}")
-                        T["graded"] += 1; D["graded"] += 1
-                        T["err"] += 1; D["err"] += 1
+                        D["graded"] += 1
+                        D["err"] += 1
                         continue
-                    T["graded"] += 1; D["graded"] += 1
+                    D["graded"] += 1
                     if verdict:
-                        T["recovered"] += 1; D["recovered"] += 1
-                        g = 0.7 if phase == 1 else 0.3
-                        T["gain"] += g; D["gain"] += g
+                        D["recovered"] += 1
+                        D["gain"] += 0.7 if phase == 1 else 0.3
                         print(f"  RECOVERED [{rule}/{arm}] {s['iid']} p{phase} ({note}) — {s['run']}")
                     elif a.diagnose:
                         print(f"  no  [{rule}/{arm}] {s['iid']} p{phase} ({note}) "
@@ -399,52 +400,55 @@ def main():
                     elif a.verbose:
                         print(f"  no  [{rule}/{arm}] {s['iid']} p{phase} ({note})")
     finally:
-        for d, db in dbs.items():
+        for db in dbs.values():
             U.drop_task_db(db)
 
     print("\ncorpus census (failed submissions by database and arm):")
     for (d, arm), n in sorted(census.items()):
         print(f"  {d:<26}{arm:<9}{n:>4}")
 
-    hdr = (f"{'rule':<6}{'arm':<9}{'eligible':>9}{'dupes':>7}{'graded':>7}{'err':>5}"
-           f"{'recovered':>10}{'reward':>8}{'capped':>8}")
-    print("\nPOOLED, all databases")
-    print(hdr)
-    for rule in rules:
-        for arm in ("raw", "atscale"):
-            T = tally[rule][arm]
-            print(f"{rule:<6}{arm:<9}{T['elig']:>9}{T['dedup']:>7}{T['graded']:>7}{T['err']:>5}"
-                  f"{T['recovered']:>10}{T['gain']:>8.2f}{T['capped']:>8}")
-
-    for d in sorted({k[0] for k in per_db}):
-        print(f"\nPER DATABASE: {d}")
-        print(hdr)
+    def table(title, getter):
+        print(f"\n{title}")
+        print(f"{'rule':<6}{'arm':<9}{'eligible':>9}{'dupes':>7}{'graded':>7}{'err':>5}"
+              f"{'recovered':>10}{'reward':>8}{'capped':>8}")
         for rule in rules:
             for arm in ("raw", "atscale"):
-                D = per_db.get((d, rule, arm))
-                if not D:
+                c = getter(rule, arm)
+                if not c:
                     continue
-                print(f"{rule:<6}{arm:<9}{D['elig']:>9}{D['dedup']:>7}{D['graded']:>7}{D['err']:>5}"
-                      f"{D['recovered']:>10}{D['gain']:>8.2f}{D['capped']:>8}")
-        print("  lift direction here:")
+                print(f"{rule:<6}{arm:<9}{c['elig']:>9}{c['dedup']:>7}{c['graded']:>7}{c['err']:>5}"
+                      f"{c['recovered']:>10}{c['gain']:>8.2f}{c['capped']:>8}")
+
+    def direction(r, s_):
+        """A rule only moves lift to the extent its recovered reward is
+        ASYMMETRIC between the arms. Equal columns = lift-neutral."""
+        if abs(r - s_) < 0.35:
+            return "lift-neutral"
+        return "SHRINKS lift (helps raw more)" if r > s_ else "GROWS lift (helps atscale more)"
+
+    def verdicts(indent, getter):
         for rule in rules:
-            r = (per_db.get((d, rule, "raw")) or {}).get("gain", 0.0)
-            s_ = (per_db.get((d, rule, "atscale")) or {}).get("gain", 0.0)
+            raw, ats = getter(rule, "raw"), getter(rule, "atscale")
+            r, s_ = raw["gain"], ats["gain"]
             if not (r or s_):
-                er = (per_db.get((d, rule, "raw")) or {}).get("elig", 0)
-                ea = (per_db.get((d, rule, "atscale")) or {}).get("elig", 0)
-                print(f"    {rule}: no recovery either arm (eligible raw {er}, atscale {ea})")
-                continue
-            v = "lift-neutral" if abs(r - s_) < 0.35 else \
-                ("SHRINKS lift" if r > s_ else "GROWS lift")
-            print(f"    {rule}: raw {r:+.2f} vs atscale {s_:+.2f}  ->  {v}")
+                print(f"{indent}{rule}: no recovery either arm "
+                      f"(eligible raw {raw['elig']}, atscale {ats['elig']})")
+            else:
+                print(f"{indent}{rule}: raw {r:+.2f} vs atscale {s_:+.2f}  ->  {direction(r, s_)}")
+
+    table("POOLED, all databases", pooled)
+    for d in sorted({k[0] for k in per_db}):
+        # .get, not per_db[...]: a defaultdict lookup would create the missing
+        # cell and it would then show up in the pooled sum.
+        def by_db(rule, arm, d=d):
+            return per_db.get((d, rule, arm)) or collections.Counter()
+
+        table(f"PER DATABASE: {d}", by_db)
+        print("  lift direction here:")
+        verdicts("    ", by_db)
     print("\nPOOLED lift reading: a rule only moves atscale-vs-raw lift to the extent its")
     print("recovered reward is ASYMMETRIC between the two arms. Equal columns = lift-neutral.")
-    for rule in rules:
-        r, s_ = tally[rule]["raw"]["gain"], tally[rule]["atscale"]["gain"]
-        v = "lift-neutral" if abs(r - s_) < 0.35 else \
-            ("SHRINKS lift (helps raw more)" if r > s_ else "GROWS lift (helps atscale more)")
-        print(f"  {rule}: raw {r:+.2f} vs atscale {s_:+.2f}  ->  {v}")
+    verdicts("  ", pooled)
 
 
 if __name__ == "__main__":
