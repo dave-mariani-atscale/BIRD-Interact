@@ -2993,3 +2993,26 @@ Baseline note for the next runs: single-run organ_transplant on this stack
 scored 0.70/19 twice today (task 22, then task 8 via the round-5
 attributes). Everything above is one epoch; nothing before 2026-08-17
 evening compares.
+
+## 2026-08-18 - Epoch-2 head-to-head: atscale ahead for the first time; cap postmortem
+
+**organ_transplant, n=3 both arms, frozen stack** (engine pr9795, MCP CTE
+passthrough, model round 7, sim max_tokens + numeric guard, formula-ask +
+dialect guidance): atscale 0.70/1.70/2.40, mean 0.0842; raw 1.00/1.70/0.70,
+mean 0.0596. First measured atscale lead (+2.5pp; epoch-1 was raw 0.0877 vs
+atscale 0.0298). Exact MW p=0.40 - not significant at n=3; the per-task
+mechanics carry the evidence: task 8 passed 2/3 atscale runs and 0/3 raw
+(round-5/7 attributes + formula ask), task 6 recorded its first pass ever
+(population structure), task 22 upgraded to full 1.0s (phase 2 landing).
+The 2.40 run is the best organ_transplant result recorded. CTE adoption 0
+with description and guidance both live: capability confirmed harmless,
+currently unused. Sim guard fired 9 times on invented constants (weights,
+bucket bounds, ratios - the "10 miles" class); 1 None-content retry.
+
+**The other 7 databases are void**: the Anthropic workspace hit its monthly
+usage cap at ~23:47 ("regain access 2026-09-01"); every later run completed
+in seconds with 500s from run_session. archeology atscale run01 (2.00/10,
+tasks 3+4 full passes) survived without a raw pair. The overnight script
+now carries a circuit breaker: a run with >=50% tasks dead without a tool
+call, or a fresh workspace-cap message in the agent log, aborts the whole
+night instead of burning the remaining databases into void files.
