@@ -99,13 +99,14 @@ def main():
         print(f"-- queryId: {qid}")
         print(f"-- rows returned: {res.split('queryId:')[0].strip()[:300]}\n")
 
-    for i, q in enumerate(outbound(cli, qid), 1):
+    queries = outbound(cli, qid)
+    for i, q in enumerate(queries, 1):
         sql = q.get("sql", "")
         if not args.full:
             sql = elide_datasets(sql)
         if args.tail:
             sql = "\n".join(sql.splitlines()[-args.tail:])
-        print(f"===== outbound query {i}/{len(outbound(cli, qid))} "
+        print(f"===== outbound query {i}/{len(queries)} "
               f"(id {q.get('outboundQueryId','?')}) =====")
         print(sql)
     return 0

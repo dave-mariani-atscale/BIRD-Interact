@@ -150,6 +150,23 @@ class Settings(BaseSettings):
     # which never passes a `cell` hook to _compare_rows.
     grading_casefold: bool = False
 
+    # GRADING (semantic-layer path only, same `cell` hook as casefold above).
+    # True truncates a timestamp STRING to its date. Unlike the other flags here
+    # this defaults to ON, because it removes an asymmetry rather than adding a
+    # tolerance: preprocess_results already truncates a TYPED date/datetime to
+    # "%Y-%m-%d", so gold reaches the comparison as '2025-02-19' while the
+    # semantic layer returns the JSON string '2025-02-19 16:29:00' and can never
+    # match it, whatever the answer. Six phases across five databases project a
+    # date at all. Set False for a sensitivity check — but note that it makes
+    # those phases unwinnable for the atscale arm rather than upstream-faithful,
+    # since upstream has no cross-source path for this code to be faithful to.
+    #
+    # The cost of ON, stated because it is a real one: gold text that merely
+    # LOOKS like a timestamp is truncated on both sides, so '... 08:00:00' and
+    # '... 23:59:59' compare equal. No shipped gold projects a timestamp as text
+    # today; re-check with scripts/regrade_flags.py if one does.
+    grading_timestamp_date: bool = True
+
     # GRADING. Upstream compares numerics only after rounding to a fixed
     # precision, with no tolerance. True adds a relative-tolerance retry on the
     # RAW pre-rounding rows, applied only after the exact comparison has already

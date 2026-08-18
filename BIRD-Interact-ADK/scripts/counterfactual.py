@@ -222,9 +222,20 @@ def t_b41(tree, gold_tree, gold_sql, td, phase):
     if not cases:
         return None, "pred projects no CASE"
     new = tree.copy()
-    pred_lits = [l for e in outer_select(new).expressions
-                 for c in e.find_all(exp.Case)
-                 for l in c.find_all(exp.Literal) if l.is_string]
+    # THEN/ELSE only. find_all(Literal) would also collect WHEN operands, and
+    # when the counts happened to match, the zip below would rewrite a filter
+    # value with a label — a transformed query that filters on the wrong thing,
+    # counted as B-41 evidence. Measured over the 20 eligible transforms in the
+    # default corpus: no WHEN string, so this changes no recorded number.
+    pred_lits = []
+    for e in outer_select(new).expressions:
+        for c in e.find_all(exp.Case):
+            pred_lits += [i.args["true"] for i in (c.args.get("ifs") or [])
+                          if isinstance(i.args.get("true"), exp.Literal)
+                          and i.args["true"].is_string]
+            d = c.args.get("default")
+            if isinstance(d, exp.Literal) and d.is_string:
+                pred_lits.append(d)
     if len(pred_lits) != len(gold_labels):
         return None, f"label count differs (pred {len(pred_lits)}, gold {len(gold_labels)})"
     for lit, want in zip(pred_lits, gold_labels):
@@ -333,7 +344,7 @@ def main():
                 total.update(c)
         return total
 
-    seen = set()
+    seen, recovered_phases = set(), set()
     try:
         for path in runs:
             for s in submissions(path, tasks):
@@ -392,7 +403,13 @@ def main():
                     D["graded"] += 1
                     if verdict:
                         D["recovered"] += 1
-                        D["gain"] += 0.7 if phase == 1 else 0.3
+                        # Reward once per (task, phase): a phase can only be won
+                        # once, but two different attempts at it can each recover,
+                        # and crediting both would double-count the same point.
+                        won = (rule, arm, s["iid"], phase)
+                        if won not in recovered_phases:
+                            recovered_phases.add(won)
+                            D["gain"] += 0.7 if phase == 1 else 0.3
                         print(f"  RECOVERED [{rule}/{arm}] {s['iid']} p{phase} ({note}) — {s['run']}")
                     elif a.diagnose:
                         print(f"  no  [{rule}/{arm}] {s['iid']} p{phase} ({note}) "

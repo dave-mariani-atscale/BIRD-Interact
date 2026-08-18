@@ -442,16 +442,19 @@ def canonical_cell(value) -> str:
     alone. Case-folding only matters for genuinely case-varying gold conventions
     the agent can't predict; it doesn't paper over an actually-wrong answer.
 
-    A timestamp string is truncated to its date, which is what
+    A timestamp string is truncated to its date when
+    settings.grading_timestamp_date is on (the default), which is what
     preprocess_results already does to a TYPED date/datetime
     (strftime("%Y-%m-%d"), time component discarded). Gold's timestamp column
     therefore reaches the comparison as '2025-02-19' while a semantic layer
     returns the JSON string '2025-02-19 16:29:00' or '2025-02-19T00:00:00' —
     which can never match, whatever the answer. Six phases across five
     databases project a date or datetime at all (crypto_exchange twice), so
-    this is small but total where it lands. Applied to both sides, so a text
-    column that merely looks like a timestamp is truncated on both and still
-    compares equal.
+    this is small but total where it lands. Applied to both sides — which is
+    what makes it symmetric, and also its one cost: gold text that merely LOOKS
+    like a timestamp is truncated too, so '2025-02-19 08:00:00' and
+    '2025-02-19 23:59:59' compare equal. That is why it is behind a flag and in
+    the results deviations block.
 
     Only reached via _compare_rows' `cell` hook, and only from the cross-source
     path: on the raw path Python's own numeric equality already ignores
@@ -464,9 +467,10 @@ def canonical_cell(value) -> str:
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
     text = str(value)
-    stamp = _TIMESTAMP_STR_RE.match(text.strip())
-    if stamp:
-        return stamp.group(1)
+    if settings.grading_timestamp_date:
+        stamp = _TIMESTAMP_STR_RE.match(text.strip())
+        if stamp:
+            return stamp.group(1)
     return text.lower() if settings.grading_casefold else text
 
 

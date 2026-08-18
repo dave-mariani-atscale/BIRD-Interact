@@ -31,7 +31,7 @@ from sqlglot import expressions as exp
 S = os.path.dirname(os.path.abspath(__file__))
 # roles.json = {"measure": [...], "dimension": [...]} from explore_columns; regenerate with
 # scripts/key_projection_audit.py's roles() helper, or point ETF_ROLES_JSON at a copy.
-ROOT = "/Users/dianne/go/src/github.com/BIRD-Interact/BIRD-Interact-ADK"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 ROLES = json.load(open(os.environ.get("ETF_ROLES_JSON", f"{S}/roles.json")))

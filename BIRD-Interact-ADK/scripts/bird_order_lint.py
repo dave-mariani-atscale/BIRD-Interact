@@ -114,14 +114,20 @@ if __name__ == "__main__":
         write_to = argv[i + 1] if len(argv) > i + 1 else "config/order_undetermined.json"
         del argv[i:i + 2]
 
-    out = []
+    out, failed = [], []
     for db in argv:
         try:
             r = sweep(db)
         except Exception as e:
             print(f"{db:34s} FAILED {type(e).__name__}: {str(e)[:100]}", flush=True)
+            failed.append(db)
             continue
         if not r:
+            # No phases swept is indistinguishable from a database that is not
+            # there. Either way its rows are missing from `out`, so treat it as a
+            # failure for the wholesale-replacement check below.
+            print(f"{db:34s} no phases swept", flush=True)
+            failed.append(db)
             continue
         out.append(r)
         ids = sorted({u[0] for u in r["unstable"]})
@@ -130,6 +136,16 @@ if __name__ == "__main__":
               f"{len(ids):2d} tasks {ids if ids else ''}", flush=True)
     json.dump(out, open("/tmp/order_sweep.json", "w"), indent=1)
     print("\nwrote /tmp/order_sweep.json")
+
+    # The output file REPLACES its predecessor, so a partial sweep would silently
+    # un-flag every phase of a database that failed — and settings.grading_order_lint
+    # reads that file, so the next run grades those phases order-sensitively again
+    # with nothing to show why. Refuse rather than write a subset.
+    if write_to and failed:
+        print(f"\nREFUSING to write {write_to}: {len(failed)} database(s) failed "
+              f"({', '.join(failed)}). The file is replaced wholesale, so writing now "
+              f"would drop their phases. Re-run those databases first.")
+        write_to = None
 
     if write_to:
         phases = sorted({(u[0], u[1]) for r in out for u in r["unstable"]})

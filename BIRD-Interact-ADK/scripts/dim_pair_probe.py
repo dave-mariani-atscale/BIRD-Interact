@@ -29,7 +29,7 @@ import json
 import re
 import sys
 
-sys.path.insert(0, "/Users/dianne/go/src/github.com/BIRD-Interact/BIRD-Interact-ADK")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.config import settings                      # noqa: E402
 from shared.mcp_client import MCPClient, MCPEndpoint    # noqa: E402
 

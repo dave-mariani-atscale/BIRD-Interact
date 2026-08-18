@@ -45,7 +45,7 @@ def measure(db, row_tables, non_null_cols):
     rows = {}
     for t in row_tables:
         r, err, _, _ = U.execute_queries([f'SELECT COUNT(*) FROM "{t}"'], db, conn)
-        rows[t] = r[0][0] if r else f"ERROR: {err}"
+        rows[t] = r[0][0] if r else f"ERROR: {err}"  # non-int marks a failure
     nn = {}
     for col in non_null_cols:
         tbl, c = col.split(".", 1)
@@ -64,6 +64,7 @@ def main():
 
     baseline = json.load(open(BASELINE))
     failures = []
+    failed_update = False
     for db, spec in sorted(baseline.items()):
         if db.startswith("_"):
             continue
@@ -72,6 +73,16 @@ def main():
         got_rows, got_nn = measure(db, want_rows, want_nn)
 
         if args.update:
+            # A failed measurement renders as "ERROR: ...". Writing that into the
+            # baseline poisons it permanently: every later gate then compares an
+            # int against a string and reports drift on a healthy template.
+            broken = [k for k, v in list(got_rows.items()) + list(got_nn.items())
+                      if not isinstance(v, int)]
+            if broken:
+                print(f"  SKIPPED {db}: {len(broken)} measurement(s) failed "
+                      f"({', '.join(broken[:4])}) — baseline left unchanged")
+                failed_update = True
+                continue
             spec["row_counts"], spec["non_null"] = got_rows, got_nn
             continue
 
@@ -89,6 +100,10 @@ def main():
     if args.update:
         json.dump(baseline, open(BASELINE, "w"), indent=1, sort_keys=True)
         print(f"baseline updated: {BASELINE}")
+        if failed_update:
+            print("NOTE: one or more databases were skipped above; their baseline "
+                  "entries are unchanged, not refreshed.")
+            return 1
         return 0
 
     if failures:

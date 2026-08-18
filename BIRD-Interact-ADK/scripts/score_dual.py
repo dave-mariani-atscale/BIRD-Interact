@@ -230,7 +230,11 @@ def main():
                 f"values move under forced planner operators were all measured "
                 f"stable across ordinary reruns (tracker B-34).")
 
-    n_tasks = len({r["task_id"] for r in rows})
+    # The RUN's task count, matching orchestrator/runner.py's average_reward
+    # (it divides by len(results)). Counting audit rows instead would omit any
+    # task that ended without submitting — e.g. one truncated by max_tokens —
+    # and inflate every mean printed below relative to the run's own number.
+    n_tasks = len(res.get("results") or []) or len({r["task_id"] for r in rows})
     base_name = wanted[0]
     base = reward(scores[base_name])
     print(f"\n{'regime':<12}{'total':>9}{'mean':>9}{'passes':>9}   vs " + base_name)

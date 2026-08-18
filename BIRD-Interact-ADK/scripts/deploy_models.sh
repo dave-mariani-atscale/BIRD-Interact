@@ -85,7 +85,7 @@ for m in */; do
   # Capture first, then filter: in a pipeline the exit status is the LAST command's,
   # so `gate | grep` would report grep's verdict and silently pass a real leak.
   out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" --brief "$brief" \
-          "${kbarg[@]}" 2>&1)" && rc=0 || rc=$?
+          ${kbarg[@]+"${kbarg[@]}"} 2>&1)" && rc=0 || rc=$?
   printf '%s\n' "$out" | grep -vE "^\s*\[ok\]" | grep -vE "^\s*$" || true
   [ "$rc" -eq 0 ] || A10_FAILED=1
 done

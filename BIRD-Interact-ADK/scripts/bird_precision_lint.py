@@ -59,12 +59,23 @@ def canon(rows, dp):
 
 
 def widen(sql, cols):
-    """Re-express the query with every real column read as float8."""
+    """Re-express the query with every real column read as float8.
+
+    The bare-identifier pass skips a name being DEFINED by an alias: `SUM(x) AS
+    pnl` would otherwise become `AS pnl::float8` whenever `pnl` is also a real
+    column, and the syntax error was swallowed by the caller's except — E-04
+    under-counted with no signal that the probe never ran.
+    """
     out = sql
     for c in cols:
         out = re.sub(r'("%s")(?!\s*::)' % re.escape(c), r"\1::float8", out)
-        out = re.sub(r'(?<![\w."])(%s)(?![\w."])(?!\s*::)' % re.escape(c),
-                     r"\1::float8", out)
+        src = out
+
+        def keep(m, _src=src):
+            return (m.group(0) if re.search(r"\bAS\s+$", _src[:m.start()], re.I)
+                    else m.group(1) + "::float8")
+
+        out = re.sub(r'(?<![\w."])(%s)(?![\w."])(?!\s*::)' % re.escape(c), keep, src)
     out = re.sub(r"::\s*REAL\b", "::float8", out, flags=re.I)
     return out
 
@@ -118,7 +129,11 @@ def sweep(db):
                 continue
             try:
                 wrows, werr, wto, _ = U.execute_queries(wid, scratch, conn)
-            except Exception:
+            except Exception as exc:
+                # Say so. A silently skipped probe reads as "E-04 does not fire
+                # here", which is the opposite of what it means.
+                print(f"  {t['instance_id']} p{pn} widen probe FAILED "
+                      f"{type(exc).__name__}: {str(exc)[:80]}", flush=True)
                 continue
             if werr or wto or not wrows:
                 continue

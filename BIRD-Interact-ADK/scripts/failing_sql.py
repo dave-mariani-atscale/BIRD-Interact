@@ -91,10 +91,14 @@ for r in sorted(res["results"], key=lambda r: r["instance_id"]):
         if t.get("tool") != "submit_sql":
             continue
         sql = (t.get("args") or {}).get("sql", "")
+        verdict = str(t.get("result", ""))
         print(f"\n-- SUBMITTED phase {phase} --\n{text(sql, 2500)}")
-        print(f"-- verdict: {text(t.get('result', ''), 400)}")
+        print(f"-- verdict: {text(verdict, 400)}")
         print(f"\n-- GOLD phase {phase} --\n{text(gold_of(td, phase), 2500)}")
-        phase += 1
+        # Advance only on a PASS. A phase can be submitted several times, and
+        # counting attempts printed the second phase-1 try beside phase-2 gold.
+        if "Phase 1 correct" in verdict:
+            phase = 2
 
     if r["has_follow_up"] and phase == 1:
         print("\n(no submission at all)")

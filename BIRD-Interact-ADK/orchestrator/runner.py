@@ -73,6 +73,7 @@ async def run_parallel_evaluation(
                 "grading_tie_tolerance": settings.grading_tie_tolerance,
                 "grading_honor_decimal": settings.grading_honor_decimal,
                 "grading_casefold": settings.grading_casefold,
+                "grading_timestamp_date": settings.grading_timestamp_date,
                 "grading_rel_tolerance": settings.grading_rel_tolerance,
                 "grading_rel_tolerance_value": settings.grading_rel_tolerance_value,
                 "grading_order_lint": settings.grading_order_lint,

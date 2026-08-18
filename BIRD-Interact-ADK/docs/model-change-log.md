@@ -3336,7 +3336,7 @@ rule LOSES a point next to the ones where it wins.
 | B-37 | +2.80 / +1.40 | 55 fires, **1** risk | keep — it SHRINKS lift |
 | B-38 | +0.70 / +1.40 | 30 fires, 0 risk | keep, narrowed |
 | B-42 | 0.00 / 0.00 (2 eligible in 375) | 167 fires, 3 risk | **cut** |
-| B-41 | 0.00 / 0.00 | 121 fires, 0 risk | keep on live evidence; instrument blind |
+| B-41 | **+0.70 / 0.00** | 121 fires, 0 risk | keep — and it SHRINKS lift (corrected 2026-08-18, see below) |
 
 **Why B-42 went.** Over 122 stored pre-rule run files, 264 submissions land on phases where
 its precondition fires (order graded, gold groups and sorts). **259 of them already carried
@@ -3440,3 +3440,28 @@ clause into the shared tip if a later run shows the sort key being missed.
 Both arms now take whether-to-sort from exactly one place, for the first time since
 2026-08-06. Services restarted, all three gates re-passed. Every atscale number recorded
 before today predates both B-45 and this.
+
+### Correction: B-41's counterfactual was not blind, the transform was broken
+
+The table above first recorded B-41 as 0.00 / 0.00 and the surrounding text read that as
+"the corpus holds no labels-only failure to recover". Both were artifacts of a bug in
+`scripts/counterfactual.py`'s `t_b41`, found by the 2026-08-18 code review.
+
+The transform collected **every** string literal inside the predicted `CASE` — WHEN operands
+included — while gold's side collected only THEN/ELSE values. The `len(pred) != len(gold)`
+guard then rejected any submission whose predicted CASE compared against a string, which is
+most of them. Eligibility was understated at 18 raw / 2 atscale; it is 27 / 6 once the
+transform collects `ifs[*].true` plus `default` on both sides.
+
+Corrected result: **B-41 recovers `archeology_scan_6` phase 1 on the raw arm (+0.70) and
+nothing on the atscale arm.** So it joins B-37 as a rule that SHRINKS lift — the raw agent
+was losing a task to wording it could have asked for, and the semantic-layer arm had a second
+defect on the same phase. The keep decision is unchanged and now has offline evidence as well
+as the live `_17` conversion.
+
+Two counting notes from the same pass, both now fixed in the instrument: reward is credited
+once per (task, phase) — two attempts at one phase can each recover, and crediting both
+double-counted the point, which is what first showed this as +1.40 — and the raw arm grades
+through `U.grade_raw_submission`, not `U.ex_base`, so gold and prediction get the same step-1
+cleanup. Re-running the corpus after the grading fix changed no number; the `t_b41` fix
+changed only B-41.

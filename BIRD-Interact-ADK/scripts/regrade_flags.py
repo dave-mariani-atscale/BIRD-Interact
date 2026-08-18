@@ -87,6 +87,14 @@ for i, (tid, phase, sql) in enumerate(subs):
     if key in cache:
         continue
     if ARM == "raw":
+        # Reset first, exactly as the grading loop below does and as the live
+        # grader does per submission: a DML prediction or a Management gold
+        # otherwise mutates the state the NEXT prediction executes against. A
+        # contaminated row set caches as None, and a None pred short-circuits
+        # the verdict to 0 regardless of grading — and the cache is pickled, so
+        # the false zero would outlive this invocation.
+        U.reset_task_db(DB, TEMPLATE)
+        conn = U.get_connection_for_phase(DB)
         rows, err, to, _ = U.execute_queries([sql], DB, conn)
         cache[key] = None if (err or to) else rows
     else:
@@ -228,6 +236,10 @@ if off:
              f"(task, recorded, replayed): {off}\n"
              f"Explain that before reading any delta — it is not the flags.")
 print(f"baseline reproduces the recorded total ({sum(base.values()):.2f}).")
+if not subs:
+    print("no submissions matched — nothing to re-grade. Wrong --database?")
+    raise SystemExit(1)
+
 for name in COMBOS:
     per = reward_for(verdicts[name])
     tot = sum(per.values())

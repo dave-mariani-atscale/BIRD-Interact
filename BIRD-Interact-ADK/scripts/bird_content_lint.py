@@ -70,6 +70,13 @@ def sweep(db, tasks):
                 for s in PERTURB:
                     U.perform_query(s, scratch, conn)
                 b, e2, to2, _ = U.execute_queries(sols, scratch, conn)
+            except Exception as exc:
+                # Skip this phase, do not abort a multi-database sweep, which is
+                # what a bare re-raise did here. bird_order_lint.py:85 already
+                # does it this way.
+                print(f"  {t['instance_id']} p{pn} SKIPPED "
+                      f"{type(exc).__name__}: {str(exc)[:80]}", flush=True)
+                continue
             finally:
                 for s in RESET:
                     try:
