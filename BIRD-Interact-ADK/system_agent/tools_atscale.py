@@ -140,6 +140,7 @@ async def explore_columns(
     folder: Optional[List[str]] = None,
     role: Optional[List[str]] = None,
     column_group: Optional[List[str]] = None,
+    detail: Optional[str] = None,
     tool_context: Optional[ToolContext] = None,
 ) -> str:
     """Find the semantic model's columns (dimensions/metrics), by folder/role/
@@ -163,6 +164,24 @@ async def explore_columns(
     the whole scope, plus everything the terms match anywhere in the model. It
     does NOT narrow the search to the scope. Use it to get a folder you can name
     and the stragglers you can only describe in one coin.
+
+    ON A BROAD CALL, ASK FOR NAMES ONLY. detail="names" returns every matching
+    column name under its group heading, with the kind of column that group
+    holds, and no descriptions — the whole crypto catalog is 7,030 chars that
+    way against 66,651, and a four-folder batch with six terms is 7,184 against
+    92,685. Reach for it whenever you are casting wide or cannot predict how
+    much a call will return, then focus_columns the few names you shortlist.
+    Keep the default full detail when the scope is already narrow, such as one
+    folder you are confident about or the Calculations bucket, because there the
+    descriptions are what you came for and they are cheap.
+
+    A NAME ALONE IS NOT ENOUGH TO QUERY ON. Never write a name from a names-only
+    list into a query without focus_columns first. Same-sounding names differ in
+    kind and the name does not say which: "Realized PnL" is a dimension
+    attribute and "Total Realized PnL" is the measure, and aggregating the
+    attribute returns its members instead of a number with no error at all. The
+    group heading tells you the kind; focus_columns tells you the population,
+    the units, and which of two similar siblings the question means.
 
     WHEN YOU USE search_terms, CAST A WIDE NET IN ONE CALL. Terms are OR'd and
     a term that matches nothing is harmless — measured, four real terms plus ten
@@ -188,13 +207,16 @@ async def explore_columns(
         column_group: column_group names from list_models, OR'd, e.g. ["Order"] —
             either side of its column_groups map works (a dimension group or a
             fact dataset). Case-insensitive.
+        detail: "full" (default) for names with descriptions, or "names" for
+            names only — same columns, same order, roughly a tenth of the text.
 
     Returns:
         Matching columns with descriptions, grouped by column_group. An
         unrecognised folder or column_group name is reported in a warning above
         the results it did find, and a scope that exists but holds nothing says
         so in different words — so read the first line before concluding the
-        model lacks a concept.
+        model lacks a concept. Under detail="names" the columns and their order
+        are identical and every heading names the kind it holds.
     """
     domain, err = _domain_or_error(tool_context)
     if err:
@@ -214,12 +236,19 @@ async def explore_columns(
     # Omit rather than send nulls, and answer a no-criteria call locally: the
     # server rejects one ("requires at least one filter"), and the coin is
     # already deducted by then, so there is nothing to gain from the round trip.
+    # detail is deliberately NOT one of the criteria — it selects a rendering,
+    # so a call carrying only detail is still a no-criteria call.
     args = {k: v for k, v in args.items() if v}
+    if args and detail:
+        # The server takes "full" or "names" and rejects anything else, so only
+        # normalise case — never silently substitute a value the agent did not ask for.
+        args["detail"] = detail.strip().lower() if isinstance(detail, str) else detail
     if not args:
-        return ("No search criteria given, so nothing was searched. Pass EITHER "
-                "search_terms (many, each specific) OR a scope — folder / role / "
-                "column_group, with folder and column_group names taken from "
-                "list_models.")
+        return ("No search criteria given, so nothing was searched. Pass "
+                "search_terms (many, each specific), or a scope — folder / role "
+                "/ column_group, with folder and column_group names taken from "
+                "list_models — or both in the same call, which returns the "
+                "union of the two.")
     return await _call("explore_columns", {**domain, **args})
 
 
