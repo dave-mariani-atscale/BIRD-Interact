@@ -3548,3 +3548,44 @@ Consequence for measurement: the frozen-prompt validation numbers on B-37, B-41
 and B-49 were measured against the pre-lift text. Nothing has been run since
 these changes, so the projected coin savings on B-51/B-52 remain projections from
 payload sizes, not observed results.
+
+### exchange_traded_funds re-foldered, 2026-08-18 (model repo `a0ef409`)
+
+Presentation metadata only — no `unique_name`, dataset, join, aggregation or
+calculation changed, so no query semantics change. Done because B-52/B-53 just
+made the folder list the cheap route to column discovery, and ETF's folder list
+was not usable as an index: 20 folders for 387 columns, with `folder="Fund"`
+returning 195 columns / 75,142 chars and `folder="Fund Measures"` 126 / 54,190.
+A 195-column folder costs the same coin as a keyword guess and returns as much
+text as dumping the catalog, so the index was no better than no index.
+crypto_exchange, for contrast, has 41 folders and a median sampled folder of
+1,783 chars.
+
+Two halves:
+
+- The **130 metrics** that all sat in `Fund Measures` now sit in 15 thematic
+  folders: Returns, Risk and Risk-Adjusted Return, Risk Model Drift, Fees and
+  Turnover, Price and Valuation, Assets and Flows, Income and Yield, Liquidity,
+  Portfolio Composition, Benchmark and Outperformance, Manager Skill and
+  Consistency, Momentum, Composite Scores, Fund Counts, Regression Components.
+- The Fund dimension's **193 secondary attributes**, all previously inheriting
+  `folder: Fund` from their hierarchy, now carry their own folders, reusing the
+  metric folder names so a question about returns finds both the per-fund
+  attribute and the aggregate under one name. Largest folder is now 33.
+
+Attribute-level folders have **no precedent in the repo** — 108 hierarchy-level
+assignments, zero attribute-level — so the engine may honour or ignore them.
+`sml-cli validate` accepts them. This needs verifying with
+`explore_columns(folder=...)` after a deploy, and the attribute half reverting if
+the engine ignores it. The metric half uses the proven mechanism.
+
+Gates: A8 question-leakage PASS, A10 masked-threshold PASS (12 inert), validate
+clean. The KB concept booleans are grouped as `Fund Classification Flags`, named
+for the shape of the columns rather than any concept, publishing no string that
+was not already a column name.
+
+**NOT YET DEPLOYED.** `scripts/deploy_models.sh` publishes the whole catalog, and
+`origin/main` now also carries nine commits of a teammate's in-progress work
+(organ_transplant rounds 6-8, households, labor_certification_applications,
+utilities). Deploying would publish those too, so it is left for a decision
+rather than done as a side effect of an ETF change.
