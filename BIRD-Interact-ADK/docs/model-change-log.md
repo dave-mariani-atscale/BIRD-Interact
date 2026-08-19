@@ -3631,3 +3631,27 @@ a cap on how many folders to fetch before querying, not a revert.
 
 One call of 167 still attempted the illegal `search_terms` + scope combination
 and paid a coin for the refusal, so that bullet lands at roughly 99%.
+
+### ETF re-folder deployed and verified, 2026-08-18
+
+Deployed via `scripts/deploy_models.sh 8` — compile and deploy SUCCESSFUL, all
+three post-deploy gates passed (services newer than code, catalog healthy with
+all 8 models in `bird_atscale_models_catalog_main`, template DBs intact). This
+also published the teammate's nine commits that were on `origin/main`
+(organ_transplant rounds 6-8, households, labor_certification_applications,
+utilities), with Dianne's go-ahead.
+
+Verified live, and the open question is now answered — **the engine DOES honour
+attribute-level folders**, so the half of the change that had no precedent in the
+repo stands and needs no revert:
+
+| | before | after |
+|---|---|---|
+| folders | 20 | **38** |
+| largest folder | `Fund` 195 cols / 75,142 chars | `Fund Classification Flags` 34 / 21,444 |
+| `folder="Fund"` | 195 cols / 75,142 chars | 2 cols / 294 chars |
+| median folder | — | 2,058 chars |
+
+`folder="Fund Identity"` returns 14 columns including `Fund Short Name`, which
+only works if per-attribute folders are read. ETF's index is now comparable in
+granularity to crypto's (median 1,783 chars), which was the point.
