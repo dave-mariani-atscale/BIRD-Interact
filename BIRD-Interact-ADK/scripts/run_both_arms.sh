@@ -3,7 +3,7 @@
 # the batch driver behind every head-to-head measurement. Long enough for a
 # full sweep to be an overnight job:
 #
-#   ./scripts/run_both_arms.sh                    # all 8 databases, n=3 per arm
+#   ./scripts/run_both_arms.sh                    # all 9 databases, n=3 per arm
 #   ./scripts/run_both_arms.sh organ_transplant   # one database (regression test)
 #   RUNS=1 ./scripts/run_both_arms.sh organ_transplant   # quick single-pass check
 #
@@ -12,7 +12,7 @@
 # own loops - database by database, then arm by arm - are deliberately
 # SEQUENTIAL, so a full sweep is slow by construction, not by inefficiency.
 #
-# Positional args: databases to run (default: all 8 with deployed models).
+# Positional args: databases to run (default: all 9 with deployed models).
 # Env: RUNS (repetitions per arm per database, default 3),
 #      CONCURRENCY (within-run task concurrency, default 5).
 #
@@ -38,7 +38,8 @@ source .venv-adk/bin/activate
 RUNS="${RUNS:-3}"
 CONCURRENCY="${CONCURRENCY:-5}"
 ALL_DBS=(organ_transplant archeology_scan crypto_exchange cybermarket_pattern
-         exchange_traded_funds households labor_certification_applications solar_panel)
+         exchange_traded_funds households labor_certification_applications solar_panel
+         fake_account)
 DBS=("$@"); [ ${#DBS[@]} -eq 0 ] && DBS=("${ALL_DBS[@]}")
 
 STAMP="$(date +%Y%m%d_%H%M)"
