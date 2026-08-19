@@ -171,8 +171,11 @@ async def explore_columns(
             searched model-wide. Pass many, e.g. ["market impact cost",
             "limit price", "order id"]. Cannot be combined with the three below.
         folder: One folder name from list_models, e.g. "PnL". Case-insensitive.
-        role: Either "measure" or "dimension" — no other value matches anything.
-        column_group: One column_group name from list_models, e.g. "Order".
+        role: "dimension", "measure" or "calculation_group". Case-insensitive;
+            no other value matches anything. Most models have no calc groups.
+        column_group: One column_group name from list_models, e.g. "Order" —
+            either side of its column_groups map works (a dimension group or a
+            fact dataset). Case-insensitive.
 
     Returns:
         Matching columns with descriptions, grouped by column_group. A folder,

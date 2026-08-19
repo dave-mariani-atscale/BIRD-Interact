@@ -46,9 +46,15 @@ Strategy:
 - After a successful Phase 1, you may receive a follow-up question for Phase 2.
 """
 
-# ── PROMPT FROZEN 2026-08-18 (tracker B-49) ────────────────────────────────
-# The instruction text below and in config/environment_backends.yaml is frozen.
-# No new guidance rule goes in without a decision recorded on B-49, because this
+# ── PROMPT FREEZE LIFTED 2026-08-18 (tracker B-49) ─────────────────────────
+# Lifted on the same day it was set, for the accuracy fix in B-53: the atscale
+# instruction claimed list_models "names every dimension and metric", and it
+# names none of them, so an agent was being told its 1-coin call had finished a
+# job it had not started. The bar the freeze was protecting still stands, and
+# what changed is only its scope: correcting a false statement about what a tool
+# returns is not a new guidance rule, and does not need a B-49 decision.
+#
+# No NEW guidance rule goes in without a decision recorded on B-49, because this
 # family has cost two self-inflicted defects already — B-42 was a rule invented
 # to repair B-38, and B-47 was the un-narrowed half of B-38 left in one arm — and
 # because a prompt that keeps growing makes the framework, not the semantic

@@ -3511,3 +3511,40 @@ crypto_0818_atscale 16/20, crypto_0818_raw 17/20, frozen atscale 10/11, frozen r
 out, which is why guidance rules keep landing behaviourally without converting: the task was
 already lost. It is roughly symmetric, so it may not move lift directly, but it is what makes
 lift unmeasurable at n=1. Not a prompt change, so the freeze does not block work on it.
+
+### explore_columns filters exposed, and the list_models claim corrected, 2026-08-18 (B-52, B-53)
+
+Not a model change — a harness and instruction change, recorded here because it
+alters what the atscale agent does and therefore what every atscale number after
+this date means.
+
+`explore_columns` has always accepted `folder`, `role` and `column_group`
+filters, and `list_models`' own Next Steps text tells the agent to use them, but
+our wrapper passed only `search_terms`. So the agent had to guess wording against
+a literal substring matcher when a folder name it had already been handed would
+fetch the same slice exactly — the mechanism behind the 13–25% of
+`explore_columns` calls that returned nothing (Q-16). Measured on
+crypto_exchange, all at the same 1 coin: `folder="PnL"` 6 columns in 978 chars,
+`column_group="Order"` 17 in 3,955, `role="measure"` all 116 in 30.5k. The three
+scopes combine with each other; `search_terms` is model-wide and the server
+refuses to combine it with a scope.
+
+The instruction claimed `list_models` "names every dimension and metric in the
+model — read it FIRST, and then search only for a concept you did not already see
+there". It names none: the scoped output is 2,145 chars for crypto_exchange and
+1,864 for ETF, carrying the fully-qualified table name, counts, 41 folder names
+and the column_groups map. The 19-of-229 and 8-of-387 apparent hits are columns
+whose name happens to equal a folder name. So the second half of that rule asked
+the agent to diff its search list against information it never received. It now
+describes what the call is for and directs the agent to use the folder list as an
+index.
+
+The **B-49 prompt freeze was lifted** for this, one day after being set. The
+scope of the lift is narrow and is recorded in `system_agent/agent.py`:
+correcting a false statement about what a tool returns is not a new guidance
+rule. The bar for new rules is unchanged.
+
+Consequence for measurement: the frozen-prompt validation numbers on B-37, B-41
+and B-49 were measured against the pre-lift text. Nothing has been run since
+these changes, so the projected coin savings on B-51/B-52 remain projections from
+payload sizes, not observed results.
