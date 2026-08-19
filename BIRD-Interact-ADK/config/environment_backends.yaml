@@ -54,6 +54,19 @@ backends:
     # explore_columns" block, which is not the repair and costs a submit to
     # discover. Free — no coins, the response is already paid for.
     error_hints:
+      - match: No columns matched
+        hint: >-
+          That coin bought nothing, so change the SHAPE of the next search rather than repeating it.
+          Matching is literal substring, so an empty result means this exact wording appears in no
+          column name or description - and firing four synonyms of the same wrong word costs another
+          full coin and returns empty just as fast (measured: 'organ needed'/'needed organ'/'recipient
+          organ needed'/'target organ' in one call, all empty). The usual cause is your vocabulary,
+          not a gap in the model: it says 'Match Status', not 'transplant status'. So DROP a word
+          instead of adding one - search the single most distinctive noun ('status', 'locus',
+          'urgency') rather than a qualified phrase - or stop searching and read the model's own
+          inventory, since list_models already names every dimension and metric and browsing a
+          folder/role/column_group returns a whole group for the same 1 coin. Never spend a third
+          call on further rewordings of a term that has already come back empty twice.
       - match: could not find correct column to sort by
         hint: >-
           The sort key is not in your SELECT list. If the question asks for that value, just add it
@@ -92,6 +105,21 @@ backends:
           SELECT t."X", t.risk FROM (SELECT "X", CASE WHEN "Y" >= 80 THEN 'a' ELSE 'b' END AS risk
           FROM <model>) t. Do NOT add a GROUP BY and do NOT wrap the column in an aggregate - the
           message names grouping, but grouping is not the problem and adding it changes your rows.
+      - match: window functions are not allowed in GROUP BY
+        hint: >-
+          You cannot GROUP BY a column whose definition contains a window function. Your statement
+          is folded into one cube query, which substitutes the window expression back into the
+          GROUP BY - and NO amount of extra nesting hides it (verified live at two and three
+          levels). So the ROW_NUMBER-over-a-counted-population trick can produce a per-row bucket,
+          but it can never be grouped. Two ways out. (a) EQUAL-WIDTH bins, which need no window at
+          all: put a CASE over the raw value inside the derived table and group by its alias
+          outside - SELECT bucket, COUNT(x) FROM (SELECT "X" AS x, CASE WHEN "V" < 0.2 THEN 1 WHEN
+          "V" < 0.4 THEN 2 ELSE 3 END AS bucket FROM <model>) t GROUP BY bucket - verified working.
+          (b) EQUAL-COUNT quantiles, which this interface cannot compute in SQL at all: fetch the
+          per-row values with run_query, bucket and aggregate them yourself, then submit the
+          answer as assembled literal rows (SELECT 1 AS bucket, 198 AS n UNION ALL SELECT 2, 188).
+          These give DIFFERENT answers, so if the question says 'divide into 5 groups' without
+          saying which, ask the user before choosing.
       - match: aggregate functions are not allowed
         hint: >-
           Move the condition into a HAVING clause inside the derived table that computes the
@@ -155,12 +183,22 @@ backends:
           searching the concept's own words.
       - match: '] not found'
         hint: >-
-          The bracketed name does not resolve at that point in the query. Two causes, and the error
-          text is the same for both. (a) If it is an ALIAS you introduced in an inner derived table,
-          the outer level cannot aggregate it — keep the measure's original name in the inner SELECT
-          instead. (b) Otherwise it is a column name that does not exist, almost always a
+          The bracketed name does not resolve at that point in the query. Three causes, and the
+          error text is the same for all of them. (a) If it is an ALIAS you introduced in an inner
+          derived table, the outer level cannot aggregate it — keep the measure's original name in
+          the inner SELECT instead. (b) It may be a column name that does not exist, a
           plausible-sounding invention rather than a name you actually read (e.g. "Fund Ticker" /
           "Fund Name" when the model publishes the ticker under a different attribute entirely).
+          (c) Or it is a GROUP HEADING rather than a column. explore_columns prints its results
+          under "## <name>" lines, and each of those names the column GROUP the columns beneath it
+          belong to — a heading is never selectable. Measured over a full 8-database run, 14 of the
+          27 failures of THIS error were exactly that: "Household", "Market", "Buyer", "Platform",
+          each a heading the agent had genuinely just read, so "only use a name you actually saw"
+          does not protect you here. A heading is the most tempting wrong answer on the page,
+          because it is usually named after the very entity the question asks you to count. To
+          COUNT entities, search for a published count measure ("<entity> count"); to LIST or group
+          them, use the identifier attribute. Households are counted by "Household Count" and
+          identified by "House Number" — neither is the "## Household" heading sitting above them.
           Never compose a column name from the question's wording. Phase 2 queries the SAME model as
           phase 1, so reuse the exact names you already saw; if you need a new one, explore_columns
           for the concept's words (descriptions are searched too) and copy it back verbatim.
