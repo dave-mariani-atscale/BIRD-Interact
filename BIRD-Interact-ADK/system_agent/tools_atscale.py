@@ -159,9 +159,10 @@ async def explore_columns(
     that does not exist is called out in a warning and does not suppress the
     others, so an uncertain name is safe to include.
 
-    You cannot combine search_terms with a structural filter — search_terms is
-    always model-wide, and the server rejects the pair rather than intersecting
-    it. Pick one per call: a scope you can name, or a keyword sweep.
+    You CAN pass search_terms together with a scope, and the result is the UNION:
+    the whole scope, plus everything the terms match anywhere in the model. It
+    does NOT narrow the search to the scope. Use it to get a folder you can name
+    and the stragglers you can only describe in one coin.
 
     WHEN YOU USE search_terms, CAST A WIDE NET IN ONE CALL. Terms are OR'd and
     a term that matches nothing is harmless — measured, four real terms plus ten
@@ -177,7 +178,8 @@ async def explore_columns(
     Args:
         search_terms: Keywords, each matched as one phrase, OR'd together and
             searched model-wide. Pass many, e.g. ["market impact cost",
-            "limit price", "order id"]. Cannot be combined with the three below.
+            "limit price", "order id"]. Can be combined with the three below;
+            the results are unioned, not narrowed.
         folder: Folder names from list_models, OR'd, e.g. ["PnL", "Spread"].
             Case-insensitive. Pass every folder the question needs.
         role: Any of "dimension", "measure", "calculation_group", OR'd.
