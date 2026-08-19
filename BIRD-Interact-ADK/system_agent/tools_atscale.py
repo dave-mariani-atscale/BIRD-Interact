@@ -137,9 +137,9 @@ async def list_models(tool_context: ToolContext) -> str:
 
 async def explore_columns(
     search_terms: Optional[List[str]] = None,
-    folder: Optional[str] = None,
-    role: Optional[str] = None,
-    column_group: Optional[str] = None,
+    folder: Optional[List[str]] = None,
+    role: Optional[List[str]] = None,
+    column_group: Optional[List[str]] = None,
     tool_context: Optional[ToolContext] = None,
 ) -> str:
     """Find the semantic model's columns (dimensions/metrics), by folder/role/
@@ -147,9 +147,17 @@ async def explore_columns(
     column_group. Cost: 1 bird-coin per call, whatever you pass — so pass a lot.
 
     PREFER THE STRUCTURAL FILTERS when you know what you want: list_models gives
-    you the model's folder names and its column_group list, and `folder="PnL"`
+    you the model's folder names and its column_group list, and folder=["PnL"]
     then returns that whole folder exactly, with no guessing. folder, role and
     column_group combine with each other to narrow further.
+
+    NAME EVERY FOLDER YOU NEED IN ONE CALL. Each takes a LIST, the members are
+    OR'd, and the call costs the same coin whether you pass one name or six — so
+    folder=["PnL", "Spread", "Order Counts"] is one coin where three separate
+    calls are three. A question's dimensions and its metrics usually live in
+    different folders, so batching is the normal case, not the exception. A name
+    that does not exist is called out in a warning and does not suppress the
+    others, so an uncertain name is safe to include.
 
     You cannot combine search_terms with a structural filter — search_terms is
     always model-wide, and the server rejects the pair rather than intersecting
@@ -170,18 +178,21 @@ async def explore_columns(
         search_terms: Keywords, each matched as one phrase, OR'd together and
             searched model-wide. Pass many, e.g. ["market impact cost",
             "limit price", "order id"]. Cannot be combined with the three below.
-        folder: One folder name from list_models, e.g. "PnL". Case-insensitive.
-        role: "dimension", "measure" or "calculation_group". Case-insensitive;
-            no other value matches anything. Most models have no calc groups.
-        column_group: One column_group name from list_models, e.g. "Order" —
+        folder: Folder names from list_models, OR'd, e.g. ["PnL", "Spread"].
+            Case-insensitive. Pass every folder the question needs.
+        role: Any of "dimension", "measure", "calculation_group", OR'd.
+            Case-insensitive; any other value is rejected. Most models have no
+            calc groups.
+        column_group: column_group names from list_models, OR'd, e.g. ["Order"] —
             either side of its column_groups map works (a dimension group or a
             fact dataset). Case-insensitive.
 
     Returns:
-        Matching columns with descriptions, grouped by column_group. A folder,
-        role or column_group value that does not exist returns "No columns
-        matched the given filters", which is indistinguishable from a real empty
-        result — so copy those names from list_models rather than guessing them.
+        Matching columns with descriptions, grouped by column_group. An
+        unrecognised folder or column_group name is reported in a warning above
+        the results it did find, and a scope that exists but holds nothing says
+        so in different words — so read the first line before concluding the
+        model lacks a concept.
     """
     domain, err = _domain_or_error(tool_context)
     if err:
@@ -195,6 +206,9 @@ async def explore_columns(
         search_terms = [search_terms]
     args = {"search_terms": search_terms, "folder": folder, "role": role,
             "column_group": column_group}
+    # The three scopes take a list or a bare string on the server since
+    # 2026-08-18 (tracker B-54), so a model emitting either is fine and nothing
+    # needs coercing here.
     # Omit rather than send nulls, and answer a no-criteria call locally: the
     # server rejects one ("requires at least one filter"), and the coin is
     # already deducted by then, so there is nothing to gain from the round trip.
