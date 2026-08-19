@@ -135,23 +135,50 @@ async def list_models(tool_context: ToolContext) -> str:
     return _scope_to_domain(await _call("list_models", {}), domain)
 
 
-async def explore_columns(search_terms: List[str], tool_context: ToolContext) -> str:
-    """Search the semantic model's columns (dimensions/metrics) by keyword.
-    Call repeatedly with different search terms as needed — this does not
-    return everything at once. Returns descriptions grouped by column_group.
-    Cost: 1 bird-coin.
+async def explore_columns(
+    search_terms: Optional[List[str]] = None,
+    folder: Optional[str] = None,
+    role: Optional[str] = None,
+    column_group: Optional[str] = None,
+    tool_context: Optional[ToolContext] = None,
+) -> str:
+    """Find the semantic model's columns (dimensions/metrics), by folder/role/
+    column_group, by keyword, or both together. Returns descriptions grouped by
+    column_group. Cost: 1 bird-coin per call, whatever you pass — so pass a lot.
 
-    Not fuzzy: a term must appear verbatim and in order in a column's name or
-    description. "fund years" matches "Fund Years With Return Data"; "years
-    fund" and "return years" match nothing. Pass several one- or two-word terms
-    rather than one long phrase, and on an empty result drop a word, never add
-    one.
+    PREFER THE STRUCTURAL FILTERS when you know what you want: list_models gives
+    you the model's folder names and its column_group list, and `folder="PnL"`
+    then returns that whole folder exactly, with no guessing. folder, role and
+    column_group combine with each other to narrow further.
+
+    You cannot combine search_terms with a structural filter — search_terms is
+    always model-wide, and the server rejects the pair rather than intersecting
+    it. Pick one per call: a scope you can name, or a keyword sweep.
+
+    WHEN YOU USE search_terms, CAST A WIDE NET IN ONE CALL. Terms are OR'd and
+    a term that matches nothing is harmless — measured, four real terms plus ten
+    nonsense terms return byte-identical output — so put every wording of every
+    concept you still need into a single call rather than paying a coin per
+    guess. Searching one term per call is the most expensive habit available.
+
+    Breadth comes from the NUMBER of terms, never from shortening them. Matching
+    is an ordered substring test against a column's name and description, so a
+    short generic word matches far too much: ["order id"] returns 3 columns,
+    ["id"] returns 89. Keep every term specific and add more of them.
 
     Args:
-        search_terms: Short keywords, e.g. ["sales price", "state", "year"].
+        search_terms: Keywords, each matched as one phrase, OR'd together and
+            searched model-wide. Pass many, e.g. ["market impact cost",
+            "limit price", "order id"]. Cannot be combined with the three below.
+        folder: One folder name from list_models, e.g. "PnL". Case-insensitive.
+        role: Either "measure" or "dimension" — no other value matches anything.
+        column_group: One column_group name from list_models, e.g. "Order".
 
     Returns:
-        Matching columns with descriptions, grouped by column_group.
+        Matching columns with descriptions, grouped by column_group. A folder,
+        role or column_group value that does not exist returns "No columns
+        matched the given filters", which is indistinguishable from a real empty
+        result — so copy those names from list_models rather than guessing them.
     """
     domain, err = _domain_or_error(tool_context)
     if err:
@@ -163,7 +190,18 @@ async def explore_columns(search_terms: List[str], tool_context: ToolContext) ->
     # returns 1,335 with the right column first. Coerce to a single phrase.
     if isinstance(search_terms, str):
         search_terms = [search_terms]
-    return await _call("explore_columns", {**domain, "search_terms": search_terms})
+    args = {"search_terms": search_terms, "folder": folder, "role": role,
+            "column_group": column_group}
+    # Omit rather than send nulls, and answer a no-criteria call locally: the
+    # server rejects one ("requires at least one filter"), and the coin is
+    # already deducted by then, so there is nothing to gain from the round trip.
+    args = {k: v for k, v in args.items() if v}
+    if not args:
+        return ("No search criteria given, so nothing was searched. Pass EITHER "
+                "search_terms (many, each specific) OR a scope — folder / role / "
+                "column_group, with folder and column_group names taken from "
+                "list_models.")
+    return await _call("explore_columns", {**domain, **args})
 
 
 async def focus_columns(columns: List[str], tool_context: ToolContext) -> str:
