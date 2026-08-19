@@ -370,3 +370,19 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Organ Transplant
+      fake_account:
+        # Deployed 2026-08-20 with `sml-cli atscale-deploy --catalog-name=
+        # bird_atscale_models_catalog_main`, the suffixed name passed verbatim.
+        # Schema read back from list_models after the deploy, which returned ten
+        # models (the Q-17b health gate) rather than only succeeding. Note the
+        # model NAME is "Fake Account Detection", not the database name - it is
+        # named for what it models, and no dimension is named "Account" or
+        # "Platform" so an explore_columns heading cannot be mistaken for a
+        # column. 24 of its 30 tasks are Query-category and therefore eligible;
+        # the other 6 are Management (DDL/DML, including CREATE MATERIALIZED
+        # VIEW, ANALYZE and CREATE FUNCTION) and are filtered out - a read-only
+        # semantic layer structurally cannot serve them, so drop them from both
+        # arms when computing lift.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Fake Account Detection

@@ -23,6 +23,8 @@ still applies before carrying its workaround into a new model.
 | Q-21 | A bare SQL stat function (`MIN`/`MAX`/`AVG`) over a measure in a flat SELECT dies in query planning with `ExpandStatFunctions: assertion failed: We already handled attribute values`. | Force the natural row grain in an inner derived table, then aggregate outside it. Window aggregates are not an escape - `AVG(m) OVER ()` raises the same error. | Yes - 2026-08-12. |
 | Catalog-suffix | Deploying from Design Center appends the git branch to the catalog name (`_main`); `sml-cli atscale-deploy` uses `catalog.yml`'s name verbatim, which is unsuffixed. The two paths publish to different schemas, and every recorded run names the `_main` one. | Deploy through `scripts/deploy_models.sh`, which passes `--catalog-name=bird_atscale_models_catalog_main` so the CLI lands where Design Center did. Still read the schema back from `list_models` afterwards and make `config/environment_backends.yaml` match. | Yes - all models are published at `bird_atscale_models_catalog_main`. |
 | Deploy-remote | `sml-cli atscale-deploy` resolves the project by its git REMOTE url against repositories registered in AtScale, not by the local path, so it deploys what `origin` has. An uncommitted or unpushed change deploys the OLD model and reports `Deploy SUCCESSFUL`. Its `ATSCALE_API_URL` is also the SML public API (`local.atscaleinternal.com:3001`), not the engine API on `:10502` - the engine URL authenticates and then 404s hunting for the repository. | `scripts/deploy_models.sh` refuses to deploy on a dirty tree or a branch that differs from `origin`, and hardcodes the right API url. | Yes - 2026-08-12, first CLI deploy. |
+| Publish-timestamp | `data_type: timestamp` passes `sml-cli validate` but the engine rejects the whole catalog at publish with `400 Error occurred during schema publishing: Don't understand type TimeStamp`. The message names no column and no model, so in a shared repo it reads as a fault in whatever model you happen to be deploying - one `cross_border` column blocked every model's deploy. | Use `data_type: datetime` for every TIMESTAMP/DATETIME source. `fake_account` also casts `timestamptz` to plain `timestamp` in derived SQL and refuses to map `timestamptz` in its type prober, since `timestamptz` is not in the SML type table at all. | Yes - found and fixed 2026-08-20 (`cross_border/datasets/flow_fact.yml`). |
+| MDX-hierarchy-name | A `metric_calc` naming a hierarchy as `[Dim].[Dim]` instead of `[Dim].[Dim Hierarchy]` passes `sml-cli validate` - Layer 1 checks YAML shape, not expression contents - then fails the whole catalog's publish with `400 ... Hierarchy \`[X].[X]\` not found in <Model>`. Because a shared repo publishes every model together, it blocks every sibling too. | A hierarchy's `unique_name` is `<Dimension> Hierarchy`. `fake_account` generator gate G14 resolves every `[Measures].[...]` and `[Dim].[Hier]` reference in every `metric_calc` against what the model actually publishes. | Yes - found and fixed 2026-08-20 (`fake_account`). |
 
 ---
 
@@ -3223,3 +3225,138 @@ scope that touches the model, the outer scope only names columns.
 
 Worth filing against the engine separately: this is a folding defect, not a
 user error. The equivalent SQL runs fine on plain Postgres.
+
+---
+
+## fake_account (built 2026-08-20, prompt v5 + v6 addendum)
+
+Built unattended by a deterministic generator in
+`AtScaleInc/bird-atscale-models/fake_account/generator`. Rebuild with
+`generator/build.sh`; the emitted YAML is never hand-edited. Deployed as model
+**Fake Account Detection**, 126 metrics / 12 calculations / 11 dimensions /
+178 attributes over 4 datasets.
+
+**Answer-key firewall.** Mechanical, not by intention: `extract_brief.py`
+allowlists the permitted task fields, then asserts on its own output that no
+denied key and no SQL-shaped text appears in it. The model was built only from
+`brief/task_brief.json`. No gold SQL was read at any point.
+
+**Structure.** Eight source tables are exactly 1:1 with `accounts` on 670 rows,
+so they join into one wide fact — every attribute then has a direct relationship
+to every dimension, which removes the conformance-failure class before it can
+occur. Four of those tables keep everything in a JSONB blob; they are flattened
+with `jsonb_extract_path_text` rather than the `->>` operator, on the theory that
+the engine re-parses derived SQL and a function survives a round trip more
+reliably than an operator. Confirmed via `get_outbound_queries`: the engine
+emitted the derived SQL verbatim, comments included.
+
+`account_clusters` is a genuine many-to-many (670 accounts across 200 clusters,
+each account in 1–3). Modelled as a **link fact** at membership grain, not an
+M2M bridge dimension, because a bridge between a measure's dataset and a
+dimension is not an accepted query path and falls back to silently-empty
+results. Cluster-level rollups over account scores live in `Cluster Member
+Measures` and count an account once per cluster; every one says so.
+
+**What this data does to the knowledge base.** More consequential here than the
+formulas, and all of it is in the published descriptions:
+
+- Several KB indexes are **not bounded to 0–1**. TEI reaches 3.56 (`proxy count
+  divided by 10`, but the column reaches 100), coordinated activity 3.33,
+  coordinated bot risk 34.6, and Network Trust Score is mostly *negative*
+  because it multiplies by `(1 - CBR)`. A 0.8-style cutoff selects most of the
+  population, not a tail — TEI > 0.8 is 482 of 564.
+- **Inputs are missing for ~100 accounts per column and the gaps do not
+  overlap**, so composite coverage falls to 283 of 670 for ARS and 390 for SRS.
+  Each index publishes a support-set count; six ship a `(Missing Inputs As Zero)`
+  twin at *both* row grain and aggregate grain.
+- **Three degeneracies**, documented rather than left to read as signal:
+  `session_count` peaks at exactly 1000, so KB 77's `session count > 1000` branch
+  selects zero accounts and the concept is decided entirely by its posting
+  branch; every `monitoring` snapshot is over a year old, so KB 86's 90-day and
+  KB 12's 180-day inactivity tests are true for all 569 accounts that have one;
+  no cluster carries the role `Amplifier`, so KB 19's Amplification Network
+  selects nothing.
+- **Two KB entries disagree with the live data, and live wins.** KB 29 describes
+  bot likelihood as 0–100 with a cutoff at 70 (column is 0–1); KB 72 states a
+  reputation cutoff of 30 (column is 0–1).
+- **`CAS` names two different KB concepts** — Content Authenticity Score (KB 1)
+  and Coordinated Activity Score (KB 6). Each KB entry's own
+  `children_knowledge` decides which its formula means; both ship under
+  distinguishing names.
+
+**Competing readings** ship as asymmetrically named twins, and each bare
+reading's description carries the twin's name with **both live counts** plus an
+explicit statement that its plainer name does not settle the question: TEI
+(482 vs 447 above 0.8), Total Post Frequency (269 vs 664 above 50), NIC (26 vs 38
+High-Impact Amplifiers), TPDS (computed for 670 vs recorded for 583), Dormant Bot
+(169 vs 49).
+
+**Withheld.** Masked domain concepts stating numeric cutoffs — KB 10, 12, 16, 41,
+closed over `children_knowledge` to 42, 46, 61, 63, 67, 69. Their components ship,
+each naming the concept and carrying an ask-the-user trigger that specifies the
+*shape* of answer to request (closed question, exact cutoff, exact label text,
+their spelling verbatim, re-ask rather than choose). Masked
+`calculation_knowledge` — the KB-named formulas TEI, BBI, NIC, CIS, LBS, KB 82 —
+does ship under its own name.
+
+**Not computable from this warehouse at all**, said plainly rather than
+approximated: KB 52 MACI and KB 56 NSI (no pairwise correlation or
+time-synchronisation data), KB 57 CAE (no reshare count), KB 53 RVI per account
+(no reputation history — shipped instead as a cross-account coefficient of
+variation, stated as such), KB 55 BCS and KB 58 APS (depend on RVI and on an
+absent anomaly count), KB 54 CDPS (no post-time entropy; the three candidate
+columns are named and routed to ask-the-user).
+
+**Dialect gaps.** `NTILE` is rejected on the inbound interface, so KB 70's TEI
+quartile and KB 79's risk category are precomputed as attributes. Percentile
+metrics ship as correct SML and resolve by name (`<name>_instance_0.5`), then
+error at query time with `Quantile function 'QuantileRawToSketchFunction' is not
+supported by dialect 'Postgresql-9.4.5'` — verified live. Task 24's follow-up
+asks for a median and task 18's for a 95th percentile, so those two follow-ups
+are a **capped ceiling on both arms**, not a model defect.
+
+### Defects the gates caught, worth recording
+
+- **Five published counts had been guessed rather than measured.** The
+  warehouse dry-run gate pins every count a description quotes against the exact
+  column it sits on and failed on all five. A wrong count is worse than a typo:
+  the agent quotes those numbers into its clarifying question, so a wrong count
+  becomes a wrong question.
+- **A convenience aggregate that returned the wrong population.** `Content Farm
+  Account Count` was a `count non-null` over a Yes/No column, so it returned 670
+  rather than 26 unless the caller first filtered the attribute — a plausible
+  wrong number with no error. Fixed structurally with 1-or-NULL indicator
+  columns summed, not by warning in the description.
+- **A share calc whose description was backwards.** `[Platform Record].[...].
+  [All]` clears only Platform's filter, so with Account Type also filtered the
+  denominator was all bot accounts (44/173 = 0.2543), not the platform's accounts
+  (44/149 = 0.2953). The expression passed `sml-cli`, passed deploy, and returned
+  a plausible number; only a live query against a hand computation caught it.
+  Renamed `Account Share By Platform Kind` and rewritten with both numbers.
+- **Two publish-blocking defects** now in the Workarounds table above
+  (Publish-timestamp, MDX-hierarchy-name). The first was a *sibling* model's
+  column blocking every model's deploy, with a 400 that named neither column nor
+  model.
+
+### Shared-gate corrections applied
+
+Three from the v6 addendum, applied to `utilities/` so every model gets them:
+the leakage gate and the masked-threshold gate now discover the brief by
+convention and treat a missing brief as a hard failure rather than a skip; the
+masked-threshold gate resolves the KB itself and refuses to run without it
+(without `--kb` the `calculation_knowledge` exemption is silently defeated and it
+reports leaks that do not exist); and the leakage gate takes an `--allow` JSON of
+triaged runs, each requiring a reason.
+
+`fake_account/generator/leakage_allow.json` records the one flagged six-word run
+judged legitimate — `deviation from established temporal activity patterns` is
+KB 50's own `description` field verbatim, and task 18 happens to name the concept
+the same way. Every other flagged run was reworded. A separate generator gate
+(G12) forbids the short question colloquialisms the six-word gate cannot see, and
+G13 asserts that no *required* discoverability probe contains one, so the
+discoverability gate can never end up enforcing a leak.
+
+**Still ungated:** `cybermarket_pattern` and `solar_panel` have no brief at
+either conventional path, so the question-leakage gate has never run on them.
+`archeology_scan`'s brief is in its own generator format and is covered by its
+own generator gate A10 instead.
