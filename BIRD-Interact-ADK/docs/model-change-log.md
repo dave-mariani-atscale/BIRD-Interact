@@ -3589,3 +3589,45 @@ was not already a column name.
 (organ_transplant rounds 6-8, households, labor_certification_applications,
 utilities). Deploying would publish those too, so it is left for a decision
 rather than done as a side effect of an ETF change.
+
+### Measured: the folder index works, and the agent spends the saving on more discovery, 2026-08-18
+
+crypto_exchange, atscale, n=2 (`crypto_folders_n2_atscale_run01/run02`, $8.32,
+Sonnet 5, gate passed, services restarted) against
+`crypto_0818_atscale_20260817_161538` as the before. Atscale only: the raw
+backend is not in `environment_backends.yaml`, `tools_atscale.py` is atscale-only
+and the `agent.py` edit was comment-only, so raw cannot have moved.
+
+What worked:
+
+| | before | after |
+|---|---|---|
+| `explore_columns` calls using `folder=` | 0 of 61 | **91 of 167** |
+| empty results | 13% | **5%** |
+| errored `run_query` per task | 0.75 | **0.45** |
+| spend that bought nothing | 25.5% | **21.8%** |
+
+What did not, and inverted instead:
+
+| | before | after |
+|---|---|---|
+| `explore_columns` calls per task | 3.05 | **4.17** |
+| schema discovery, coins/task | 4.5 | **5.7** |
+| schema discovery, share of budget | 27.1% | **33.6%** |
+| coins spent before the first query | 4.8 | **6.1** |
+
+Making discovery cheaper per call and more reliable made the agent do more of it.
+crypto has 41 folders, "fetch the folders the question touches" is easily four to
+six of them, and nothing caps the count — the standing "aim to be done with
+discovery inside about 4 coins" line is outweighed. Trial queries fell 4.0 → 3.2
+calls/task, so the spend moved out of probing and into exploring.
+
+Headline flat, as predicted before spending: **0.6100 and 0.5500, mean 0.5800**
+against 0.6000. The token risk flagged in the runner did not materialise —
+prompt tokens 6.12M/6.79M against 7.04M, cost $3.98/$4.34 against $4.32.
+
+The honest read is that per-call quality improved and volume ate it. Next step is
+a cap on how many folders to fetch before querying, not a revert.
+
+One call of 167 still attempted the illegal `search_terms` + scope combination
+and paid a coin for the refusal, so that bullet lands at roughly 99%.
