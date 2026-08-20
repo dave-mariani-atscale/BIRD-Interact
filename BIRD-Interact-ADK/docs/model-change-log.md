@@ -3467,7 +3467,28 @@ by hand, free of LLM calls:
    measure (Q-27).
 4. **Coverage** - one query per question shape.
 
-**What it found immediately, and why gate 3 has to exist.** `virtual_idol` passed
+**Final acceptance, all twelve models, all four gates:**
+
+| model | exactness | conformance | attribute-only | coverage |
+|---|---|---|---|---|
+| insider_trading | 120/120 | 4/4 | 78/78 | 6/6 |
+| museum_artifact | 98/98 | 7/7 | 78/78 | 6/6 |
+| polar_equipment | 126/126 | 3/3 | 105/105 | 6/6 |
+| cold_chain_pharma_compliance | 70/70 | 7/7 | 78/78 | 6/6 |
+| disaster_relief | 108/108 | 8/8 | 91/91 | 6/6 |
+| hulushows | 125/125 | 9/9 | 171/171 | 6/6 |
+| mental_health | 158/158 | 19/19 | 276/276 | 6/6 |
+| planets_data | 126/126 | 7/7 | 78/78 | 6/6 |
+| reverse_logistics | 109/109 | 9/9 | 91/91 | 6/6 |
+| robot_fault_prediction | 141/141 | 6/6 | 91/91 | 6/6 |
+| sports_events | 154/154 | 28/28 | 105/105 | 6/6 |
+| virtual_idol | 145/145 | 135/135 | 78/78 | 6/6 |
+
+Every aggregate metric in every model is exact-equal to the same aggregate
+computed directly on that metric's own derived-dataset SQL in Postgres. Three
+models needed a structural fix to reach it - see the mechanism section below.
+
+**What gate 3 found immediately, and why it has to exist.** `virtual_idol` passed
 exactness 143/143 and conformance 34/34 and then failed the attribute-only
 projection on **60 of 78 dimension pairs**. A measure names the fact, so the
 planner has a path; take the measure away and a query naming two entities has to
@@ -3547,9 +3568,15 @@ How it was pinned down, in order:
    moved onto dimension-only twins of their facts - same SQL, no outgoing
    relationships - and all three edges went back onto the facts.
 
-What remains unfixable in `mental_health` is a **degenerate profile on dataset A
-paired with a degenerate profile on dataset B**. A degenerate dimension is inlined
-on its own dataset, and it has to stay on the dataset whose measures it slices, so
-two profiles with no shared fact have no path. That is a property of a
-six-different-grains source schema, not a modelling error - and it is the argument
-for the wide-fact rule the build prompt already states.
+Result: **276/276**, from 87. Every one of the 24 dimensions pairs with every
+other, measure-free.
+
+Worth recording that the prediction going into step 6 was wrong. A degenerate
+profile on dataset A paired with a degenerate profile on dataset B was expected to
+stay unfixable - a degenerate dimension is inlined on its own dataset and has to
+stay where the measures it slices live, so two profiles with no shared fact look
+like they can have no path. They do have one: with the entity dimensions hosted on
+join-free twins, the planner routes profile-on-A to profile-on-B THROUGH the entity
+dimensions that connect their two facts. The offending edges were the only thing
+stopping it. So the rule is not "profiles across facts cannot pair" but simply the
+host rule above, and fixing the host rule fixes the whole matrix.
