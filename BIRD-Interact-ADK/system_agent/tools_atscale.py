@@ -121,10 +121,46 @@ def _scope_to_domain(raw: str, domain: dict) -> str:
     return "\n".join([head, *kept, *tail])
 
 
+# Stand-in for the planned server-side scoped list_models response
+# (docs/mcp-column-index-spec.md). The server's own Next Steps still tell the
+# caller to make the wide explore_columns call that the inlined Column Index
+# makes redundant, so the whole block is replaced, not patched — server-side
+# text is the strongest behavioural lever on record (B-56) and a contradiction
+# here would undo the index. Step 3 is the server's current text verbatim.
+# Retire all of this when the server ships the spec.
+_NEXT_STEPS = """## Next Steps
+1. Shortlist from the Column Index above — it already names every column in this model. Then `focus_columns` ONCE on every name you consider a candidate; that is where descriptions, sampled values, grain and units come from, and a name alone is not enough to put a column in a query.
+2. `explore_columns` is for what the index cannot tell you: `search_terms` (multi-word, several per call) match description text, so a business concept or KB rule is findable even when no column name suggests it, and `folder`/`column_group` scopes fetch a small named slice at full detail. A scope and terms in one call return the union of the two.
+3. Before querying, verify that each measure's `column_group` appears in the model's `column_groups` for your chosen dimension. Calculations are carved out of that rule: `Calculations` is a discovery bucket rather than a fact dataset, and `focus_columns` keeps reporting an empty `column_group` for one. A calculation's conformance is a property of the measures inside its expression — pair it with a dimension those measures conform to, and never read the empty value as conforming to nothing."""
+
+_COLUMN_INDEX_HEADER = (
+    "## Column Index (names only)\n"
+    "Every column in this model — the complete inventory. There is nothing "
+    "findable by name that is not listed here.\n\n"
+)
+
+
+def _with_column_index(scoped: str, index: str) -> str:
+    """Append the whole-model names index to the scoped list_models output and
+    swap in the matching Next Steps. On any sign the index fetch failed, return
+    the scoped output untouched — a missing index must never break list_models."""
+    if index.startswith("Error calling") or "column_name" not in index:
+        logger.warning("list_models: column index fetch failed; returning without index")
+        return scoped
+    head, sep, _ = scoped.partition("\n## Next Steps")
+    body = head.rstrip() + "\n\n" + _COLUMN_INDEX_HEADER + index.strip()
+    if not sep:
+        logger.warning("list_models: no Next Steps section found; appending index only")
+        return body
+    return body + "\n\n" + _NEXT_STEPS
+
+
 async def list_models(tool_context: ToolContext) -> str:
-    """List the semantic model available for this task (dimensions, hierarchies,
-    metrics). Use this first to see the model's shape before exploring columns.
-    Cost: 1 bird-coin.
+    """List the semantic model available for this task: its shape, the exact
+    catalog/schema/table name your FROM clause needs, and a Column Index naming
+    EVERY column in the model (names only, grouped by column_group). Use this
+    first; after it, discovery means focus_columns on your shortlist, not
+    searching. Cost: 1 bird-coin.
 
     Returns:
         The model as text. Query it under exactly the schema/table shown here.
@@ -132,7 +168,12 @@ async def list_models(tool_context: ToolContext) -> str:
     domain, err = _domain_or_error(tool_context)
     if err:
         return err
-    return _scope_to_domain(await _call("list_models", {}), domain)
+    scoped = _scope_to_domain(await _call("list_models", {}), domain)
+    index = await _call(
+        "explore_columns",
+        {**domain, "role": ["dimension", "measure"], "detail": "names"},
+    )
+    return _with_column_index(scoped, index)
 
 
 async def explore_columns(
@@ -143,56 +184,29 @@ async def explore_columns(
     detail: Optional[str] = None,
     tool_context: Optional[ToolContext] = None,
 ) -> str:
-    """Find the semantic model's columns (dimensions/metrics), by folder/role/
-    column_group, by keyword, or both together. Returns descriptions grouped by
-    column_group. Cost: 1 bird-coin per call, whatever you pass — so pass a lot.
+    """Search the model's column DESCRIPTIONS for a concept, or fetch a small
+    named slice (folder/column_group) at full detail. For column NAMES you do
+    not need this tool at all: list_models' Column Index already lists every
+    column in the model. Cost: 1 bird-coin per call, whatever you pass.
 
-    PREFER THE STRUCTURAL FILTERS when you know what you want: list_models gives
-    you the model's folder names and its column_group list, and folder=["PnL"]
-    then returns that whole folder exactly, with no guessing. folder, role and
-    column_group combine with each other to narrow further.
+    The two uses that earn the coin: (1) a business concept, KB rule or screen
+    you cannot match to any name in the index — search_terms match description
+    text, so the definition and the implementing column come back together;
+    (2) one folder or the Calculations bucket at full detail instead of
+    focusing its columns name by name.
 
-    NAME EVERY FOLDER YOU NEED IN ONE CALL. Each takes a LIST, the members are
-    OR'd, and the call costs the same coin whether you pass one name or six — so
-    folder=["PnL", "Spread", "Order Counts"] is one coin where three separate
-    calls are three. A question's dimensions and its metrics usually live in
-    different folders, so batching is the normal case, not the exception. A name
-    that does not exist is called out in a warning and does not suppress the
-    others, so an uncertain name is safe to include.
+    BATCH EVERYTHING INTO ONE CALL. Every scope takes a LIST whose members are
+    OR'd, terms are OR'd, and a scope plus search_terms returns the UNION of
+    the two — the whole scope plus everything the terms match anywhere in the
+    model, never a narrowed search. A folder name that does not exist, or a
+    term that matches nothing, is harmless: it is reported in a warning and
+    does not suppress the rest. Paying a coin per guess is the most expensive
+    habit available here.
 
-    You CAN pass search_terms together with a scope, and the result is the UNION:
-    the whole scope, plus everything the terms match anywhere in the model. It
-    does NOT narrow the search to the scope. Use it to get a folder you can name
-    and the stragglers you can only describe in one coin.
-
-    ON A BROAD CALL, ASK FOR NAMES ONLY. detail="names" returns every matching
-    column name under its group heading, with the kind of column that group
-    holds, and no descriptions — the whole crypto catalog is 7,030 chars that
-    way against 66,651, and a four-folder batch with six terms is 7,184 against
-    92,685. Reach for it whenever you are casting wide or cannot predict how
-    much a call will return, then focus_columns the few names you shortlist.
-    Keep the default full detail when the scope is already narrow, such as one
-    folder you are confident about or the Calculations bucket, because there the
-    descriptions are what you came for and they are cheap.
-
-    A NAME ALONE IS NOT ENOUGH TO QUERY ON. Never write a name from a names-only
-    list into a query without focus_columns first. Same-sounding names differ in
-    kind and the name does not say which: "Realized PnL" is a dimension
-    attribute and "Total Realized PnL" is the measure, and aggregating the
-    attribute returns its members instead of a number with no error at all. The
-    group heading tells you the kind; focus_columns tells you the population,
-    the units, and which of two similar siblings the question means.
-
-    WHEN YOU USE search_terms, CAST A WIDE NET IN ONE CALL. Terms are OR'd and
-    a term that matches nothing is harmless — measured, four real terms plus ten
-    nonsense terms return byte-identical output — so put every wording of every
-    concept you still need into a single call rather than paying a coin per
-    guess. Searching one term per call is the most expensive habit available.
-
-    Breadth comes from the NUMBER of terms, never from shortening them. Matching
-    is an ordered substring test against a column's name and description, so a
-    short generic word matches far too much: ["order id"] returns 3 columns,
-    ["id"] returns 89. Keep every term specific and add more of them.
+    Matching is an ordered substring test against a column's name and
+    description, so keep terms specific and multi-word: ["order id"] returns 3
+    columns, ["id"] returns 89. Breadth comes from the NUMBER of terms, never
+    from shortening them.
 
     Args:
         search_terms: Keywords, each matched as one phrase, OR'd together and
