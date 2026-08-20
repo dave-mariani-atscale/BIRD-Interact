@@ -108,7 +108,11 @@ def close(got, want):
 # --------------------------------------------------------------------------- #
 def gate_exactness(spec, model, cur):
     """Every aggregate metric, model vs warehouse."""
-    todo = [m for m in spec.METRICS if m["calculation_method"] in PG_AGG]
+    # A metric the spec deliberately hides is not queryable by name, and that is
+    # the point of hiding it - a redundant twin kept for its description. Not a
+    # defect, so it is not a gate failure.
+    todo = [m for m in spec.METRICS
+            if m["calculation_method"] in PG_AGG and not m.get("is_hidden")]
     want = {}
     for m in todo:
         ds, col = spec.DATASETS[m["dataset"]], m["column"]

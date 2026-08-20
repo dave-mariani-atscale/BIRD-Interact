@@ -27,6 +27,7 @@ still applies before carrying its workaround into a new model.
 | MDX-hierarchy-name | A `metric_calc` naming a hierarchy as `[Dim].[Dim]` instead of `[Dim].[Dim Hierarchy]` passes `sml-cli validate` - Layer 1 checks YAML shape, not expression contents - then fails the whole catalog's publish with `400 ... Hierarchy \`[X].[X]\` not found in <Model>`. Because a shared repo publishes every model together, it blocks every sibling too. | A hierarchy's `unique_name` is `<Dimension> Hierarchy`. `fake_account` generator gate G14 resolves every `[Measures].[...]` and `[Dim].[Hier]` reference in every `metric_calc` against what the model actually publishes. | Yes - found and fixed 2026-08-20 (`fake_account`). |
 | Engine-payload-413 | The API posts the **whole compiled catalog** to the engine in one request, and pekko-http caps an incoming body at 8 MiB. At 22 semantic models `bird_atscale_models_catalog` compiles to ~9.8 MB and the publish dies with `413 ... EntityStreamSizeException: incoming entity size (9818195) exceeded size limit (8388608 bytes)`. Nothing before deploy sees it, and it scales with the number of models in the repo, so it will recur. | Raise the engine's limit rather than splitting the catalog (splitting changes the schema name and invalidates every `domains:` entry). `container-local-tooling/devel/docker/compose/docker-compose.yml` now sets `JDK_JAVA_OPTIONS` on the engine service to `-Dpekko.http.server.parsing.max-content-length=${ATSCALE_ENGINE_MAX_CONTENT_LENGTH:-32m}`, repeating the image's own `-Xms2G -Xmx4G -XX:NativeMemoryTracking=summary` because the variable REPLACES rather than appends. `docker compose up -d --no-deps engine` then a `/ping` check. | Yes - found 2026-08-19 at 22 models. |
 | MDX-POWER | `power(x, 4)` in a `metric_calc` passes `sml-cli validate` and then fails the whole catalog's publish with `400 ... Calculated measure <name> is not valid as either MDX or DAX. MDX error: end of input expected`. Uppercase `POWER` fails identically; `ABS`, `SQRT` and `LOG10` all publish fine, so it is this function, not function calls in general. Because a shared repo publishes every model together, one bad expression made all 22 undeployable. | Write the exponent out as repeated multiplication, which parses on both sides of the MDX/DAX fence. Fixed 2026-08-19 in `planets_data/calculations/group_stellar_luminosity_pooled.yml`; no other calculation in the repo calls POWER. | Yes. |
+| Q-27b | **A dataset that HOSTS a dimension's key level must not also carry a relationship to a DIFFERENT dimension.** If it does, no attribute-only query can pair that hosted dimension with anything: `SELECT "Patient", "Facility"` dies with `query planning: assertion failed: No candidate paths found for an attribute` while `SELECT "Patient", "Facility", "Assessment Count"` returns rows. Measured, not inferred: dropping two such edges in `mental_health` moved it from 87 to 136 of 276 dimension pairs, and the pairs that came good were exactly the ones those edges fed. `sports_events` and `virtual_idol` both pass 100% of pairs and neither has an edge of that shape. Invisible to `sml-cli validate`, to deploy, and to a conformance check that pairs a MEASURE with the attribute - and BIRD questions ask for labels far more often than aggregates. | Separate the dimension table from the fact: host the dimension on its own twin of the projection (same SQL, no outgoing relationships) and leave the foreign keys and the measures on the fact. `mental_health` does this for its five entity dimensions. Where a dimension is reachable only from ONE fact, carrying the missing key down onto the other facts is enough instead - `sports_events` propagated the circuit key onto all seven race-keyed facts, and `virtual_idol` put all thirteen chain keys on all nine downstream datasets. Check with `scripts/acceptance_gates.py --gates 3`. | Yes - found and characterised 2026-08-19. |
 
 ---
 
@@ -3514,3 +3515,41 @@ ships the disagreement as an attribute and a measure.
   branch on the file's existence instead. The A10 loop had the same latent bug
   and had simply never taken that branch.
 - Default expected model count raised from 5 to 22.
+
+### The attribute-only mechanism, characterised
+
+Worth stating on its own because it decided three of these twelve builds and is
+invisible to every gate before a live query.
+
+**A dataset that hosts a dimension's key level must not also carry a relationship
+to a different dimension.** Where it does, no measure-free query can pair that
+dimension with anything; adding any measure to the same query makes it work.
+
+How it was pinned down, in order:
+
+1. `virtual_idol` failed 60 of 78 pairs. Fixed by putting every chain key on every
+   downstream dataset -> 78/78. At that point the working theory was "a fact must
+   carry both keys".
+2. `sports_events` failed 14 of 105, all `Circuit Record` against something.
+   Fixed by carrying the circuit key onto all seven race-keyed facts -> 105/105.
+   Consistent with the same theory.
+3. `mental_health` refuted it. `Assessment Detail` already carried both the
+   patient and the facility key, and `SELECT "Patient", "Facility"` still failed.
+   87 of 276 pairs.
+4. Splitting `Registered Facility` off `Facility Detail`, so that no dataset hosted
+   two dimensions, changed the count by exactly nothing - 87/276 again. Second
+   theory dead.
+5. Removing the two relationships that pointed OUT of a dimension-hosting dataset
+   to a different dimension - `patient_to_clinician` and `clinician_to_facility` -
+   moved it to 136/276, and the pairs that came good were precisely the ones those
+   two edges fed. Mechanism identified.
+6. Rather than keep the loss those removals caused, the five entity dimensions
+   moved onto dimension-only twins of their facts - same SQL, no outgoing
+   relationships - and all three edges went back onto the facts.
+
+What remains unfixable in `mental_health` is a **degenerate profile on dataset A
+paired with a degenerate profile on dataset B**. A degenerate dimension is inlined
+on its own dataset, and it has to stay on the dataset whose measures it slices, so
+two profiles with no shared fact have no path. That is a property of a
+six-different-grains source schema, not a modelling error - and it is the argument
+for the wide-fact rule the build prompt already states.
