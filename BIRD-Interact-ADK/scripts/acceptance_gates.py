@@ -92,6 +92,21 @@ def load_spec(db):
     return importlib.import_module("spec")
 
 
+#: A metric whose dataset SQL reads the clock is genuinely time-dependent, and
+#: the engine and the warehouse do not agree on "today": the Postgres container's
+#: timezone is ahead of the engine's, so across the date boundary every
+#: CURRENT_DATE-derived figure differs by exactly one day-unit. Comparing those
+#: for exact equality makes this gate flap by the hour. Measured 2026-08-20:
+#: museum_artifact Maximum Overdue Days was 546 in the model and 547 live, with
+#: Postgres already on 2026-08-21 at 21:11 UTC on the 20th.
+CLOCK = re.compile(r'CURRENT_DATE|CURRENT_TIMESTAMP|\bnow\s*\(', re.I)
+
+
+def clock_dependent(spec, metric):
+    """Does this metric's dataset read the clock?"""
+    return bool(CLOCK.search(spec.DATASETS.get(metric["dataset"], "")))
+
+
 def close(got, want):
     if got is None or want is None:
         return got is None and want is None
@@ -141,11 +156,22 @@ def gate_exactness(spec, model, cur):
             got.update(rows[0])
 
     bad = []
+    clocky = {m["unique_name"] for m in todo if clock_dependent(spec, m)}
     for n, w in want.items():
         if n in dict(errs):
             continue
-        if not close(got.get(n), w):
-            bad.append((n, got.get(n), w))
+        if close(got.get(n), w):
+            continue
+        # A clock-derived metric is allowed to differ by up to one day-unit,
+        # because the two systems disagree about today's date. Anything larger
+        # is still a real mismatch.
+        if n in clocky:
+            try:
+                if abs(float(got.get(n)) - float(w)) <= 1.0000001:
+                    continue
+            except (TypeError, ValueError):
+                pass
+        bad.append((n, got.get(n), w))
     return len(want), bad, errs
 
 
