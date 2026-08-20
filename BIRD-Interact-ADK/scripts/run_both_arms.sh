@@ -39,7 +39,14 @@ RUNS="${RUNS:-3}"
 CONCURRENCY="${CONCURRENCY:-5}"
 ALL_DBS=(organ_transplant archeology_scan crypto_exchange cybermarket_pattern
          exchange_traded_funds households labor_certification_applications solar_panel
-         fake_account)
+         fake_account
+         # The twelve added 2026-08-19. Every one has a deployed model and a
+         # domains entry; Management-category tasks are filtered out of all of
+         # them, so a domain's eligible task count is well below its 30.
+         insider_trading museum_artifact polar_equipment
+         cold_chain_pharma_compliance disaster_relief hulushows mental_health
+         planets_data reverse_logistics robot_fault_prediction sports_events
+         virtual_idol)
 DBS=("$@"); [ ${#DBS[@]} -eq 0 ] && DBS=("${ALL_DBS[@]}")
 
 STAMP="$(date +%Y%m%d_%H%M)"

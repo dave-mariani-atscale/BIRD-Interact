@@ -25,6 +25,8 @@ still applies before carrying its workaround into a new model.
 | Deploy-remote | `sml-cli atscale-deploy` resolves the project by its git REMOTE url against repositories registered in AtScale, not by the local path, so it deploys what `origin` has. An uncommitted or unpushed change deploys the OLD model and reports `Deploy SUCCESSFUL`. Its `ATSCALE_API_URL` is also the SML public API (`local.atscaleinternal.com:3001`), not the engine API on `:10502` - the engine URL authenticates and then 404s hunting for the repository. | `scripts/deploy_models.sh` refuses to deploy on a dirty tree or a branch that differs from `origin`, and hardcodes the right API url. | Yes - 2026-08-12, first CLI deploy. |
 | Publish-timestamp | `data_type: timestamp` passes `sml-cli validate` but the engine rejects the whole catalog at publish with `400 Error occurred during schema publishing: Don't understand type TimeStamp`. The message names no column and no model, so in a shared repo it reads as a fault in whatever model you happen to be deploying - one `cross_border` column blocked every model's deploy. | Use `data_type: datetime` for every TIMESTAMP/DATETIME source. `fake_account` also casts `timestamptz` to plain `timestamp` in derived SQL and refuses to map `timestamptz` in its type prober, since `timestamptz` is not in the SML type table at all. | Yes - found and fixed 2026-08-20 (`cross_border/datasets/flow_fact.yml`). |
 | MDX-hierarchy-name | A `metric_calc` naming a hierarchy as `[Dim].[Dim]` instead of `[Dim].[Dim Hierarchy]` passes `sml-cli validate` - Layer 1 checks YAML shape, not expression contents - then fails the whole catalog's publish with `400 ... Hierarchy \`[X].[X]\` not found in <Model>`. Because a shared repo publishes every model together, it blocks every sibling too. | A hierarchy's `unique_name` is `<Dimension> Hierarchy`. `fake_account` generator gate G14 resolves every `[Measures].[...]` and `[Dim].[Hier]` reference in every `metric_calc` against what the model actually publishes. | Yes - found and fixed 2026-08-20 (`fake_account`). |
+| Engine-payload-413 | The API posts the **whole compiled catalog** to the engine in one request, and pekko-http caps an incoming body at 8 MiB. At 22 semantic models `bird_atscale_models_catalog` compiles to ~9.8 MB and the publish dies with `413 ... EntityStreamSizeException: incoming entity size (9818195) exceeded size limit (8388608 bytes)`. Nothing before deploy sees it, and it scales with the number of models in the repo, so it will recur. | Raise the engine's limit rather than splitting the catalog (splitting changes the schema name and invalidates every `domains:` entry). `container-local-tooling/devel/docker/compose/docker-compose.yml` now sets `JDK_JAVA_OPTIONS` on the engine service to `-Dpekko.http.server.parsing.max-content-length=${ATSCALE_ENGINE_MAX_CONTENT_LENGTH:-32m}`, repeating the image's own `-Xms2G -Xmx4G -XX:NativeMemoryTracking=summary` because the variable REPLACES rather than appends. `docker compose up -d --no-deps engine` then a `/ping` check. | Yes - found 2026-08-19 at 22 models. |
+| MDX-POWER | `power(x, 4)` in a `metric_calc` passes `sml-cli validate` and then fails the whole catalog's publish with `400 ... Calculated measure <name> is not valid as either MDX or DAX. MDX error: end of input expected`. Uppercase `POWER` fails identically; `ABS`, `SQRT` and `LOG10` all publish fine, so it is this function, not function calls in general. Because a shared repo publishes every model together, one bad expression made all 22 undeployable. | Write the exponent out as repeated multiplication, which parses on both sides of the MDX/DAX fence. Fixed 2026-08-19 in `planets_data/calculations/group_stellar_luminosity_pooled.yml`; no other calculation in the repo calls POWER. | Yes. |
 
 ---
 
@@ -3360,3 +3362,155 @@ discoverability gate can never end up enforcing a leak.
 either conventional path, so the question-leakage gate has never run on them.
 `archeology_scan`'s brief is in its own generator format and is covered by its
 own generator gate A10 instead.
+
+---
+
+## The remaining twelve models (built 2026-08-19, prompt v6)
+
+`insider_trading` - `museum_artifact` - `polar_equipment` -
+`cold_chain_pharma_compliance` - `disaster_relief` - `hulushows` -
+`mental_health` - `planets_data` - `reverse_logistics` -
+`robot_fault_prediction` - `sports_events` - `virtual_idol`.
+
+Each has its own `<db>/generator/` and `<db>/README.md`; each is built by
+`generator/build.sh`, which is a five-gate pipeline - answer-key firewall,
+warehouse dry-run against hand-pinned constants, generate plus the 19 shared
+build gates, question-leakage gate (A8), masked-threshold gate (A10) - followed
+by `sml-cli validate`. The whole catalog is now 22 models and deploys as one
+publish.
+
+Domains added to `config/environment_backends.yaml` for all twelve. Schema read
+back from `list_models` after the deploy, which reported 22 models: all of them
+are at `bird_atscale_models_catalog_main`. Four model names differ from their
+database name and the `table:` entry has to be the model name - Exoplanet
+Catalogue (`planets_data`), Hulu Show Catalogue (`hulushows`), Motorsport
+Championship Records (`sports_events`), Virtual Idol Fan Engagement
+(`virtual_idol`), plus Industrial Robot Fault Prediction
+(`robot_fault_prediction`).
+
+### The defining finding per model
+
+Each of these is measured, published in the model's own descriptions, and is the
+thing that decides most of that database's answers.
+
+- **`sports_events` - there is no race-results table.** The warehouse holds
+  championship *standings*, a running rank and season-to-date points, not
+  per-driver finishing positions. Podium finish, race winner, fastest lap,
+  position gain, hat trick, grand chelem and eleven more KB concepts are
+  therefore uncomputable for the Grand Prix and ship on the 360 sprint results
+  or not at all.
+- **`virtual_idol` - the population collapses down a narrowing chain, and there
+  is no time series per fan.** 797 of 972 fans reach an interaction, 52 reach the
+  retention branch, 39 the support branch; the Community Influence Index needs
+  one factor from each of two branches and so exists for 52 fans. 773 of the 797
+  interacting fans have exactly ONE interaction, so the average interaction gap
+  and the longest quiet stretch are the same number for all 24 fans who have
+  either. The KB's 5-minute session window groups nothing - no two interactions
+  share an idol within five minutes, or even a calendar day - so Ripple Effect
+  Analysis has no co-present fans to measure.
+- **`planets_data` - the KB's discovery-method grouping needs an ASCII-safe Greek
+  mu.** `Microlensing` is stored partly as a mu-prefixed abbreviation; the
+  grouping is exact per KB 51 with `concat(chr(956), 'Lens')` because
+  descriptions must stay ASCII.
+- **`robot_fault_prediction` - the joint aggregates are the model.** Six joints
+  J1-J6 live inside jsonb containers, so every KB formula is a six-term sum or
+  average built by a generator helper, and the intensive-workload quintile is an
+  `ntile(5)` partitioned by application type.
+- **`mental_health` - a COALESCE over a missing row turns "no treatment record"
+  into "no crises".** The stability metric is null unless both components exist,
+  with a separate `_missed_only` variant published beside it.
+- **`reverse_logistics` - three date formats and a year regex that silently
+  nulled 254 rows.** `NULLIF(regexp_replace(x, ...), x)` returns NULL where the
+  replacement is a no-op, which is every row that is just a bare year; replaced
+  with `substring(x from '[0-9]{4}')`.
+- **`hulushows` - pipe-free genre parsing.** D-01 forbids `|` in derived SQL and
+  the genre lists are pipe-delimited, so the parser goes through
+  `replace(genres, chr(124), '~')`.
+- The remaining five each carry their finding in their own README.
+
+### Defects the gates caught, worth recording
+
+- **Wrong pinned counts and roundings, five times** - hulushows twice
+  (462200 -> 462195, 118310 -> 118314), reverse_logistics twice
+  (1210.34 -> 1210.26, 10017.99 -> 10018.35), virtual_idol nineteen at once on
+  the first dry-run. Every one was a figure I had already written into a
+  published description, which is exactly what the pins exist to catch: the agent
+  quotes those numbers into its clarifying question, so a wrong count becomes a
+  wrong question.
+- **A firewall false positive.** `utilities/extract_brief.py`'s SQL-clause
+  detector fired on a permitted natural-language question - "the chances of a
+  driver **having** a perfect weekend if they start **from** pole". A bare `from`
+  is not evidence of SQL. `SQL_CORE` now requires a SELECT/FROM **pair** or a
+  JOIN, which gold SQL always has and a question cannot.
+- **Postgres cast precedence.** `::` binds tighter than `->>`, so
+  `s.sprint_performance->'fastest_lap'->>'lap_time'::double precision` casts the
+  KEY NAME. Parenthesise the column before casting.
+- **`to_date(..., 'FMMonth')` rejects three-letter abbreviations**, so a mixed
+  `'Sep 4, 2024'` / `'May 10th, 2024'` column needs one branch per format.
+- **Inline-expanded CASE gave the wrong count** in the sports_events qualifying
+  cluster - 319 non-null instead of 2075. Rewritten with CTEs rather than
+  debugging the substitution.
+
+### The acceptance gates are now a script
+
+`scripts/acceptance_gates.py` runs all four against the DEPLOYED model instead of
+by hand, free of LLM calls:
+
+1. **Exactness** - every sum/average/min/max/count metric queried through the
+   model and compared to the same aggregate computed directly on that metric's
+   own derived-dataset SQL in Postgres. The data is synthetic, so a plausible
+   number proves nothing; this is an exact comparison against the warehouse.
+2. **Conformance** - per dimension, one measure-by-attribute query per fact the
+   spec's relationships say it reaches.
+3. **Attribute-only** - every pair of dimensions projected together with NO
+   measure (Q-27).
+4. **Coverage** - one query per question shape.
+
+**What it found immediately, and why gate 3 has to exist.** `virtual_idol` passed
+exactness 143/143 and conformance 34/34 and then failed the attribute-only
+projection on **60 of 78 dimension pairs**. A measure names the fact, so the
+planner has a path; take the measure away and a query naming two entities has to
+find a fact holding both keys, and with one key per dataset there was none. BIRD
+questions ask for labels and identifiers far more often than aggregates, so this
+is the shape that actually gets used - the same class that ate 32 of 98
+`run_query` calls in crypto_exchange's first arm.
+
+The fix was structural, not a description: each of the nine downstream datasets
+now carries the id of all thirteen chain tables through one canonical spine, and
+the 135 relationships are generated from a dataset-to-keys table so a key cannot
+be added without one. Safe only because every pivot column is unique in its own
+table and every membership has at most one engagement, both verified live; the
+declared grain and all 488 pins still held afterwards, so nothing fanned out.
+`Interaction Detail` is deliberately left out - an interaction can carry two
+engagements. After the change: **145/145 exact, 135/135 conformance, 78/78
+attribute-only, 6/6 coverage shapes.**
+
+Measuring the redundant routes also widened a finding. The retention table's two
+paths back to a fan were known to disagree on 1 of 52 rows; the same comparison
+fails on **7 of the 117 events rows and 6 of the 106 preferences rows** - 14 in
+all. Each dataset publishes the fan from its own pivot, which is the true one, and
+ships the disagreement as an attribute and a measure.
+
+### Two publish-blocking defects, both new Workarounds rows
+
+- **Engine-payload-413.** At 22 models the compiled catalog crossed the engine's
+  8 MiB pekko body limit and the publish died with a 413. It scales with the
+  number of models in the repo, so it will recur; the engine's limit is now 32m.
+- **MDX-POWER.** One `power(x, 4)` in a `planets_data` calculation passed
+  `sml-cli validate` and failed the whole catalog's publish. Rewritten as
+  repeated multiplication.
+
+### Deploy-script corrections
+
+- `scripts/deploy_models.sh` now passes each model's own
+  `generator/leakage_allow.json` to the A8 gate, as that model's `build.sh`
+  already did. Two models carry a triaged entry - each is a knowledge-base
+  concept name the model is required to state correctly, which the six-word
+  detector cannot tell from copied question phrasing - and without the allowlist
+  the loop failed the whole deploy on them, because `set -o pipefail` makes the
+  gate's non-zero exit fatal there.
+- Both gate loops were expanding a possibly-empty bash array under `set -u`,
+  which bash 3.2 (the macOS system shell) treats as an unbound variable. They
+  branch on the file's existence instead. The A10 loop had the same latent bug
+  and had simply never taken that branch.
+- Default expected model count raised from 5 to 22.

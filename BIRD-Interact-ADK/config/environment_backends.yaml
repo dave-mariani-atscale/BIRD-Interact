@@ -370,6 +370,66 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Organ Transplant
+      # ------------------------------------------------------------------
+      # The twelve models built and deployed 2026-08-19 from the same catalog
+      # publish. All of them land in bird_atscale_models_catalog_main, read back
+      # from list_models after the deploy (22 models reported). The model NAME is
+      # what goes in `table:` and several are named for what they model rather
+      # than for the database - Exoplanet Catalogue for planets_data, Hulu Show
+      # Catalogue for hulushows, Motorsport Championship Records for
+      # sports_events, Virtual Idol Fan Engagement for virtual_idol.
+      #
+      # Management-category tasks are filtered out of every one of these domains:
+      # a read-only semantic layer structurally cannot serve DDL/DML, so drop
+      # them from both arms when computing lift.
+      insider_trading:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Insider Trading Surveillance
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Museum Artifact Conservation
+      polar_equipment:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Polar Equipment Operations
+      cold_chain_pharma_compliance:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Cold Chain Pharma Compliance
+      disaster_relief:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Disaster Relief Operations
+      hulushows:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Hulu Show Catalogue
+      mental_health:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Mental Health Assessment
+      planets_data:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Exoplanet Catalogue
+      reverse_logistics:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Reverse Logistics Returns
+      robot_fault_prediction:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Industrial Robot Fault Prediction
+      sports_events:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Motorsport Championship Records
+      virtual_idol:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Virtual Idol Fan Engagement
       fake_account:
         # Deployed 2026-08-20 with `sml-cli atscale-deploy --catalog-name=
         # bird_atscale_models_catalog_main`, the suffixed name passed verbatim.
