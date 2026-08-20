@@ -20,9 +20,7 @@ keyed by the task's `db_name` (set in session state at init — see
 orchestrator/ainteract.py's `init_agent_session`).
 """
 
-import json
 import logging
-import re
 from typing import List, Optional
 
 from google.adk.tools import FunctionTool
@@ -75,86 +73,6 @@ async def _call(tool_name: str, arguments: dict) -> str:
 # a sync wrapper that calls asyncio.run() (which raises "cannot be called
 # from a running event loop").
 
-def _scope_to_domain(raw: str, domain: dict) -> str:
-    """Trim list_models' output to the single model configured for this domain.
-
-    The MCP tool takes no scope (ParamsListModels has only force_refresh), so it
-    returns every model in the catalog. Its `## <Model>` headings carry only the
-    model name — when two schemas hold a same-named model (the two ETF builds),
-    they are indistinguishable, and the agent explores the configured schema but
-    writes the other one into run_query, so every query fails "Column not found".
-    Sections do carry `catalog.schema.table:`, so scope on that.
-
-    Scope on schema ONLY — keep every section for the configured model. The
-    server renders each model twice and the two passes disagree, each leaking a
-    different field from the other build: pass 2 labelled bird_etf_prompt_only
-    lists dimensions that model does not have, while pass 1 labelled
-    bird_atscale_models_catalog carries a correct header but prompt_only's
-    column_groups. Neither pass is authoritative, so dropping either one hides
-    real structure — keeping only the first cost the catalog model its true
-    (dataset-named) column_groups and the agent queried them as tables,
-    "relation \"funds\" does not exist", 0.0 across all 5 tasks. See Q-17.
-    """
-    fq = f"{domain['catalog']}.{domain['schema']}.{domain['table']}"
-    head, _, rest = raw.partition("\n")
-    try:
-        entries = [
-            e for e in json.loads(head)
-            if (e.get("table_catalog"), e.get("table_schema"), e.get("table_name"))
-            == (domain["catalog"], domain["schema"], domain["table"])
-        ]
-        head = json.dumps(entries[:1])
-    except (ValueError, TypeError):
-        logger.warning("list_models: could not parse header JSON; passing through unscoped")
-    kept, tail, seen = [], [], set()
-    for sec in re.split(r"(?m)^## ", rest):
-        if not sec.strip() or sec in seen:
-            continue
-        seen.add(sec)
-        if f"catalog.schema.table: {fq}" in sec:
-            kept.append("## " + sec.rstrip())
-        elif sec.startswith("Next Steps"):
-            tail = ["## " + sec.rstrip()]
-    if not kept:
-        logger.warning("list_models: no section matched %s; passing through unscoped", fq)
-        return raw
-    return "\n".join([head, *kept, *tail])
-
-
-# Stand-in for the planned server-side scoped list_models response
-# (docs/mcp-column-index-spec.md). The server's own Next Steps still tell the
-# caller to make the wide explore_columns call that the inlined Column Index
-# makes redundant, so the whole block is replaced, not patched — server-side
-# text is the strongest behavioural lever on record (B-56) and a contradiction
-# here would undo the index. Step 3 is the server's current text verbatim.
-# Retire all of this when the server ships the spec.
-_NEXT_STEPS = """## Next Steps
-1. Shortlist from the Column Index above — it already names every column in this model. Then `focus_columns` ONCE on every name you consider a candidate; that is where descriptions, sampled values, grain and units come from, and a name alone is not enough to put a column in a query.
-2. `explore_columns` is for what the index cannot tell you: `search_terms` (multi-word, several per call) match description text, so a business concept or KB rule is findable even when no column name suggests it, and `folder`/`column_group` scopes fetch a small named slice at full detail. A scope and terms in one call return the union of the two.
-3. Before querying, verify that each measure's `column_group` appears in the model's `column_groups` for your chosen dimension. Calculations are carved out of that rule: `Calculations` is a discovery bucket rather than a fact dataset, and `focus_columns` keeps reporting an empty `column_group` for one. A calculation's conformance is a property of the measures inside its expression — pair it with a dimension those measures conform to, and never read the empty value as conforming to nothing."""
-
-_COLUMN_INDEX_HEADER = (
-    "## Column Index (names only)\n"
-    "Every column in this model — the complete inventory. There is nothing "
-    "findable by name that is not listed here.\n\n"
-)
-
-
-def _with_column_index(scoped: str, index: str) -> str:
-    """Append the whole-model names index to the scoped list_models output and
-    swap in the matching Next Steps. On any sign the index fetch failed, return
-    the scoped output untouched — a missing index must never break list_models."""
-    if index.startswith("Error calling") or "column_name" not in index:
-        logger.warning("list_models: column index fetch failed; returning without index")
-        return scoped
-    head, sep, _ = scoped.partition("\n## Next Steps")
-    body = head.rstrip() + "\n\n" + _COLUMN_INDEX_HEADER + index.strip()
-    if not sep:
-        logger.warning("list_models: no Next Steps section found; appending index only")
-        return body
-    return body + "\n\n" + _NEXT_STEPS
-
-
 async def list_models(tool_context: ToolContext) -> str:
     """List the semantic model available for this task: its shape, the exact
     catalog/schema/table name your FROM clause needs, and a Column Index naming
@@ -165,15 +83,16 @@ async def list_models(tool_context: ToolContext) -> str:
     Returns:
         The model as text. Query it under exactly the schema/table shown here.
     """
+    # The domain triple doubles as the server's scope: a scoped list_models
+    # returns exactly one model's section with its Column Index and Next Steps
+    # (docs/mcp-column-index-spec.md, shipped server-side 2026-08-20). This
+    # replaced a client-side section-scoping regex plus a wrapper-composed
+    # index; the server response is byte-equivalent to what that stand-in
+    # produced, so no measurement broke at the switch.
     domain, err = _domain_or_error(tool_context)
     if err:
         return err
-    scoped = _scope_to_domain(await _call("list_models", {}), domain)
-    index = await _call(
-        "explore_columns",
-        {**domain, "role": ["dimension", "measure"], "detail": "names"},
-    )
-    return _with_column_index(scoped, index)
+    return await _call("list_models", domain)
 
 
 async def explore_columns(
