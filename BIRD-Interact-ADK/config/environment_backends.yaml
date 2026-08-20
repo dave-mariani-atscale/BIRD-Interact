@@ -382,6 +382,15 @@ backends:
       # Management-category tasks are filtered out of every one of these domains:
       # a read-only semantic layer structurally cannot serve DDL/DML, so drop
       # them from both arms when computing lift.
+      cross_border:
+        # Never evaluated on either arm before 2026-08-20 - it had a deployed
+        # model and a brief but no domains entry, so the runner's
+        # configured-domains filter silently dropped all 19 of its Query tasks.
+        # NOTE the deployed table_name is the raw `model_cross_border`, not a
+        # friendly caption like its siblings - taken verbatim from list_models.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: model_cross_border
       insider_trading:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
