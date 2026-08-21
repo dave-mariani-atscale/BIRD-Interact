@@ -11,7 +11,8 @@ build of 2026-08-14/17, whose defects were found by reading outbound SQL and liv
 failures — plus the ETF evaluation work of 2026-08-13/14, which measured what model
 fixes are actually worth, and the `cross_border` rebuild of 2026-08-20 — the first
 time a model already in the catalog was replaced rather than extended, which is what
-exposed three of its design premises as wrong. Each rule traces to a concrete, observed failure;
+exposed three of its design premises as wrong. Each rule traces to a concrete,
+observed failure;
 database-specific details and anything derived from gold SQL were stripped. This file
 supersedes `create_etf_prompt.txt`; the modeling rules are also mirrored in the MCP
 `sml-create-metric` skill — propagate new lessons to both.
