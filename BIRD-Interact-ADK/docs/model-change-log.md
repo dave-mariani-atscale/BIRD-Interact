@@ -4463,3 +4463,23 @@ released stable `sml-cli` supports it (only the `2026.8.0-rc` line). The CLI is
 what deploys, so the repo declares the version the deploy path supports. Warnings
 repo-wide went 100+ → 2, both pre-existing notes about the gitignored
 `utilities/.env`.
+
+## 2026-08-20 - cross_border: A8 fix before the first deploy of all 22 models to `_main`
+
+Deploying the full catalog to `bird_atscale_models_catalog_main` (the benchmark
+instance - until now it carried only the original 8 models) tripped the A8
+question-leakage gate on cross_border, 7 six-gram runs over two tasks. Model repo
+`1a1fa1b`:
+
+- Six runs are windows over one sentence - the `Is Critical Data Flow Risk`
+  description quotes KB 39's definition verbatim ("risk exposure score is above
+  0.7 and reliability score is below 0.5"), thresholds the KB states openly and
+  the raw arm can fetch via get_knowledge_definition. Allowlisted in a new
+  `cross_border/generator/leakage_allow.json` under the fake_account /
+  museum_artifact convention (tracker M-12).
+- The seventh, "country where the data is going", was a Destination Country
+  alias taken from cross_border_14's question wording, not from the KB (0 hits
+  in cross_border_kb.jsonl). Removed; the six KB-safe aliases remain.
+
+No numbers, folders or structure changed; the only agent-visible delta is one
+alias fewer on one dimension.
