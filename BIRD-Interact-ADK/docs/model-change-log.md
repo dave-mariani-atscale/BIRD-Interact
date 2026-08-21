@@ -3580,3 +3580,115 @@ join-free twins, the planner routes profile-on-A to profile-on-B THROUGH the ent
 dimensions that connect their two facts. The offending edges were the only thing
 stopping it. So the rule is not "profiles across facts cannot pair" but simply the
 host rule above, and fixing the host rule fixes the whole matrix.
+
+---
+
+## 2026-08-20 — `cross_border` rebuilt from scratch, and a repo-wide degenerate-dimension merge
+
+### cross_border: full rebuild against prompt v5 + the v6 addendum
+
+Replaced the previous model entirely. Deterministic generator (spec → emitter)
+behind an allowlisting answer-key firewall; gold SQL was never read. 238
+published objects (133 secondary attributes, 95 metrics, 9 calculations) over one
+derived dataset of 134 columns, one dimension, 27 folders. Full decision ledger in
+`bird-atscale-models/cross_border/SPEC.md`.
+
+The shape was re-derived, not inherited: 12 unique-FK checks, 7 multi-hop
+consistency checks and 6 denormalised-key checks, all clean, confirming the seven
+tables are a strict nested-subset funnel (999 / 870 / 430 / 240) describing one
+entity at four depths.
+
+Substantive changes, each traced to an observed fact:
+
+| Change | Evidence |
+|---|---|
+| Label-based `unique_name` on all 238 objects | A snake_case identifier is written unquoted as a bare SQL column, not a semantic-layer attribute. Every sibling model already did this; `cross_border` and `utilities` were the two outliers. |
+| 27 discovery folders | `list_models` reported `folders: (none)` for the deployed model, so `explore_columns(folder=…)` had nothing to return. Largest folder is now 35. |
+| Dimension `Data Flow` → `Data Flow Record` | v6 Block 2 heading-selection rule: "data flow" is exactly the entity these 20 Query tasks count. |
+| One `Data Sensitivity Classification` instead of two competing sensitivity attributes | **The previous model's premise was false.** `DataProfile.dataSense` and the flow's `classification.sensitivity_level` are *identical* on all 835 flows where both are present; every apparent disagreement is a null on the flow side. Same for encryption (292 of 292) and data category (835 of 835). They are denormalised copies, not independent readings. |
+| DSI's 217 `Critical` rows get factor 1, not NULL, with `(High Weighted Only)` as the named twin | The previous build left DSI undefined for a quarter of the population, silently dropping those flows from every DSI answer. The two readings differ on exactly the 198 Medium flows. |
+| `Vendor Risk Tier` withdrawn | KB 16's bands are masked on `cross_border_2` ("vendor risk level", `is_mask: true`, EK `[6, 16]`). The previous model shipped `vendor_risk_tier` as a column, which answers the question the benchmark intends the agent to ask. Expect this to cost `cross_border_2` and `cross_border_15`'s follow-up — that is the firewall working. |
+| `Vendor Audit Month` added | `VEND_AUD_DATE` sits at the audit's own funnel depth with 13 distinct months. The previous build reached for `FLOWSTAMP` over a four-hop path on the premise that no date existed at audit grain. |
+| No now-relative overdue flag | `REMED_DUE` spans 2025-02-20 to 2025-05-20, so `CURRENT_DATE - REMED_DUE > 0` is true for **240 of 240** and KB 77's nearing-deadline window selects **0**. Degenerate against any real "today". |
+| Group-recomputed twins for five ratios, up from two | Divergence measured per formula; all five diverge substantially (AFS 0.4082 vs 0.1670, DTE 5.1566 vs 1.8696, RES 4.5807 vs 1.1150, CCR 1.7812 vs 0.4987, IRE 2.3908 vs 1.0954). |
+| `AllMember(...)`-denominated shares | A share scoped with `[Dim].[Hier].[All]` returns 1.0 beside a caller-defined `CASE` grouping. Verified live: 13 of 999 returned 1.3013% under a filter, so the denominator stayed warehouse-wide. |
+
+Ten build gates, all passing, including a masked-threshold gate that re-derives
+the `children_knowledge` closure (withholding KB 10/13/14/16/18/74, plus 49/68 by
+closure) and a leakage gate that **exempts verbatim KB wording**.
+
+Two gate false positives worth recording, both instances of v6 Block 4's warning
+that a gate can be right about the string and wrong about the model:
+
+- The firewall's SQL detector fired on **"join type"**, a natural-language
+  ambiguity label in this task set. Narrowed to SQL *structure*, DDL/DML verbs and
+  function-call syntax, plus clause keywords only in upper case.
+- The question-leakage gate flagged four 8-word runs in `Is Critical Data Flow
+  Risk`, whose description quotes **KB 39's own definition verbatim** — which the
+  "carry the KB's wording" rule requires — and which `cross_border_12`'s question
+  paraphrases closely. Rewording would have damaged a correct model to satisfy a
+  string match, so the gate now exempts text appearing verbatim in a KB
+  `knowledge`, `definition` or `description` field.
+
+All four acceptance gates pass on the deployed model, including the
+attribute-only projection that a measure-by-attribute conformance gate cannot see,
+and `get_outbound_queries` was read rather than trusted.
+
+**Capped task:** `cross_border_9` asks for the top 10 profiles by Integrity
+Failure Count, whose only live values are 0, 1 and 2 over 870 flows — the tenth
+place is tied and the expected answer is not unique. Not a model defect.
+
+**Harness note:** the deployed `table_name` stays `model_cross_border`, so
+`config/environment_backends.yaml` needs no change. Renaming it to a friendly
+caption like its siblings would require a matching config edit *and* a services
+restart, since `shared/environment_backends.py` caches the file in a module-level
+dict at first load.
+
+### Repo-wide: degenerate dimensions sharing one dataset + key were merged
+
+Not a `cross_border` change, but it landed in the same session and moved 12 other
+models, so it belongs here.
+
+SML rejects several degenerate dimensions built on the same `dataset` +
+`key_columns` pair — they describe one entity, so they must be one dimension. Ten
+models split a wide single-fact model into themed degenerate "profile" dimensions
+on the same key: **122 dimensions across 17 duplicated combos, 100+ warnings
+repo-wide**. Deploy and `validate` both still succeeded, which is why it had gone
+unaddressed.
+
+Fixed as a spec-level merge pass in the shared emitter
+(`utilities/birdsml/merge.py`), applied before emission so the emitted YAML, the
+model file and all nineteen gates see the merged shape. `fake_account` predates
+`utilities/birdsml` and borrows only that pass.
+
+**Discovery is preserved, and the headings that collapse were a liability.** A
+secondary attribute already carries its own `folder`, so
+`explore_columns(folder=…)` returns each theme unchanged — verified live on
+`polar_equipment`, whose 13-dimension merge left the `Cabin Environment` folder
+returning its same 15 columns. What collapses is the `## <dimension>` heading, and
+the 2026-08-18/19 sweep found that heading to be the single largest source of
+column-not-found errors: 14 of 27 across eight databases were the agent selecting
+one as if it were a column.
+
+The merge target is chosen deterministically: the entity dimension on the same
+dataset and key where one exists (`<dataset stem> Record`), otherwise the group is
+renamed for the entity. The entity test **must** compare the stem against the
+dataset, not just look for a `... Record` suffix — the first attempt merged
+`fake_account`'s eight account profiles into `Account Monitoring Record`, because
+that member happens to end in "Record" while being a theme, which would have
+mislabelled the other seven. Every theme's own description text is carried into
+the merged description so nothing is lost.
+
+Verified across all 12 models by diffing the attribute sets before and after:
+**zero secondary attributes lost, zero gained, zero visible level attributes
+lost.** The only removals are the hidden `<Profile> Key` level attributes, one per
+absorbed dimension, which is the point of the merge. All nineteen gates stay clean
+in every model; `virtual_idol` and the eight models with no duplicated combos are
+untouched.
+
+Also in this pass: `catalog.yml` `version` 1.6 → 1.7, and `sml-cli` 2026.3.0 →
+2026.5.0. Note the two disagree about "latest" — Design Center reports 1.9, and no
+released stable `sml-cli` supports it (only the `2026.8.0-rc` line). The CLI is
+what deploys, so the repo declares the version the deploy path supports. Warnings
+repo-wide went 100+ → 2, both pre-existing notes about the gitignored
+`utilities/.env`.
