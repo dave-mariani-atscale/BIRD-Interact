@@ -30,5 +30,27 @@ if ! curl --noproxy '*' -s "http://127.0.0.1:6000/health" > /dev/null 2>&1; then
     bash "$PROJECT_DIR/scripts/start_services.sh"
 fi
 
+# Resolve the interpreter exactly as start_services.sh does.  Bare `python` is
+# whatever the shell resolves - a pyenv shim, say - which does not have this
+# project's dependencies, so the runner dies on `ModuleNotFoundError: httpx`
+# while the services keep running fine on .venv-adk.  Project-local
+# environments win over an ambient conda env for the reason given in
+# start_services.sh.
+PYTHON_BIN="python"
+if [ -x "$PROJECT_DIR/.conda-py310/bin/python" ]; then
+    PYTHON_BIN="$PROJECT_DIR/.conda-py310/bin/python"
+elif [ -x "$PROJECT_DIR/.venv-adk/bin/python" ]; then
+    PYTHON_BIN="$PROJECT_DIR/.venv-adk/bin/python"
+elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/python" ]; then
+    PYTHON_BIN="${CONDA_PREFIX}/bin/python"
+fi
+
+if ! "$PYTHON_BIN" -c 'import httpx' 2>/dev/null; then
+    echo "FAIL: $PYTHON_BIN cannot import httpx - it is not this project's" >&2
+    echo "      environment.  Create .venv-adk and pip install -r requirements.txt," >&2
+    echo "      or activate the environment the services are running on." >&2
+    exit 1
+fi
+
 # Run evaluation
-python -m orchestrator.runner "$@"
+"$PYTHON_BIN" -m orchestrator.runner "$@"

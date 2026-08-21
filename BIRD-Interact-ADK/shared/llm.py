@@ -87,8 +87,21 @@ except ImportError:
         if settings.litellm_api_key:
             kwargs["api_key"] = settings.litellm_api_key
 
-        resp = litellm.completion(**kwargs)
-        return resp.choices[0].message.content.strip()
+        # content can come back None (thinking-only / empty-text finals, the same
+        # family as the max_tokens truncation issue). One retry, then "" — callers
+        # (e.g. the user simulator) have their own fallbacks for an empty string,
+        # whereas the old bare .strip() crashed and surfaced as a silently EMPTY
+        # user answer that burned the asker's coins (seen live on task 8).
+        content = None
+        for attempt in (1, 2):
+            resp = litellm.completion(**kwargs)
+            content = resp.choices[0].message.content
+            if content is not None:
+                return content.strip()
+            logger.warning(
+                "LLM returned None content (attempt %d/2, model=%s); retrying", attempt, model_name
+            )
+        return ""
 
     def build_adk_model(model_name: str = None):
         """Build ADK-compatible model via LiteLlm with retry config."""

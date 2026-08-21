@@ -54,6 +54,19 @@ backends:
     # explore_columns" block, which is not the repair and costs a submit to
     # discover. Free — no coins, the response is already paid for.
     error_hints:
+      - match: No columns matched
+        hint: >-
+          That coin bought nothing, so change the SHAPE of the next search rather than repeating it.
+          Matching is literal substring, so an empty result means this exact wording appears in no
+          column name or description - and firing four synonyms of the same wrong word costs another
+          full coin and returns empty just as fast (measured: 'organ needed'/'needed organ'/'recipient
+          organ needed'/'target organ' in one call, all empty). The usual cause is your vocabulary,
+          not a gap in the model: it says 'Match Status', not 'transplant status'. So DROP a word
+          instead of adding one - search the single most distinctive noun ('status', 'locus',
+          'urgency') rather than a qualified phrase - or stop searching and read the model's own
+          inventory, since list_models already names every dimension and metric and browsing a
+          folder/role/column_group returns a whole group for the same 1 coin. Never spend a third
+          call on further rewordings of a term that has already come back empty twice.
       - match: could not find correct column to sort by
         hint: >-
           The sort key is not in your SELECT list. If the question asks for that value, just add it
@@ -81,6 +94,32 @@ backends:
           or ask_user. For string aggregation, fetch the member rows with run_query, concatenate
           them yourself, and submit a FROM-less literal-values query instead:
           SELECT 'A' AS grp, 'X, Y, Z' AS members UNION ALL SELECT 'B', 'P, Q'.
+      - match: must appear in the GROUP BY clause
+        hint: >-
+          An outer SELECT that reads from a derived table may project only BARE COLUMNS. Any
+          expression over them - CASE, arithmetic, concatenation - is rejected this way, even with
+          no join and no aggregate anywhere in the statement. Measured live: SELECT t."X", CASE
+          WHEN t."Y" >= 80 THEN 'a' ELSE 'b' END FROM (SELECT "X","Y" FROM <model>) t fails, and so
+          does t."Y" + 1, while the same CASE written directly against the model succeeds. The fix
+          is to move the expression INSIDE the derived table and select its alias plainly outside:
+          SELECT t."X", t.risk FROM (SELECT "X", CASE WHEN "Y" >= 80 THEN 'a' ELSE 'b' END AS risk
+          FROM <model>) t. Do NOT add a GROUP BY and do NOT wrap the column in an aggregate - the
+          message names grouping, but grouping is not the problem and adding it changes your rows.
+      - match: window functions are not allowed in GROUP BY
+        hint: >-
+          You cannot GROUP BY a column whose definition contains a window function. Your statement
+          is folded into one cube query, which substitutes the window expression back into the
+          GROUP BY - and NO amount of extra nesting hides it (verified live at two and three
+          levels). So the ROW_NUMBER-over-a-counted-population trick can produce a per-row bucket,
+          but it can never be grouped. Two ways out. (a) EQUAL-WIDTH bins, which need no window at
+          all: put a CASE over the raw value inside the derived table and group by its alias
+          outside - SELECT bucket, COUNT(x) FROM (SELECT "X" AS x, CASE WHEN "V" < 0.2 THEN 1 WHEN
+          "V" < 0.4 THEN 2 ELSE 3 END AS bucket FROM <model>) t GROUP BY bucket - verified working.
+          (b) EQUAL-COUNT quantiles, which this interface cannot compute in SQL at all: fetch the
+          per-row values with run_query, bucket and aggregate them yourself, then submit the
+          answer as assembled literal rows (SELECT 1 AS bucket, 198 AS n UNION ALL SELECT 2, 188).
+          These give DIFFERENT answers, so if the question says 'divide into 5 groups' without
+          saying which, ask the user before choosing.
       - match: aggregate functions are not allowed
         hint: >-
           Move the condition into a HAVING clause inside the derived table that computes the
@@ -144,12 +183,22 @@ backends:
           searching the concept's own words.
       - match: '] not found'
         hint: >-
-          The bracketed name does not resolve at that point in the query. Two causes, and the error
-          text is the same for both. (a) If it is an ALIAS you introduced in an inner derived table,
-          the outer level cannot aggregate it — keep the measure's original name in the inner SELECT
-          instead. (b) Otherwise it is a column name that does not exist, almost always a
+          The bracketed name does not resolve at that point in the query. Three causes, and the
+          error text is the same for all of them. (a) If it is an ALIAS you introduced in an inner
+          derived table, the outer level cannot aggregate it — keep the measure's original name in
+          the inner SELECT instead. (b) It may be a column name that does not exist, a
           plausible-sounding invention rather than a name you actually read (e.g. "Fund Ticker" /
           "Fund Name" when the model publishes the ticker under a different attribute entirely).
+          (c) Or it is a GROUP HEADING rather than a column. explore_columns prints its results
+          under "## <name>" lines, and each of those names the column GROUP the columns beneath it
+          belong to — a heading is never selectable. Measured over a full 8-database run, 14 of the
+          27 failures of THIS error were exactly that: "Household", "Market", "Buyer", "Platform",
+          each a heading the agent had genuinely just read, so "only use a name you actually saw"
+          does not protect you here. A heading is the most tempting wrong answer on the page,
+          because it is usually named after the very entity the question asks you to count. To
+          COUNT entities, search for a published count measure ("<entity> count"); to LIST or group
+          them, use the identifier attribute. Households are counted by "Household Count" and
+          identified by "House Number" — neither is the "## Household" heading sitting above them.
           Never compose a column name from the question's wording. Phase 2 queries the SAME model as
           phase 1, so reuse the exact names you already saw; if you need a new one, explore_columns
           for the concept's words (descriptions are searched too) and copy it back verbatim.
@@ -200,7 +249,11 @@ backends:
       - ASKING IS CHEAPER THAN GUESSING. ask_user costs 2 coins; getting a resolvable ambiguity wrong costs the entire task (1.0 reward). You will typically reach your first submission with coins still unspent, so budget for one or two asks per task as the normal case, not the exception. When a term admits more than one defensible reading, ASK — do not pick the likelier one and hope.
       - NEVER PUT A CANDIDATE ANSWER IN YOUR QUESTION — THE USER WILL AGREE WITH WHATEVER YOU PROPOSE, INCLUDING WHEN IT IS WRONG. A leading question does not just waste the 2 coins, it manufactures a wrong answer and hands it back to you with confident-sounding reasons, which is worse than not asking at all: you now believe the thing you already believed, and it looks confirmed. Measured live on one task, same user, same session, freshly initialised. Asked "I plan to include the <X> column for clarity — is that the right choice?" the user answered "Yes, that's a good choice ... would definitely help provide clarity". Asked the open question "which single column should identify each row?" the SAME user named a DIFFERENT column, and that one was the correct one. The task was otherwise perfect — right rows, right values, right order — and lost entirely on that one column. So phrase every ask as an OPEN question that names no candidates: "which columns should the output have?" not "should I include A, B and C?"; "what cut-off should I use?" not "is 1.5 the right cut-off?"; "how should the results be ordered, and how many rows do you want?" not "I'll sort by X descending, OK?". If you genuinely must offer alternatives, offer at least two and make them mutually exclusive, so agreeing with you is not the path of least resistance. Naming the columns you FOUND is fine when you are asking WHICH of the model's concepts they mean — the rule is about proposing the answer, not about supplying context.
       - ONE TOPIC PER QUESTION. A question covering two things does not get you two answers — it gets one answer to a question you did not ask, and that answer can invent a requirement out of nothing. Measured live: asked on its own, "should the placeholder-category funds be included, or excluded since they have no genuine peer group?" returned a clean "they should be excluded" and the task scored 1.00. The SAME concern bundled with a second topic — "funds in the placeholder category OR in categories that are not pure <X> categories such as <A> or <B> — should these be included?" — returned an instruction to restrict the answer to a whitelist of category names that NOTHING in the task had asked for, and the task scored 0.00. The bundled form was worse than not asking at all, because the agent then implemented the invented requirement in good faith. Splitting also matters for the budget guard: two topics joined by "or" inside a single "?" is still two questions, it just does not get bounced, so you pay 2 coins for a corrupted answer instead of being told to rephrase. If you have three things to settle, that is three asks — and if you cannot afford three, ask the one whose wrong answer would invalidate the whole result, which is usually the population/filter question rather than the formatting one.
+      - THE QUESTION MAY DESCRIBE ONLY THE SETUP, NOT THE ANSWER - ASK WHAT THE FINAL OUTPUT IS. Measured on the households set: 11 of 21 questions describe an intermediate step ("calculate their crowding metric, list the household ID and its metric") while the expected answer is a further aggregation the question never mentions - one number, one row, or a value over a completely different column (the average vehicle count of exactly those households; the total cars in the top-ranked region; the difference between two group counts). A question can read complete and still be half of the task. So on any question that names a per-row calculation, a ranking, or a filtered population WITHOUT naming an unambiguous final result, spend one ask on the OUTPUT ITSELF, phrased openly and with no candidate answer: "what exactly should the final result show - how many rows, and which columns?". Signals to spend it: the question ends after describing a metric or a filter; it says "list"/"for each"/"all" but names no ordering or row count; the phrase "sorted by the priority" or similar names an ordering the columns do not support. Getting a one-row answer when you returned a table (or the reverse) scores zero exactly like a wrong value, so this ask is worth more than a second query.
+      - EVERY GOLD ANSWER PINS TERMS THE QUESTION LEAVES OPEN - ENUMERATE AND ASK FOR THEM. Before building, list the slots the question does not state and get each one: (1) the POPULATION - which status or subset counts ("finished", "waiting", "active" always map to a specific stored status; a report about a waiting list is usually filtered to it); (2) the BASIS - when the model publishes two or more readings of a concept (two ischemia totals, two urgency scales, two blood-compatibility columns), never pick one silently; (3) every CONSTANT - thresholds, weights, and especially TIME HORIZONS: any cost-per-value or per-year figure has a year count the question never states, and there is a specific number expected - ask "over how many years?"; (4) the RANKING DEFINITION - "the longest", "the top" and "most" have an exact cut (a count, a percentile, a percent-rank band), not just a direction. One open question can carry two or three of these slots when they belong to the same formula. And FOLLOW UP ON HALF ANSWERS: if the user describes a formula but leaves a numeric slot unnamed ("treat the rest as one bucket", "combine distance and time"), ask what number fills the slot - the user has an exact value in mind, and one more 2-coin ask is cheaper than a failed 3-coin submit.
+      - WHEN THE QUESTION PARAPHRASES A FORMULA, ASK FOR THE FORMULA ITSELF - ONCE, OPENLY, BEFORE QUERYING. Wording like "adjusted for", "weighted", "combined with", "the standard <X> calculation", or a metric the model publishes under several bases means a specific formula exists that the question is not stating. Ask ONE open question for it: "what exact formula and constants define <term>?" - never a menu of candidates, and never one term at a time. Then build it literally: SELECT each term at row grain inside one FROM-subquery and aggregate the expression outside. Measured live on one task: the winning submission was exactly this pattern (asked once, was told org_isch_time + exp_time, selected both columns at row grain and averaged the sum), where the same task without the ask guessed between the model's published bases and lost. Every stored per-match score has a row-grain column beside its Average metric, so any disclosed combination is buildable - if a term seems to exist only as an Average, search for the bare score name.
       - THE MODEL FLAGS ITS OWN AMBIGUITIES — TREAT THAT AS A TRIGGER TO ASK. Column descriptions in this semantic model deliberately name their competing readings. If a description says "confirm which the question means", "may instead mean", "are not interchangeable", "this model's convention", or otherwise names a rival column for the same concept, that is a signal to call ask_user — not a menu for you to choose from silently. The recurring triggers are: a named concept with two definitions in play (e.g. a knowledge-base test vs a stored status column), an unstated threshold or cut-off, an unstated denominator for a share or rate, and vague scope words ("status", "risk level", "highest priority", "how long", "how secure") that map to several candidate columns.
+      - ENGINE DIALECT, PROBED LIVE (2026-08-17). The engine REJECTS NTILE, CORR, PERCENTILE_CONT, STRING_AGG, GREATEST, LEAST, NULLIF, COUNT(*) and subqueries inside IN. Rewrites: NULLIF(a, b) -> CASE WHEN b = 0 THEN NULL ELSE a END pattern; membership -> INNER JOIN to a subquery returning the key; counting -> the model's count measures, never COUNT(*). It ACCEPTS RANK, ROW_NUMBER, LAG, ROUND, COALESCE and SUM(CASE WHEN ... THEN 1 ELSE 0 END). Aggregating a dimension attribute directly over the model fails in the planner - select attributes at row grain inside a FROM-subquery and aggregate outside it. The converse also holds and is the single most common wasted turn measured (9 of 16 failed queries in one run): an outer SELECT reading FROM a derived table may project only BARE COLUMNS. Any expression over them - CASE, arithmetic, concatenation - dies with 'column ... must appear in the GROUP BY clause' even with no join and no aggregate present. Compute the expression INSIDE the derived table and select its alias outside. Rule of thumb: expressions belong in the scope that touches the model; the outer scope only names columns.
       - Resolve the question to exact column names with list_models, explore_columns, and focus_columns before querying — don't guess a name you haven't seen.
       - explore_columns matches literal substrings, not keywords: a term must appear verbatim and IN ORDER in a column's name or description. "fund years" matches "Fund Years With Return Data"; "years fund" and "return years" match nothing. Every word you add can only narrow the match towards zero, so search two-word fragments, never a descriptive phrase. But do NOT broaden a term to rescue it: breadth is what costs you context, not term count — ["order id"] returns 3 columns and ["id"] returns 89. When a term comes back empty, add more specific alternatives to the next batch, or better, scope by folder instead of guessing wording at all.
       - DISCOVERY HAS A SHAPE, AND IT IS TWO CALLS PER TASK. (1) list_models once - it gives the fully-qualified name your FROM clause needs and, in its Column Index, the name of EVERY column in the model, so after reading it there is nothing left to find by name; (2) ONE focus_columns listing every name you consider a candidate, which is where descriptions, sampled values, grain and units come from. Then query. explore_columns is no longer part of the default path; it earns its coin in exactly two cases: the question names a business concept you cannot match to any name in the index - search_terms match DESCRIPTION text (measured, 89 pct of the columns a term matches do not contain that term in their name at all), so a KB rule or a screen is findable even when no name suggests it - or you want one small named slice (a folder, or the Calculations bucket) at full detail instead of focusing its columns one by one. What is never a reason: re-fetching names you already have. The index is complete.
@@ -324,3 +377,88 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Organ Transplant
+      # ------------------------------------------------------------------
+      # The twelve models built and deployed 2026-08-19 from the same catalog
+      # publish. All of them land in bird_atscale_models_catalog_main, read back
+      # from list_models after the deploy (22 models reported). The model NAME is
+      # what goes in `table:` and several are named for what they model rather
+      # than for the database - Exoplanet Catalogue for planets_data, Hulu Show
+      # Catalogue for hulushows, Motorsport Championship Records for
+      # sports_events, Virtual Idol Fan Engagement for virtual_idol.
+      #
+      # Management-category tasks are filtered out of every one of these domains:
+      # a read-only semantic layer structurally cannot serve DDL/DML, so drop
+      # them from both arms when computing lift.
+      cross_border:
+        # Never evaluated on either arm before 2026-08-20 - it had a deployed
+        # model and a brief but no domains entry, so the runner's
+        # configured-domains filter silently dropped all 19 of its Query tasks.
+        # NOTE the deployed table_name is the raw `model_cross_border`, not a
+        # friendly caption like its siblings - taken verbatim from list_models.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: model_cross_border
+      insider_trading:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Insider Trading Surveillance
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Museum Artifact Conservation
+      polar_equipment:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Polar Equipment Operations
+      cold_chain_pharma_compliance:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Cold Chain Pharma Compliance
+      disaster_relief:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Disaster Relief Operations
+      hulushows:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Hulu Show Catalogue
+      mental_health:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Mental Health Assessment
+      planets_data:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Exoplanet Catalogue
+      reverse_logistics:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Reverse Logistics Returns
+      robot_fault_prediction:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Industrial Robot Fault Prediction
+      sports_events:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Motorsport Championship Records
+      virtual_idol:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Virtual Idol Fan Engagement
+      fake_account:
+        # Deployed 2026-08-20 with `sml-cli atscale-deploy --catalog-name=
+        # bird_atscale_models_catalog_main`, the suffixed name passed verbatim.
+        # Schema read back from list_models after the deploy, which returned ten
+        # models (the Q-17b health gate) rather than only succeeding. Note the
+        # model NAME is "Fake Account Detection", not the database name - it is
+        # named for what it models, and no dimension is named "Account" or
+        # "Platform" so an explore_columns heading cannot be mistaken for a
+        # column. 24 of its 30 tasks are Query-category and therefore eligible;
+        # the other 6 are Management (DDL/DML, including CREATE MATERIALIZED
+        # VIEW, ANALYZE and CREATE FUNCTION) and are filtered out - a read-only
+        # semantic layer structurally cannot serve them, so drop them from both
+        # arms when computing lift.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Fake Account Detection

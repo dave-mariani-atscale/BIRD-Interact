@@ -18,14 +18,14 @@
 #      COMMITTED AND PUSHED before it will deploy. An unpushed fix deploys the
 #      old model and is indistinguishable from success.
 #
-# Deploying publishes the WHOLE catalog: all five BIRD models go out together.
+# Deploying publishes the WHOLE catalog: every BIRD model goes out together.
 #
-# Usage: scripts/deploy_models.sh [expected_model_count]   (default 5)
+# Usage: scripts/deploy_models.sh [expected_model_count]   (default 22)
 set -euo pipefail
 
 ADK_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MODELS_DIR="${BIRD_MODELS_DIR:-$HOME/go/src/github.com/AtScaleInc/bird-atscale-models}"
-EXPECTED="${1:-5}"
+EXPECTED="${1:-22}"
 
 [ -d "$MODELS_DIR" ] || { echo "FAIL: models repo not found at $MODELS_DIR"; exit 1; }
 
@@ -57,11 +57,31 @@ sml-cli validate . 2>&1 | tail -3
 
 echo
 echo "=== A8 question-leakage gate, per model ==="
+# Pass each model's own leakage_allow.json when it has one, exactly as that
+# model's generator/build.sh does. Two models carry a triaged entry - each is a
+# knowledge-base concept name the model is REQUIRED to state correctly, which the
+# six-word detector cannot tell from copied question phrasing - and without the
+# allowlist this loop failed the whole deploy on them (set -o pipefail makes the
+# gate's non-zero exit fatal here).
+A8_FAILED=0
 for m in */; do
   brief="${m}brief/task_brief.json"
   [ -f "$brief" ] || continue
-  python3 utilities/question_leakage_gate.py --model-dir "${m%/}" --brief "$brief" 2>&1 | tail -1
+  # bash 3.2 (the macOS system shell) treats "${arr[@]}" on an EMPTY array as an
+  # unbound variable under set -u, so branch on the file instead of expanding an
+  # empty array - the same trap the A10 loop's kbarg=() below would hit.
+  allow="${m}generator/leakage_allow.json"
+  if [ -f "$allow" ]; then
+    out="$(python3 utilities/question_leakage_gate.py --model-dir "${m%/}" \
+            --brief "$brief" --allow "$allow" 2>&1)" && rc=0 || rc=$?
+  else
+    out="$(python3 utilities/question_leakage_gate.py --model-dir "${m%/}" \
+            --brief "$brief" 2>&1)" && rc=0 || rc=$?
+  fi
+  printf '  %-34s %s\n' "${m%/}" "$(printf '%s\n' "$out" | tail -1)"
+  [ "$rc" -eq 0 ] || A8_FAILED=1
 done
+[ "$A8_FAILED" -eq 0 ] || { echo "FAIL: a published description quotes a task question - fix before deploying."; exit 1; }
 
 # A10: a masked KB threshold in the model hands the semantic-layer arm a number the
 # raw arm has to ask the user for, so the lift it buys is a protocol artifact. The
@@ -76,16 +96,17 @@ for m in */; do
   brief="${m}brief/task_brief.json"
   kb="$ADK_DIR/bird-interact-full/${m%/}/${m%/}_kb.jsonl"
   [ -f "$brief" ] || continue
-  if [ ! -f "$kb" ]; then
-    echo "  ${m%/}: no KB at $kb - running with the NUMBER detector OFF"
-    kbarg=()
-  else
-    kbarg=(--kb "$kb")
-  fi
   # Capture first, then filter: in a pipeline the exit status is the LAST command's,
   # so `gate | grep` would report grep's verdict and silently pass a real leak.
-  out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" --brief "$brief" \
-          ${kbarg[@]+"${kbarg[@]}"} 2>&1)" && rc=0 || rc=$?
+  # Branch rather than expand a possibly-empty array - see the A8 loop above.
+  if [ ! -f "$kb" ]; then
+    echo "  ${m%/}: no KB at $kb - running with the NUMBER detector OFF"
+    out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" \
+            --brief "$brief" 2>&1)" && rc=0 || rc=$?
+  else
+    out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" \
+            --brief "$brief" --kb "$kb" 2>&1)" && rc=0 || rc=$?
+  fi
   printf '%s\n' "$out" | grep -vE "^\s*\[ok\]" | grep -vE "^\s*$" || true
   [ "$rc" -eq 0 ] || A10_FAILED=1
 done

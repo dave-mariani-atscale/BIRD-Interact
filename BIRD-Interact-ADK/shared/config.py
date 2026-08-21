@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     # simulator changes the benchmark's answers, not its plumbing.
     system_agent_max_tokens: int = 16384
 
+    # Same truncation disease as the agent's old 4096 default, in the simulator:
+    # sonnet-class models spend completion budget on thinking (native blocks AND
+    # the v2 prompts' own <think> protocol) before the <s>answer</s>. At the old
+    # hard-coded 500/1024 the response hit finish=length mid-think - content came
+    # back None or without <s>, surfacing as an EMPTY user answer that still cost
+    # the asking agent 2 bird-coins (14 wasted asks in one measured run).
+    user_sim_max_tokens: int = 8192
+
     # COST, not a deviation. Anthropic prompt caching for the system agent.
     # cache_control marks a prefix as reusable; it is not prompt content, so the
     # agent sees the same bytes and decides the same things either way — the only
