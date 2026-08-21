@@ -137,7 +137,8 @@ independently.
    a failure the conformance gate as written cannot see, because adding any measure
    makes it resolve (Placement and conformance, Acceptance).
 
-**What changed in v4 (`labor_certification_applications`, 2026-08-13/15).** That build reached parity with the raw baseline from a clear deficit,
+**What changed in v4 (`labor_certification_applications`, 2026-08-13/15).** That
+build reached parity with the raw baseline from a clear deficit,
 across four three-run evaluation rounds. Listed so each change can be reviewed or
 reverted independently.
 
