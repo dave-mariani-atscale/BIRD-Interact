@@ -31,8 +31,16 @@ graded in four steps.
 ADK: `db_utils.py:845` (semantic path), `:870-871` (raw path).
 Upstream: `eval_bird_interact.py:258-263`. Same order, same functions.
 
-`remove_distinct` deletes the **`DISTINCT` keyword** from the SQL text — from
-*both* the prediction and gold. `remove_round` deletes `ROUND()` calls.
+`remove_distinct` deletes the **`DISTINCT` set quantifier** from the SQL text —
+from *both* the prediction and gold. `remove_round` deletes `ROUND()` calls.
+
+It leaves the two Postgres *operators* that merely spell themselves with the same
+word: `DISTINCT ON (col)` and `IS [NOT] DISTINCT FROM`. Deleting the keyword from
+either produces a syntax error (`SELECT ON (col)`, `IS FROM`), and since gold goes
+through this cleanup on both arms, a mangled gold fails to execute and the grader
+returns 0 — making the task unpassable whatever the agent submits, with nothing in
+the results distinguishing it from a wrong answer. 15 of the 600 golds are
+affected; `scripts/test_remove_distinct.py` covers them.
 
 Stripping `ROUND()` matters far more than it looks, in two opposite directions:
 

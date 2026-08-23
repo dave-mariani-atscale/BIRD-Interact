@@ -828,7 +828,59 @@ def remove_comments(sql_list: List[str]) -> List[str]:
 
 
 def remove_distinct(sql_list: List[str]) -> List[str]:
-    return [" ".join(t for t in q.split(" ") if t.lower() != "distinct") for q in sql_list]
+    """Delete the set-quantifier DISTINCT, leaving Postgres' DISTINCT operators intact.
+
+    Upstream drops every token equal to "distinct" so a prediction and a gold that
+    differ only in de-duplication still compare equal. Postgres spells two *different*
+    constructs with the same word, and deleting it from either produces invalid SQL:
+
+      * `SELECT DISTINCT ON (col) ...` -> `SELECT ON (col) ...`
+      * `a IS [NOT] DISTINCT FROM b`   -> `a IS [NOT] FROM b`
+
+    Neither is a quantifier. `DISTINCT ON` picks one row per group and the
+    parenthesised list belongs to the operator; `IS DISTINCT FROM` is a null-safe
+    comparison operator.
+
+    That is not cosmetic. Gold is cleaned by this function on BOTH arms
+    (ex_base_external_pred, grade_raw_submission). A mangled gold fails to execute,
+    both graders return 0, and the task becomes unpassable no matter what the agent
+    submits - silently, because a gold that errors is indistinguishable in the
+    results from an answer that is wrong.
+
+    15 of the 600 bird-interact-full golds are affected: 9 use DISTINCT ON (7 in
+    Phase-1 gold, 9 in Phase-2) and 7 use IS [NOT] DISTINCT FROM (all Phase-1, all
+    Management-category, so they reach only the raw arm). In the 410-task query run
+    all 5 affected Phase-1 tasks scored 0 on both arms.
+
+    Keeping both is also the semantically right call - each is part of the answer,
+    not a de-duplication nicety the grader should look past.
+
+    Still splits on " " rather than re-tokenising, so whitespace handling is byte for
+    byte what upstream produces and the output changes for these two operators and
+    for nothing else.
+    """
+    cleaned = []
+    for query in sql_list:
+        tokens = query.split(" ")
+        words = [t.strip().lower() for t in tokens]
+        kept: List[str] = []
+        for i, token in enumerate(tokens):
+            # Matched on the RAW token, exactly as upstream does. A token carrying
+            # adjacent whitespace ("DISTINCT\n") never compared equal there either, so
+            # it stays untouched here rather than newly disappearing.
+            if token.lower() == "distinct":
+                after = next((w for w in words[i + 1:] if w), "")
+                before = [w for w in words[:i] if w][-2:]
+                # `on\b` rather than startswith: a column named `online` is not DISTINCT ON.
+                is_distinct_on = bool(re.match(r"on\b", after))
+                # `IS DISTINCT FROM` / `IS NOT DISTINCT FROM`, by the preceding words.
+                is_null_safe_compare = before[-1:] == ["is"] or before == ["is", "not"]
+                if is_distinct_on or is_null_safe_compare:
+                    kept.append(token)
+                continue
+            kept.append(token)
+        cleaned.append(" ".join(kept))
+    return cleaned
 
 
 def _remove_round_functions(sql_string: str) -> str:
