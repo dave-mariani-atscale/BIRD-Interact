@@ -4508,3 +4508,10 @@ PUBLISHED descriptions already quote numbers the warehouse no longer holds.
 Prompt guidance: `create_bird_model_prompt.v9.md` adds the three rules this
 investigation produced (pair-conformance obligation, rollup-columns-ship-as-metrics,
 gate-2 extended to metric pairs).
+
+Follow-up, same day: the spec-only drafts (`1aecf1f`) were REVERTED from the model
+repo's main (`c1c5364`) so the shared branch carries only gate-verified work while
+another party runs tests against the deployed catalog. The drafts live on local branch
+`m37-drafts` in the models repo. Deployed YAML was never affected either way — the
+drafts changed generator specs only. Remote main now differs from its pre-M-37 state by
+exactly the verified mental_health twin (`5c5866f`).
