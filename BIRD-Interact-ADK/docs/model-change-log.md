@@ -4484,93 +4484,27 @@ question-leakage gate on cross_border, 7 six-gram runs over two tasks. Model rep
 No numbers, folders or structure changed; the only agent-visible delta is one
 alias fewer on one dimension.
 
----
+## 2026-08-24 - mental_health: patient-grain crisis twin; robot/virtual_idol twins blocked by warehouse drift (M-37)
 
-## 2026-08-21 — ANSWER-KEY CONTAMINATION NOTICE, and the failure-classification diagnosis
+Root-causing register #10 (cross-fact pairings refused) found the refusals are never
+missing relationships: three of five affected models already held the conforming route
+and either failed to publish it as a metric or failed to say it existed. Model repo
+`5c5866f` deploys the first fix: `Total Crisis Interventions (Patient Rollup)` on
+Patient Detail (the rollup column existed; only an attribute was published), plus a
+pointer on the treatment-grain original. Verified live post-deploy: the wave-impossible
+`diagnosis x Patient Count x crisis interventions` query now returns rows, total 1131
+matching the treatment-grain figure.
 
-**All 22 databases are now answer-key contaminated for model-building purposes.**
-At the user's explicit direction, gold SQL (`sol_sql` and `follow_up.sol_sql`) was
-read for every one of the 328 failing submissions across the current-build
-atscale runs, to classify failure modes. The stated and accepted purpose was
-classification, never to bake answers into a model — no gold value, predicate or
-threshold was copied into any SML object, and the model repo was not touched
-during the exercise. Gold artefacts were kept in a scratch analysis directory.
+Model repo `1aecf1f` carries the remaining two fixes as spec-only drafts — virtual_idol
+membership-chain gift twins (verified against the warehouse: 1362597.05 / 270069 over
+555 chain-reached interactions) and a robot description pointer — with YAML deliberately
+NOT regenerated: both models' dry-run gates fail on warehouse drift unrelated to the
+change (virtual_idol: interactions chat_activity reseeded, 18 stale pins, the
+verified_language key gone entirely; robot: payload_overload_flag column dropped). The
+deployed YAML for both models is unchanged from before this pass. Re-pin against the
+current warehouse before running their build.sh — and note the drift means both models'
+PUBLISHED descriptions already quote numbers the warehouse no longer holds.
 
-Record it the same way `robot_fault_prediction` was recorded on 2026-08-20: from
-here on, a model change to any of these 22 cannot be presented as independent of
-the answer key. If the benchmark result needs to be defensible as arm's-length,
-that claim now rests on the *provenance of each specific change*, not on the
-firewall — so any future change should say in its commit message which evidence
-it came from.
-
-### What the diagnosis found: a negative result
-
-328 failing submissions (281 phase 1, 47 phase 2) were paired with gold and
-compared on structural features. The headline is that **there is no
-large model-fixable class**, and three of the four biggest apparent classes are
-artefacts of the comparison rather than defects.
-
-**Failures are multi-causal.** Median **4** independent divergences per failing
-submission; **79%** have three or more; only **7%** (23 tasks) have a single
-divergence. A submission with four simultaneous differences from gold is not one
-model object away from correct — the agent answered a materially different
-question. That is a comprehension and ambiguity-resolution problem, not a model
-surface problem.
-
-**Three big classes are measurement artefacts**, because semantic-layer SQL is
-being compared against raw Postgres SQL:
-
-- *aggregation* (159 tasks): **125 of them** are the agent correctly referencing
-  a measure BARE while gold spells out `AVG(...)`/`COUNT(...)`. On this interface
-  the engine applies the SML aggregation, so bare is correct usage. Not a defect.
-- *join count* (181) and *subquery depth* (111): a semantic-layer query reads one
-  virtual table by construction while gold joins physical tables. Artefact.
-- *gold-threshold* (291): inflated by numeric literals inside JSON paths and casts
-  in raw SQL, which are not thresholds at all.
-
-**Masking does not explain failure.** 88% of failures involve a masked ambiguity
-— but so do 76% of tasks that PASS both phases, against an 86% base rate across
-all 410 tasks. The gradient (76% → 84% → 89% across passed-both, passed-phase-1,
-failed) is shallow. Masked ambiguity is near-universal in this task set and is
-not a discriminating explanation; an earlier masked/clean split of the failure
-classes was almost entirely base rate and should not be quoted.
-
-**What survives as genuinely model-attributable is small.** The one clean class
-is the agent projecting a human-readable label beside the identity code where
-gold projects only the code — traceable to this prompt's own "prescribe
-`GROUP BY key` + `SELECT label`" guidance. Tested strictly (dropping the label
-makes the column count match gold): **11 tasks, 3%** of failures, and only **3**
-of those also agree on aggregates, GROUP BY and LIMIT. Worth fixing, worth
-nothing like a headline.
-
-### Methodological limit, and what would actually answer the question
-
-Comparing SQL *text* across two arms with different dialects and different table
-shapes invalidates most structural comparisons — only column count is directly
-comparable, and that one is multi-causal. The rigorous method is the one this
-prompt already prescribes and which was NOT done here: re-execute each submission
-against the engine and gold against the warehouse, then diff the RESULT SETS with
-the harness's own comparison function. That needs per-task database state
-reconstructed (the scratch DBs are dropped, and phase-2 gold depends on the
-phase-1 snapshot), which is why it was not attempted in this pass. Any future
-attempt at this question should start there rather than repeating a text diff.
-
-### Consequence for the improvement plan
-
-Of the four fixes proposed on 2026-08-20, only one survives contact with
-evidence:
-
-1. ~~Pre-ship the divisions and the rounding~~ — **DISPROVEN before implementation.**
-   The grading pipeline rounds both sides to 2 decimal places and canonicalises
-   numerics, so `canonical_cell("0.21") == canonical_cell(0.21)`; a
-   string-returning `CAST` does not cost the grade, and `ROUND(x, 2)` works bare
-   on this engine. The "output shaping" class of 15 phase-2 failures was a
-   mis-classification that inferred causation from the presence of ROUND/CAST in
-   the failing SQL. Implementing it would have added ~600 objects across 22
-   models on a false premise, and would have worked against the discovery-cost
-   result below.
-2. **Discovery cost — CONFIRMED and shipped as an MCP change**, not a model one.
-   See the `dw-bird-updates` entry.
-3. Precomputed strings for genuinely inexpressible output shapes — still stands,
-   but it is 1 observed task in this sample.
-4. households' dimension heading — still stands, cheap, previously measured.
+Prompt guidance: `create_bird_model_prompt.v9.md` adds the three rules this
+investigation produced (pair-conformance obligation, rollup-columns-ship-as-metrics,
+gate-2 extended to metric pairs).
