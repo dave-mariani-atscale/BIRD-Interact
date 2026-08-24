@@ -4515,3 +4515,28 @@ another party runs tests against the deployed catalog. The drafts live on local 
 `m37-drafts` in the models repo. Deployed YAML was never affected either way — the
 drafts changed generator specs only. Remote main now differs from its pre-M-37 state by
 exactly the verified mental_health twin (`5c5866f`).
+
+## 2026-08-24 - robot/virtual_idol: caught up to the reseeded warehouse; M-37 twins deployed (models 2e251f6)
+
+Re-running the M-37 investigation after "pull latest" found the real latest change was
+the WAREHOUSE, not the repos: the source data was reseeded, and the deployed robot
+model was completely broken by it - performance_and_safety.payload_overload_flag no
+longer exists, so every query over the operation fact (even bare Robot Operation
+Count) died at dispatch. A 22-model sweep found robot was the only hard-broken model.
+virtual_idol kept running but with stale published numbers (all 821 interactions now
+carry chat_activity, was 723; the Verified_Lang key is gone entirely).
+
+Shipped in models `2e251f6`, all gates passing: robot's dropped column becomes a typed
+NULL (the attribute was published as all-null by contract) and its
+current-date-derived age/HDR pins get drift tolerances; virtual_idol re-pinned 18
+values with every quoting description updated and dead-column treatment for the two
+verified-language attributes; birdsml gate G20 fixed to stop counting "End" inside
+bracketed measure names (false positive, gate postdates robot's build); and the M-37
+cross-fact twins from the earlier draft: virtual_idol Membership Chain gift metrics
+and the robot description pointer.
+
+Verified live post-deploy: robot's fact answers again (1000 operations,
+overload breakdown 8/471/521); gift value by Marketing Preference - register #10's
+virtual_idol case - now answerable via the Membership Chain twin (chain total
+1362597.05); the non-conforming original still refuses with the validator message, as
+designed.
