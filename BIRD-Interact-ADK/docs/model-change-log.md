@@ -4774,13 +4774,22 @@ including the bare acronym form.
 Three exclusions came out of the gates, and each is now a rule in the table's own header
 rather than a one-off fix:
 
-- **A term masked on a task this backend runs is not publishable at all**, not even as a
-  bare name: the benchmark deleted that entry so the agent must ask the user what the
-  concept means, and naming it returns the half we were meant to withhold. Sixteen of
-  this KB's entries are masked on a running Query task. A10 matched two of them by
-  wording; the other four were removed by applying the rule rather than waiting for the
-  gate to find them, which is the general lesson - the gate is a backstop, not the
-  policy.
+- **Masked terms are NOT blanket-excluded, and the first version of this entry said they
+  were.** The standing rule, set out under "Masked terms" above and upheld on
+  re-examination, is explicitly *not* "never ship a masked term": what the benchmark
+  withholds is the CUT-OFF. A masked `calculation_knowledge` entry - a named formula with
+  no number - ships freely, and A10 skips that type by design. A masked
+  `domain_knowledge` entry may be NAMED provided its cut-off is not published beside it;
+  A10's NAMED detector fires on the term sitting within ~200 characters of a
+  threshold-shaped number, not on the naming. Six terms were excluded in `bfc0180` on the
+  wrong rule and four were restored in `6b5ad0d` after re-running the gate with all six
+  in place - one of them `calculation_knowledge`, never eligible for exclusion at all.
+  Two stay out for the specific reason: every column that could host them already states
+  that concept's cut-off in its own distribution sentence ("169 patients exceed 2"), so
+  naming the concept there hands over the number the agent must ask for, and there is no
+  clean host. Net 18 terms searchable, not 14. The process lesson is worth more than the
+  fix: a gate failure tells you THAT something is wrong, never WHAT the rule is - read the
+  rule where it is written before generalizing from a red build.
 - **A term a task question quotes verbatim is not publishable either**, because it trips
   A8 and nothing in the published text distinguishes it from a description written off
   the question. KB 58 was dropped for this, at little cost: the object is already NAMED
