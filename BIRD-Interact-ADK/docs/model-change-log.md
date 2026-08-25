@@ -4804,3 +4804,43 @@ Prompt: `create_bird_model_prompt.v10.md` gains this as rule 7, with the three e
 and the instruction to ship it as a table the build can check rather than as hand-edits.
 
 Not yet done: the same audit on the other 21 models (tracker M-61).
+
+## 2026-08-25 — insider_trading: KB vocabulary made searchable (models e30a3f3)
+
+The M-61 pass from mental_health (`bfc0180`/`6b5ad0d`), applied to the database
+with the next-best ingredient coverage. Chosen off a token-free audit of all 22
+models: KB-term coverage runs 51% (hulushows) to 99% (ETF), and insider_trading
+sat at 73% with a gap that was almost entirely *naming*, not missing capability.
+
+20 of 74 KB terms were absent from the model's searchable text. 16 are now
+attached to the 18 published objects that already answer them. Nine were pure
+wording drift — the KB says "Trader Position Holding Style" where the model
+publishes `Position Holding Style`, "Marking the Close Patterns" against
+`Marking The Close Pattern`, "Unusual Option Activity Level" against `Unusual
+Option Activity`. Six are AND-composites of two other KB entries and are
+attached to BOTH ingredients, so a search on the composite returns the pair the
+caller has to combine.
+
+Names only, never cutoffs. A `domain_knowledge` threshold stays the caller's to
+supply, and A10 passed with 3 masked terms against 321 descriptions.
+
+FOUR TERMS DELIBERATELY NOT ATTACHED, which is the part worth keeping. KB 43,
+62 and 64 depend on KB 13 "Collusion Network Indicator" and KB 46 "Aggressive
+Event Speculator" — both of which this model already documents as
+non-implementations, in `trader_record.yml` and the model file, with explicit
+"do not filter on this" guidance. KB 23 "Order Type Distribution" needs a
+primary-order-type column that is not published. Attaching any of the four
+would have claimed an answer the model cannot give, which is the gold-reading
+failure the v10 counterfactual rule exists to prevent.
+
+Verified on the deployed catalog rather than the YAML: all nine spot-checked
+terms resolve through `explore_columns`, the composites return both ingredients,
+and a nonsense control returns no match. Coverage 73% → 91% by the offline
+auditor, which undercounts because it reads wrapped YAML.
+
+Gates: 19 build gates clean, A8 pass, A10 pass, sml-cli validate clean.
+
+Note for whoever reads this next: the deploy publishes the whole catalog, so it
+also shipped three upstream commits that were on models `main` — `cold_chain`
+`693f342`, `sports_events` `ca071f1`, `fake_account` `568e210`. Nothing in this
+session tested those.
