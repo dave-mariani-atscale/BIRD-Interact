@@ -4484,6 +4484,97 @@ question-leakage gate on cross_border, 7 six-gram runs over two tasks. Model rep
 No numbers, folders or structure changed; the only agent-visible delta is one
 alias fewer on one dimension.
 
+---
+
+## 2026-08-21 — ANSWER-KEY CONTAMINATION NOTICE, and the failure-classification diagnosis
+
+**All 22 databases are now answer-key contaminated for model-building purposes.**
+At the user's explicit direction, gold SQL (`sol_sql` and `follow_up.sol_sql`) was
+read for every one of the 328 failing submissions across the current-build
+atscale runs, to classify failure modes. The stated and accepted purpose was
+classification, never to bake answers into a model — no gold value, predicate or
+threshold was copied into any SML object, and the model repo was not touched
+during the exercise. Gold artefacts were kept in a scratch analysis directory.
+
+Record it the same way `robot_fault_prediction` was recorded on 2026-08-20: from
+here on, a model change to any of these 22 cannot be presented as independent of
+the answer key. If the benchmark result needs to be defensible as arm's-length,
+that claim now rests on the *provenance of each specific change*, not on the
+firewall — so any future change should say in its commit message which evidence
+it came from.
+
+### What the diagnosis found: a negative result
+
+328 failing submissions (281 phase 1, 47 phase 2) were paired with gold and
+compared on structural features. The headline is that **there is no
+large model-fixable class**, and three of the four biggest apparent classes are
+artefacts of the comparison rather than defects.
+
+**Failures are multi-causal.** Median **4** independent divergences per failing
+submission; **79%** have three or more; only **7%** (23 tasks) have a single
+divergence. A submission with four simultaneous differences from gold is not one
+model object away from correct — the agent answered a materially different
+question. That is a comprehension and ambiguity-resolution problem, not a model
+surface problem.
+
+**Three big classes are measurement artefacts**, because semantic-layer SQL is
+being compared against raw Postgres SQL:
+
+- *aggregation* (159 tasks): **125 of them** are the agent correctly referencing
+  a measure BARE while gold spells out `AVG(...)`/`COUNT(...)`. On this interface
+  the engine applies the SML aggregation, so bare is correct usage. Not a defect.
+- *join count* (181) and *subquery depth* (111): a semantic-layer query reads one
+  virtual table by construction while gold joins physical tables. Artefact.
+- *gold-threshold* (291): inflated by numeric literals inside JSON paths and casts
+  in raw SQL, which are not thresholds at all.
+
+**Masking does not explain failure.** 88% of failures involve a masked ambiguity
+— but so do 76% of tasks that PASS both phases, against an 86% base rate across
+all 410 tasks. The gradient (76% → 84% → 89% across passed-both, passed-phase-1,
+failed) is shallow. Masked ambiguity is near-universal in this task set and is
+not a discriminating explanation; an earlier masked/clean split of the failure
+classes was almost entirely base rate and should not be quoted.
+
+**What survives as genuinely model-attributable is small.** The one clean class
+is the agent projecting a human-readable label beside the identity code where
+gold projects only the code — traceable to this prompt's own "prescribe
+`GROUP BY key` + `SELECT label`" guidance. Tested strictly (dropping the label
+makes the column count match gold): **11 tasks, 3%** of failures, and only **3**
+of those also agree on aggregates, GROUP BY and LIMIT. Worth fixing, worth
+nothing like a headline.
+
+### Methodological limit, and what would actually answer the question
+
+Comparing SQL *text* across two arms with different dialects and different table
+shapes invalidates most structural comparisons — only column count is directly
+comparable, and that one is multi-causal. The rigorous method is the one this
+prompt already prescribes and which was NOT done here: re-execute each submission
+against the engine and gold against the warehouse, then diff the RESULT SETS with
+the harness's own comparison function. That needs per-task database state
+reconstructed (the scratch DBs are dropped, and phase-2 gold depends on the
+phase-1 snapshot), which is why it was not attempted in this pass. Any future
+attempt at this question should start there rather than repeating a text diff.
+
+### Consequence for the improvement plan
+
+Of the four fixes proposed on 2026-08-20, only one survives contact with
+evidence:
+
+1. ~~Pre-ship the divisions and the rounding~~ — **DISPROVEN before implementation.**
+   The grading pipeline rounds both sides to 2 decimal places and canonicalises
+   numerics, so `canonical_cell("0.21") == canonical_cell(0.21)`; a
+   string-returning `CAST` does not cost the grade, and `ROUND(x, 2)` works bare
+   on this engine. The "output shaping" class of 15 phase-2 failures was a
+   mis-classification that inferred causation from the presence of ROUND/CAST in
+   the failing SQL. Implementing it would have added ~600 objects across 22
+   models on a false premise, and would have worked against the discovery-cost
+   result below.
+2. **Discovery cost — CONFIRMED and shipped as an MCP change**, not a model one.
+   See the `dw-bird-updates` entry.
+3. Precomputed strings for genuinely inexpressible output shapes — still stands,
+   but it is 1 observed task in this sample.
+4. households' dimension heading — still stands, cheap, previously measured.
+
 ## 2026-08-24 - mental_health: patient-grain crisis twin; robot/virtual_idol twins blocked by warehouse drift (M-37)
 
 Root-causing register #10 (cross-fact pairings refused) found the refusals are never
@@ -4540,3 +4631,64 @@ overload breakdown 8/471/521); gift value by Marketing Preference - register #10
 virtual_idol case - now answerable via the Membership Chain twin (chain total
 1362597.05); the non-conforming original still refuses with the validator message, as
 designed.
+
+## 2026-08-25 - mental_health: gold-reading Disconnect, treatment-weighted PSM twins, assessment-grain additions (models 2d6e298)
+
+Root-causing the 824_all mental_health arm (2/20 phase-1) with the offline
+grader replay (`ex_base_external_pred` against the pristine template - the base
+`mental_health` DB was briefly contaminated by running the M-tasks' DML sol_sql
+during analysis and was restored from `mental_health_template` before any
+conclusion was drawn). Provenance: every change below came from reading gold for
+the failing tasks (per the 2026-08-21 contamination notice, classification was
+the accepted purpose); each change publishes a second reading of a
+KB-ambiguous formula or a grain the warehouse genuinely holds, never a gold
+constant.
+
+Shipped in models `2d6e298`, all gates passing:
+
+- **Engagement Outcome Disconnect reflagged** (task 3): the flag tested the
+  plain three-level TES and the all-outcome RTI; the KB-58 reading as graded
+  wants the zero-scored ('Non-compliant' = 0) engagement mean and an RTI whose
+  adherence share spans only outcomes that record a functional improvement.
+  Both readings stay published; the flag now selects 14 facilities, verified
+  cell-identical to the warehouse computation.
+- **Treatment-weighted stability twins** (task 7): facility PSM existed only
+  with components summed once per encounter; the twin weighs crisis AND missed
+  appointments by encounter-treatment row pairs, plus a matching performance
+  quadrant and median. Verified 100/100 rows against the KB-61 quadrant under
+  that weighting.
+- **Assessment-grain additions** (tasks 14, 16-18, 20): raw
+  `med_side_eff_density` text kept beside the parsed number; a two-medication
+  annualized side-effect score; the patient's LEAD clinician published on the
+  assessment so per-diagnosis expert rosters can group assessment-grain flags
+  by the responsible clinician (verified: 43 groups, the KB-49 roster).
+- **Description steers** (tasks 2, 13, 16-18): patient-grain rate and
+  classification profiles now say single-patient file audits want assessment
+  grain; SESI (and its mean metric) points resource-adequacy-alone questions at
+  Mean Facility Resource Adequacy Index; facility TAR documents the
+  missing-as-zero convention for the resource/adherence correlation.
+
+Framework, same session (tracker A-60, B-49 register): the ASK_USER_TIP
+invented-wording bullet gained a no-ask default - a computed pass/fail check is
+returned as the bare SQL boolean, never invented 'Yes'/'No' text. Measured on
+824_all: 5 phases failed on exactly that (mental_health 16/17/18/20,
+crypto_exchange_8 p2); mental_health_17's first attempt was otherwise
+cell-exact.
+
+Not fixed, reported on the tracker: `remove_distinct` breaks every `DISTINCT
+ON` gold (16 phases auto-fail both arms, B-60 - upstream bug, mirrored
+faithfully); mental_health `time_mark` is one constant on all 351 encounters so
+recency golds are tied-sort coin flips, and task 9's run verdict is
+nondeterministic (B-61); four gold/simulator contradictions (B-62).
+
+Same-day update: B-60 was fixed independently while this analysis ran -
+`7918f29` (merged as `4db5b70`) rewrites `remove_distinct` to strip only the
+set quantifier, leaving `DISTINCT ON` and `IS [NOT] DISTINCT FROM` intact, with
+`scripts/test_remove_distinct.py` covering the 15 affected golds. Re-verified
+against the fixed grader: mental_health_5/6 golds now execute (9 and 5 rows),
+and an offline re-replay of every 824 mental_health submission changes no
+verdict - both tasks were also wrong on content (5: the Stable-Recovery leg of
+KB-56 was never applied, 378 rows vs 9; 6: latest-diagnosis attribution and the
+all-845-patients CIF denominator), and both stay shadowed by the B-61 tied-sort
+recency ambiguity. B-60 is updated to fixed on the tracker; upstream
+`eval_bird_interact.py` still carries the bug.
