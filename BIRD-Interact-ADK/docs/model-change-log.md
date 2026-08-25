@@ -4844,3 +4844,33 @@ Note for whoever reads this next: the deploy publishes the whole catalog, so it
 also shipped three upstream commits that were on models `main` — `cold_chain`
 `693f342`, `sports_events` `ca071f1`, `fake_account` `568e210`. Nothing in this
 session tested those.
+
+## 2026-08-25 — hulushows: KB vocabulary made searchable (models 2cb35ce)
+
+Third and last of the KB-vocabulary pass. hulushows had the widest gap of the 22
+models — 45 of 92 terms — and the model turned out to implement nearly all of
+them already, under its own wording. 41 columns now carry their KB term(s).
+Coverage 51% → 91%, measured on the unwrapped YAML rather than the file (the
+offline auditor reads wrapped lines and undercounts; it says 85%).
+
+What is different here from mental_health and insider_trading: a large part of
+this gap is VALUE vocabulary rather than formulas. KB 0–9 and 74 enumerate the
+literal strings a column holds — 'show'/'movie'/'special', the six TV ratings,
+the seven tiers, '~' for sub-genres and '|' for alternatives. That is what an
+agent filters on, and a wrong guess returns zero rows without erroring. Those
+terms are attached to the column whose values they describe.
+
+One thing found while mapping and NOT acted on: `Tier Key`'s description spells
+the tiers `free_on_web` where KB 3 writes them `'free on website'`. If the
+warehouse uses the KB's spelling, a filter written from the description returns
+nothing. Not changed here because it needs a warehouse check first, not a
+description edit. Worth a tracker row.
+
+FOUR TERMS DELIBERATELY NOT ATTACHED: KB 8, 54 and 61 all measure the diversity
+of boolean encodings across fields, which this model does not compute, and KB 35
+is an entropy it does not compute either.
+
+Gates: 19 build gates clean, A8 pass, A10 pass, sml-cli validate clean.
+Regenerated after rebasing onto upstream `f84f711` (which also touched
+hulushows) and the tree was clean, so the committed YAML is what the merged spec
+produces — the two changes did not silently overwrite each other.
