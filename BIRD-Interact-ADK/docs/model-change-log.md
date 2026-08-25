@@ -4692,3 +4692,59 @@ KB-56 was never applied, 378 rows vs 9; 6: latest-diagnosis attribution and the
 all-845-patients CIF denominator), and both stay shadowed by the B-61 tied-sort
 recency ambiguity. B-60 is updated to fixed on the tracker; upstream
 `eval_bird_interact.py` still carries the bug.
+
+## 2026-08-25 - mental_health re-derived from build-prompt v10; four of eight objects withdrawn (models f1fc57a)
+
+Asked whether the build prompt had gained enough guidance for a fresh generation to
+produce the objects deployed earlier today, the answer was no - and checking turned up
+something more useful: **four of the eight objects in `2d6e298` failed the test "would a
+builder who had never seen the reference answer produce this?"**, and two of those broke
+rules the prompt already carried. All eight had passed every gate. Gates cannot catch
+this class; only re-reading the rules against the objects can.
+
+Withdrawn:
+
+- **Treatment-weighted PSM, its quadrant and its median.** They reproduced a join
+  fan-out in the reference: per-encounter missed appointments summed after a LEFT JOIN
+  to the per-treatment table total 1348 where the warehouse holds 869, differing on 94
+  of 273 facilities. The crisis term in the same expression is correct - it is recorded
+  per treatment - which is exactly what made it hard to see. The twin matched the
+  reference on 100 of 100 rows, and that exact match was the tell, not the evidence.
+  Filed as tracker B-64; the surviving stability metric now states that each component
+  is counted at its own grain.
+- **The two-medication annualized side-effect score.** KB 84 says "a standard number of
+  medications" and names none, so 2 was not derivable from the KB or the warehouse.
+  `Annual Side Effect Per Medication` now says the multiplier is unstated and must come
+  from the user, and points at the actual-medication-count version on the treatment
+  record.
+
+Restored and split:
+
+- **Engagement Outcome Disconnect** goes back to the KB-literal reading - three-level
+  engagement mean, all-outcome trajectory index, 22 facilities. Switching it to the
+  reference's reading was answer-fitting, which the follow-the-KB rule already
+  prohibited. Both inputs do genuinely carry a second reading, so the alternate
+  combination ships as its own flag (`… Alternate Basis`, 14 facilities), each
+  description giving both counts and saying neither reading is more correct.
+
+Added, because a rule already in force required it:
+
+- **Treatment Adherence Rate Missing As Zero** - 541 facilities averaging 0.15584,
+  against the strict rate's 181 and 0.46581. The missing-input-policy rule wants the
+  second policy as an *object*; the earlier pass had only described it in prose, which
+  the name-decides rule says a caller will not act on.
+
+Kept: the stored-text side-effect density twin, the assessment's lead clinician, and the
+grain and index-choice steers - each traceable to a KB silence or a warehouse fact a
+builder would hit unaided.
+
+Prompt: `create_bird_model_prompt.v10.md` carries four new rules (a classification flag
+inherits and hides its inputs' ambiguity; unit-suffixed text needs both forms; an
+unspecified constant in a KB formula is the caller's to supply; a single-entity audit
+wants detail rows) and strengthens two (the counterfactual test for objects a failure
+review produces; the join fan-out variant that inflates only one term of a composite).
+
+Verified live post-deploy: KB flag 22 facilities, alternate-basis flag 14, TAR pair
+181/541 with a no-outcome facility reading NULL against 0.0, and all three withdrawn
+objects returning "Column not found". Gates: dry-run 341 pins, generate 19 gates, A8,
+A10, sml-cli validate.
