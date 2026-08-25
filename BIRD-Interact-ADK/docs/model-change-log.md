@@ -4748,3 +4748,50 @@ Verified live post-deploy: KB flag 22 facilities, alternate-basis flag 14, TAR p
 181/541 with a no-outcome facility reading NULL against 0.0, and all three withdrawn
 objects returning "Column not found". Gates: dry-run 341 pins, generate 19 gates, A8,
 A10, sml-cli validate.
+
+## 2026-08-25 - mental_health: the knowledge base's vocabulary made searchable (models bfc0180)
+
+`explore_columns` matches search terms against the object name **and** its description -
+verified live, with a nonsense control to prove the matching is real. So a concept the
+model fully supports is undiscoverable whenever the KB's own wording for it appears in
+neither, and the agent searches with the question's phrasing, which is the KB's phrasing.
+Measured before the change: **40 of the 96 KB terms appeared nowhere in the published
+text**, and searching a composite classification by its KB name returned "No columns
+matched" although both halves were published.
+
+This is the concrete shape of the arm asymmetry behind the negative lift. The raw arm
+made 170 `get_knowledge_definition` calls on this database, 162 of which returned a real
+definition (masking is per-task, so raw has broad glossary access). The atscale arm has
+no such tool by design - the model is meant to encode the KB. It encoded the DATA and not
+the VOCABULARY.
+
+Shipped as a `KB_TERMS` table mapping column to KB term plus a build-time post-pass that
+appends the wording to that column's description: one place to audit instead of forty
+scattered edits, and an unmatched column name fails the build rather than silently
+restoring the gap. Verified live post-deploy - all 14 publishable terms now match,
+including the bare acronym form.
+
+Three exclusions came out of the gates, and each is now a rule in the table's own header
+rather than a one-off fix:
+
+- **A term masked on a task this backend runs is not publishable at all**, not even as a
+  bare name: the benchmark deleted that entry so the agent must ask the user what the
+  concept means, and naming it returns the half we were meant to withhold. Sixteen of
+  this KB's entries are masked on a running Query task. A10 matched two of them by
+  wording; the other four were removed by applying the rule rather than waiting for the
+  gate to find them, which is the general lesson - the gate is a backstop, not the
+  policy.
+- **A term a task question quotes verbatim is not publishable either**, because it trips
+  A8 and nothing in the published text distinguishes it from a description written off
+  the question. KB 58 was dropped for this, at little cost: the object is already NAMED
+  for the distinctive part of the phrase.
+- **An acronym in parentheses reads to gate G6 as a cross-reference** to an object of
+  that name. Unwrapped to "<term>, also written <ACRONYM>" so both forms stay searchable
+  and G6 keeps its teeth, rather than allowlisting the reference.
+
+Gates: dry-run 341 pins, generate 19 gates, A8, A10, sml-cli validate.
+
+Prompt: `create_bird_model_prompt.v10.md` gains this as rule 7, with the three exclusions
+and the instruction to ship it as a table the build can check rather than as hand-edits.
+
+Not yet done: the same audit on the other 21 models (tracker M-61).
