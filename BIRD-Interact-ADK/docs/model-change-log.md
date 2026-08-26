@@ -4988,3 +4988,134 @@ Not model changes, recorded for whoever hits them next:
   not a model defect.
 - **IT_11 gold** selects a literal `'TR94368' AS trader_id` column the question
   never asks for; the agent's five-column answer is otherwise value-identical.
+
+## 2026-08-25 — hulushows: tier-rollup profiles keyed on their real grain (models 69a716f, 74b0dc3, 3f12c5c)
+
+Logged after the fact — the three commits went in without an entry.
+
+SML reported 25 `Level 'Content Tier Profile Key': points to multiple key
+values` warnings, one per tier-varying secondary on that level. The declared
+grain did not match the data: Content Tier Rollup is one row per content record
+PER TIER (7000 rows, 1000 distinct content records, `(content_record, tier_key)`
+unique) while the five degenerate profile dimensions on it were keyed on
+`content_record` alone, so every tier-varying attribute had up to seven values
+per member. The dimension's own description already said "one row per content
+record per tier"; only the key disagreed. Measured on the same dataset SQL:
+866 members with >1 Tier Episode Volume before, 0 after. `prof()` now accepts a
+list of columns and the five tier-rollup profiles pass the composite. Nothing
+joins into that dimension — all four relationships point out of it — so no join
+changed, and the level is hidden and degenerate, so the composite is not
+user-facing (`name_column` stays `content_record`).
+
+The same condition was then reproduced directly against every warehouse for
+every degenerate level across all 22 models: count 0. The check is validated by
+the control above (it returns 866 for the pre-fix key), so that zero is real.
+
+**The revert/restore pair is net-zero and is not a model change.** A
+`[planner-internal] Missing column information` fault appeared in hulushows in
+the 0825 evening run — 9 occurrences, 0 in the baseline — on the shape
+`SELECT DISTINCT "Series","Primary Genre"`. Two things had changed for the model
+that day, this key and the round-4 engine build, so `74b0dc3` reverted the key
+to isolate which. The fault still reproduced without it, so the key was not the
+cause and `3f12c5c` put it back. **The fault is the engine's, new in the round-4
+build (52168/52169/52170/52171).** Worth a tracker row against the engine, not a
+model fix.
+
+## 2026-08-26 — mental_health: grain twins cross-linked, zero-filled resource index (models 36cf48f, 104a081)
+
+Found by diffing the 0825 run's failing submissions against executed gold.
+
+**The goal-achievement grain twins did not name each other, and only the
+per-patient one advertised its by-diagnosis figures** (PTSD 17.31 / Anxiety
+15.06) — exactly the numbers a per-assessment cohort comparison must not return
+(pooled: 17.62 / 14.64). A by-diagnosis question was steered to the wrong grain
+by the only description that mentioned diagnosis. Both dimensions now state
+their basis, carry both sets of figures, and name the other twin. `104a081`
+applies the identical fix to the METRIC twins of the same quantity: the
+per-patient mean advertised its by-diagnosis figures without naming the pooled
+twin, and the pooled mean did not mention diagnosis at all.
+
+**Facility Resource Adequacy Index existed only in the strict reading** — 370
+of 541 facilities, the rest NULL and silently dropped. The adherence-rate family
+already ships a Missing As Zero twin for exactly this choice and a
+correlation-over-every-facility task needed the same reading, so
+`facility_resource_adequacy_index_missing_as_zero` (COALESCE to 0, mean 1.3826
+over all 541) ships as a dimension, cross-linked from the strict dim and the
+mean metric, its description mirroring the adherence twin's.
+
+Gates: dry-run 341 pins, generate 19 gates, A8, A10, sml-cli validate.
+
+## 2026-08-26 — all models: every disagreeing twin now names its twin (models f9947b8)
+
+Repo-wide generalisation of the mental_health_19 finding, and the reason this
+one is worth reading even for a model it did not touch: **the same quantity
+published at two grains, each description quoting its own headline figure and
+neither naming the other, actively steers the agent.** It follows whichever
+description mentions the question's wording and scores 0 against the other
+basis with every value "right".
+
+All 22 models were audited for pairs where both descriptions quote a headline
+figure, the figures differ by >0.2% relative, and neither names the other:
+**55 pairs in 9 models, 17 of them touched by failing tasks in the 0825 run
+(16 tasks).** After the commit the audit finds zero.
+
+Mechanism, so it stays closed:
+
+- Eight models gain an evidence-gated `_cross_link_grain_twins()` post-pass in
+  `spec_dims.py` — a secondary is annotated only when its own description quotes
+  a headline figure, a same-column sibling on another dataset quotes one too, and
+  the figures genuinely differ. The appended sentence names the sibling, states
+  both grains and the sibling's figure, and ends with the standing
+  say-which-basis warning. Hand-written cross-links win via a containment check.
+  (hulushows 10, sports_events 12, planets_data 10, virtual_idol 4,
+  robot_fault_prediction 4, disaster_relief 1.)
+- mental_health, the largest twin family at 30 pairs, additionally gets a
+  name-keyed pass for the entity-prefixed and basis-suffixed twins that map to
+  different source columns (Patient X / Facility X / X Registered / X Strict) —
+  42 more links — plus 4 hand-written sentences for the two irregularly-named
+  pairs no normaliser can pair.
+- reverse_logistics' Total Return Cost pair and museum_artifact's leak-rate
+  metric pair alluded to each other without stating the name `explore_columns`
+  needs; both directions now name the twin.
+- `utilities/twin_audit.py` is the auditor, exit 1 on any finding, so a build
+  can gate on it.
+
+Every touched model's full gate chain passes: firewall, dry-run pins, 19
+generate gates, question-leakage, masked-threshold, sml-cli validate.
+
+## 2026-08-26 — households: the Zone description no longer claims 'location tag' and 'area' (models fd842ae)
+
+Found by the households deep dive (3/21, second-worst database). The Zone
+attribute's description asserted "Zone is what 'by zone' and 'location tag'
+questions mean". In households_8 the agent asked exactly the right shape
+question, was told to emit a combined "highest | lowest" value, and then grouped
+by Zone on the strength of that sentence — returning zone numbers (413 | 121)
+where gold groups by the recorded region spelling. households_13 shows the same
+pull: "area code" went to Zone where gold reads it as the region. **Same defect
+class as mental_health's diagnosis-advertising twin: a description claiming
+question wording it has no right to own steers the agent into the wrong
+grouping.**
+
+The claim is replaced with its opposite — use Zone only when the question says
+'zone'; looser wording (location tag / area / area code / location) is at least
+as likely to mean the region or its recorded spelling, so ask which is meant.
+That matches the model's own canonical-vs-recorded ask convention.
+
+generate.py self-audit clean, check_recorded_readings 10/10,
+check_swapped_descriptions unchanged (its one FAIL, the padded `' Yes'` literals
+on Social Support Status, predates this change), masked-threshold gate passes.
+Recorded for whoever touches households next: **the A8 question-leakage gate
+reports 11 pre-existing findings in households metrics/calculations** (e.g.
+`total_vehicles` quoting "many vehicles do those households own"), none
+introduced here, and they deserve their own rewording pass.
+
+## 2026-08-26 — deploy state
+
+`fd842ae` — every commit above — was deployed to
+`bird_atscale_models_catalog_main` at 10:20 today, before the
+mental_health/insider_trading/hulushows n=1 run
+(`results/mh_it_hulu_n1_atscale_0826_*.json`). All gates passed: A8, A10,
+sml-cli validate, and the post-deploy gate (22 models in `_main`, template
+integrity clean). The local models checkout had been 6 commits behind `origin`,
+which is invisible from the ADK side and would have measured a stale catalog —
+`git fetch` in the models repo before a scored run, not just `git status`.
