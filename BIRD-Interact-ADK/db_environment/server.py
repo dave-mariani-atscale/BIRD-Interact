@@ -536,9 +536,29 @@ async def set_backend(req: SetBackendRequest):
     return SetBackendResponse(status="ok", environment_backend=settings.environment_backend)
 
 
+# The grading flags THIS process applies. Grading runs here, not in the runner,
+# so these are the only authoritative values — the runner reads its own env, and
+# the two silently disagreed on 2026-08-25/26 (order lint on in the service,
+# off in the runner's recorded `deviations`), which cost a mental_health
+# comparison. Exposed on /health so the runner can record what actually graded.
+GRADING_REGIME_KEYS = (
+    "grading_tie_tolerance",
+    "grading_honor_decimal",
+    "grading_casefold",
+    "grading_timestamp_date",
+    "grading_rel_tolerance",
+    "grading_rel_tolerance_value",
+    "grading_order_lint",
+    "grading_order_lint_path",
+    "free_wasted_actions",
+)
+
+
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "db_environment", "environment_backend": settings.environment_backend}
+    return {"status": "healthy", "service": "db_environment",
+            "environment_backend": settings.environment_backend,
+            "grading": {k: getattr(settings, k, None) for k in GRADING_REGIME_KEYS}}
 
 
 if __name__ == "__main__":

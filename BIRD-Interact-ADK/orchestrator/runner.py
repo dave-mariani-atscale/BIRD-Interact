@@ -335,6 +335,44 @@ def _set_service_backend(backend: str) -> None:
         logger.info("%s: environment_backend set to %r", name, confirmed)
 
 
+def _fetch_graded_regime() -> dict:
+    """The grading flags the db_environment service will actually apply.
+
+    Grading happens in that process, so its settings are the authoritative
+    ones; the `deviations` block this runner writes reads THIS process's env.
+    The two are separate processes with separate environments, and on
+    2026-08-25/26 they disagreed — the service had grading_order_lint on, the
+    recorded deviations said off, and two mental_health runs whose numbers
+    differed by exactly that flag were compared as if they were comparable.
+    Recorded alongside `deviations` as `deviations_as_graded`, and any
+    disagreement is logged loudly rather than left for a later post-mortem.
+    """
+    url = f"http://localhost:{settings.db_env_port}/health"
+    try:
+        resp = httpx.get(url, timeout=10.0, trust_env=False)
+        resp.raise_for_status()
+        regime = resp.json().get("grading") or {}
+    except Exception as exc:
+        logger.warning("Could not read db_environment's grading regime (%s): this run records "
+                       "only the runner's own settings, which may not be what graded it.", exc)
+        return {}
+    if not regime:
+        logger.warning("db_environment /health carries no grading block — restart the services "
+                       "(scripts/start_services.sh) so the run records what actually graded it.")
+        return {}
+    logger.info("Grading regime AS GRADED (db_environment): %s",
+                ", ".join(f"{k.replace('grading_', '')}={v}" for k, v in regime.items()))
+    mismatched = {k: (getattr(settings, k, None), v) for k, v in regime.items()
+                  if getattr(settings, k, None) != v}
+    if mismatched:
+        logger.warning("GRADING REGIME MISMATCH — the service grades with different flags than "
+                       "this runner has: %s. The service's values are what score this run; "
+                       "restart it to pick up this env, or expect scores that are not comparable "
+                       "to runs made with the runner's values.",
+                       "; ".join(f"{k}: runner={r!r} service={s_!r}" for k, (r, s_) in mismatched.items()))
+    return regime
+
+
 def main():
     parser = argparse.ArgumentParser(description="BIRD-Interact parallel evaluation")
     parser.add_argument("--mode", choices=["a-interact", "c-interact", "oracle"], default="a-interact")
@@ -376,6 +414,7 @@ def main():
         from orchestrator.cinteract import run_single_task
 
     _set_service_backend(args.backend)
+    graded_regime = _fetch_graded_regime()
 
     databases = [d.strip() for d in args.databases.split(",") if d.strip()] if args.databases else None
     tasks_filter = None
@@ -410,6 +449,10 @@ def main():
             mode=args.mode,
             meta={"backend": args.backend, "run_index": run_index,
                   "repeat_total": args.repeat,
+                  # What the GRADING process's flags were, read from it directly.
+                  # `deviations` below is this process's view of the same flags;
+                  # when they differ, this is the one that scored the run.
+                  "deviations_as_graded": graded_regime,
                   # Task scope, so a results file states its own comparability.
                   "query_only": args.query_only,
                   "task_count": len(tasks)},
