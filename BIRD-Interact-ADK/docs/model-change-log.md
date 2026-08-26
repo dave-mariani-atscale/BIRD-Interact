@@ -4874,3 +4874,83 @@ Gates: 19 build gates clean, A8 pass, A10 pass, sml-cli validate clean.
 Regenerated after rebasing onto upstream `f84f711` (which also touched
 hulushows) and the tree was clean, so the committed YAML is what the merged spec
 produces — the two changes did not silently overwrite each other.
+
+## 2026-08-25 — insider_trading: read the warehouse's own words (models 83fb91f, 3e56eb7, ab08109)
+
+Seven defects, found by replaying every failing submission from the 0825 run
+(`results/it_n1_atscale_0825_20260825_152024.json`) against the engine and the
+gold against Postgres, then diffing the result sets. Six were the model
+answering a different question from the one the warehouse can answer, while
+being internally consistent and passing all nineteen gates.
+
+**KB 0 Daily Turnover Rate was recomputed instead of read.** The warehouse
+stores `trade_records.bal_turnover`, whose column meaning is KB 0's formula
+word for word. The model divided volume by balance instead. On this data the
+two are uncorrelated — Pearson r = −0.008, ranges 0.10–9.98 against
+0.00013–19.63 — so every concept downstream inherited the wrong number and KB
+10 High-Risk Trader Profile selected 180 traders where gold has 954. DTR now
+reads the recorded rate and drives KB 10, 30, 36, 37; the reconstruction ships
+beside it as Computed Daily Turnover Rate with both descriptions saying the two
+are not interchangeable.
+
+**"Linked to a corporate event" was a non-null upcoming-event flag.** KB 11 and
+KB 17 both require it. `evt_near` is documented as the proximity flag for an
+*upcoming* event and is null on 249 of 999 event rows; the link is the event
+row's existence. Event-Driven Trader 745 → 994, Potential Insider Trading Flag
+246 → 325, and IT_6's penalty breakdown went from 19/11/7 to gold's exact
+24/16/11.
+
+**Eleven unit-suffixed columns were published only parsed.** Three tasks
+returned gold's exact rows, in gold's order, with every other column identical,
+and failed on `99491.77` against `"99491.77 USD/min"`. Each column now ships an
+`(As Recorded)` twin; both descriptions say the number is for filtering and
+aggregating and the text is for showing. Verified against gold row-for-row on
+IT_13, IT_14, IT_15.
+
+**KB 46 and KB 13 were withheld on a test that did not apply.** Both were
+documented as non-implementations "because the benchmark withholds the cutoff".
+KB 46 names no cutoff — it is Event-Driven Trader AND risk appetite
+'Aggressive', both already published. KB 13's only open question is the *scale*
+of one threshold (the KB says 0.6 against a column recorded 0–100), so it ships
+in two readings the way KB 49 already does. KB 43 and KB 64 ship with them; KB
+62 stays off because its other half is KB 49's contested cutoff. Aggressive
+Event Speculator returns 313, which is gold's count for M_9 exactly.
+
+**KB 36 ATI needed its missing-inputs-as-zero pair.** The KB states the product
+and is silent on absent terms. Gold reads a missing OMI as zero (598 records,
+mean 5.349); the model dropped those rows (356 records, mean 8.985). The two
+rank trader types differently, so both ship, each naming the other with both
+populations. The zero-fill reading reproduces IT_3's gold to twelve decimal
+places.
+
+**Both percentile metrics carried a stale defect note.** They said the Postgres
+dialect rejects the sketch at query time. It does not — the metric returns
+gold's median exactly. The sentence cost IT_11: the agent read it, believed it,
+and spent its budget elsewhere. A defect note is a measurement with a date on
+it; re-run it when you regenerate.
+
+**Business Restriction and Trading Restriction Window both claimed the same
+synonyms.** Gold reads `biz_restrict`; the compliance-case column advertised
+"restriction type, what restriction was imposed" and won the match. The agent
+got 306 rows against gold's 113, and swapping the column alone reproduces 113.
+Each now names the other and the distinction.
+
+All seven generalise, and all seven are in
+`create_bird_model_prompt.v10.md` as a new subsection under Modeling rules.
+
+Gates: dry-run 81 pins, generate 19 gates, A8, A10, sml-cli validate.
+
+Not model changes, recorded for whoever hits them next:
+
+- **Engine.** `PERCENTILE_CONT` is rejected in inbound SQL — `Don't understand
+  function: percentile_cont` — so a percentile metric is the only median path,
+  and that metric returns `has no ColumnGroup; excluded from the conformance
+  check`.
+- **`scripts/result_diff.py`.** Reports "agent SQL no longer executes:
+  unparseable result" when a `run_query` response carries a `## Warnings:`
+  block. That is why IT_11 showed as non-executing when it in fact returns
+  gold's values.
+- **IT_8.** Matched gold on replay — its graded-run failure was environmental,
+  not a model defect.
+- **IT_11 gold** selects a literal `'TR94368' AS trader_id` column the question
+  never asks for; the agent's five-column answer is otherwise value-identical.
