@@ -4944,9 +4944,16 @@ Not model changes, recorded for whoever hits them next:
 
 - **Engine.** `PERCENTILE_CONT` is rejected in inbound SQL — `Don't understand
   function: percentile_cont` — so a percentile metric is the only median path.
-  Investigated 2026-08-26, tracker Q-34: a percentile metric is exposed only as
-  `<name>_instance_<quantile>`, and that expansion loses both `column_group` and
-  `unrelated_dimensions_handling` from its own declaration. The visible symptom
+  Investigated 2026-08-26, tracker Q-34, and **localised**: neither the MCP
+  server nor our model build synthesises the `_instance_<q>` name (no `_instance`
+  anywhere in `AtScaleInc/mcp/src` or in `bird-atscale-models/utilities`), so the
+  engine lists that column and owns its `pg_description` remark — and that remark
+  omits `column.column_group` and `column.unrelated_config`, which
+  `atscale_mcp/tools/remarks.py:96` copies verbatim. The conformance check itself
+  is **ours**, in `atscale_mcp/tools/validation.py:278`, and is correct: it
+  excludes a measure with no `column_group` and says so. So the ask on an engine
+  ticket is narrow — populate those two fields, don't change validation. The
+  visible symptom
   is a `has no ColumnGroup; excluded from the conformance check` warning on every
   correct result. The costly symptom is that the column-path guard is skipped: a
   normal measure paired with a non-conforming dimension is refused before
@@ -4960,7 +4967,13 @@ Not model changes, recorded for whoever hits them next:
   model-side. The sketch itself is **exact** — verified against Postgres
   `PERCENTILE_CONT(0.5)` to full double precision, grouped and ungrouped, on odd
   and even group sizes — and an invalid pairing errors rather than returning a
-  wrong number, so the cost is retries and diagnosability, not correctness.
+  wrong number, so the cost is retries and diagnosability, not correctness. A
+  fourth symptom: `explore_columns` files these measures under
+  `## column_group: Calculations (measures, derived)`, the MCP's fallback bucket
+  for a missing group, which is not where a caller hunting a knowledge-base
+  formula measure looks. The inbound-SQL `PERCENTILE_CONT` gap is a separate ask
+  — a dialect feature request, not this metadata bug — and the two should not be
+  bundled.
 - **`scripts/result_diff.py`** had two classification bugs, both pointing a
   model-fix session at the wrong layer. Fixed in `73df0ed`, tracker B-66. It
   read everything before `queryId:` as the JSON payload, so a `## Warnings:`
