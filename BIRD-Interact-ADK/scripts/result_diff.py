@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import pathlib
@@ -134,11 +135,19 @@ class Mcp:
         text = "".join(c.get("text", "") for c in content if isinstance(c, dict))
         if not text:
             return None, "empty response"
-        payload = text.split("queryId:")[0].strip()
+        # The rows are a JSON array PREFIX, not the whole text before `queryId:`.
+        # A response can carry a `## Warnings:` block between the two - selecting a
+        # percentile metric always does (Q-34, the `_instance_<q>` expansion has no
+        # ColumnGroup) - and splitting on `queryId:` then swept the warning into the
+        # payload, so a submission that matched gold exactly was reported as
+        # "agent SQL no longer executes: unparseable result". Decode the prefix and
+        # ignore whatever follows it.
+        payload = text.lstrip()
         if not payload.startswith("["):
-            return None, "engine error: " + re.sub(r"\s+", " ", payload)[:160]
+            head = re.split(r"queryId:|\n## ", payload)[0]
+            return None, "engine error: " + re.sub(r"\s+", " ", head)[:160]
         try:
-            recs = json.loads(payload)
+            recs, _end = json.JSONDecoder().raw_decode(payload)
         except json.JSONDecodeError:
             return None, "unparseable result"
         if not recs:
@@ -188,6 +197,24 @@ def classify(v, a, g, agent_err, gold_err):
         return f"column COUNT differs ({len(a[0])} vs {len(g[0])})"
     if len(a) != len(g):
         return f"row COUNT differs ({len(a)} vs {len(g)})"
+    # Right rows and right values, SELECT list permuted. Without this the verdict
+    # reads "VALUES differ", which sends the reader to the model when all the agent
+    # did was list two columns in the other order - insider_trading_16 returned
+    # gold's exact 954 rows as (type, trader) against gold's (trader, type).
+    #
+    # db_utils.diagnose_rows compares whole column VECTORS, which only works when
+    # the two row orders already agree. Here they need not, so permute the agent's
+    # columns and test set equality, which is order-insensitive. Capped at 5
+    # columns (120 permutations); wider projections fall through to the generic
+    # verdict rather than cost minutes.
+    ncol = len(a[0])
+    if ncol <= 5:
+        gset = set(g)
+        for perm in itertools.permutations(range(ncol)):
+            if perm == tuple(range(ncol)):
+                continue
+            if {tuple(row[j] for j in perm) for row in a} == gset:
+                return "column ORDER only (right rows, right values)"
     return "same shape, VALUES differ"
 
 
