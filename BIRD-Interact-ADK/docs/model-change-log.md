@@ -4943,13 +4943,34 @@ Gates: dry-run 81 pins, generate 19 gates, A8, A10, sml-cli validate.
 Not model changes, recorded for whoever hits them next:
 
 - **Engine.** `PERCENTILE_CONT` is rejected in inbound SQL — `Don't understand
-  function: percentile_cont` — so a percentile metric is the only median path,
-  and that metric returns `has no ColumnGroup; excluded from the conformance
-  check`.
-- **`scripts/result_diff.py`.** Reports "agent SQL no longer executes:
-  unparseable result" when a `run_query` response carries a `## Warnings:`
-  block. That is why IT_11 showed as non-executing when it in fact returns
-  gold's values.
+  function: percentile_cont` — so a percentile metric is the only median path.
+  Investigated 2026-08-26, tracker Q-34: a percentile metric is exposed only as
+  `<name>_instance_<quantile>`, and that expansion loses both `column_group` and
+  `unrelated_dimensions_handling` from its own declaration. The visible symptom
+  is a `has no ColumnGroup; excluded from the conformance check` warning on every
+  correct result. The costly symptom is that the column-path guard is skipped: a
+  normal measure paired with a non-conforming dimension is refused before
+  execution, naming the dimension and the conforming fact groups, while the
+  percentile twin on the same fact group is dispatched and dies in the warehouse
+  with `function percentile_cont(double precision, text) does not exist`, which
+  names nothing the agent can act on. Reproduced on crypto_exchange and
+  fake_account against their Average twins. All 11 percentile metrics across
+  cold_chain, crypto_exchange, exchange_traded_funds, fake_account,
+  insider_trading and labor_certification behave identically, so this is not
+  model-side. The sketch itself is **exact** — verified against Postgres
+  `PERCENTILE_CONT(0.5)` to full double precision, grouped and ungrouped, on odd
+  and even group sizes — and an invalid pairing errors rather than returning a
+  wrong number, so the cost is retries and diagnosability, not correctness.
+- **`scripts/result_diff.py`** had two classification bugs, both pointing a
+  model-fix session at the wrong layer. Fixed in `73df0ed`, tracker B-66. It
+  read everything before `queryId:` as the JSON payload, so a `## Warnings:`
+  block made IT_11 — which returns gold's exact values — report as
+  non-executing; it now decodes the JSON prefix. And `classify` had no branch for
+  a permuted SELECT list, so IT_16 — gold's exact 954 rows returned as
+  `(type, trader)` against gold's `(trader, type)` — read as "VALUES differ".
+  `db_utils.diagnose_rows` does separate that case, but by comparing column
+  vectors, which needs the row orders to agree; these did not, so `classify`
+  now permutes the agent's columns and tests set equality.
 - **IT_8.** Matched gold on replay — its graded-run failure was environmental,
   not a model defect.
 - **IT_11 gold** selects a literal `'TR94368' AS trader_id` column the question
