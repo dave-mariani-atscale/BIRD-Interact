@@ -7,11 +7,17 @@ turns Postgres' `SELECT DISTINCT ON (col) ...` -- one operator, not a quantifier
 into `SELECT ON (col) ...`, a syntax error. Gold then fails to execute, both graders
 score 0, and the task is unpassable whatever the agent submits.
 
-Two parts:
-  * unit    - the keyword cases, no database needed.
-  * live    - every bird-interact-full gold that uses DISTINCT ON is cleaned and
-              EXECUTED, so a regression shows up as a syntax error rather than as a
-              quietly unwinnable task. Needs Postgres; skipped with --unit-only.
+Three parts:
+  * unit     - the keyword cases, no database needed.
+  * live     - every bird-interact-full gold that uses DISTINCT ON is cleaned and
+               EXECUTED, so a regression shows up as a syntax error rather than as a
+               quietly unwinnable task. Needs Postgres; skipped with --unit-only.
+  * semantic - the same failure one layer up. ex_base_external_pred grades ROWS
+               against gold, so it must NOT strip the plain set quantifier: doing so
+               inflates any gold whose DISTINCT collapses a fan-out join, past
+               anything a correct prediction could return. Asserts the semantic
+               arm's cleanup leaves every such gold's row count alone. Needs
+               Postgres; skipped with --unit-only.
 
 Gold runs on a session-READ-ONLY connection to each `<db>_template`. Templates are
 the source every task database is cloned from, so nothing here may write to one
@@ -36,6 +42,9 @@ DATA = Path(__file__).parent.parent / "bird-interact-full" / "bird_interact_data
 
 # The two Postgres operators that merely spell themselves with the word DISTINCT.
 USES_OPERATOR = re.compile(r"(?i)\bdistinct\s+on\b|\bis\s+(?:not\s+)?distinct\s+from\b")
+# The plain set quantifier -- the thing remove_distinct is actually FOR. Matched by
+# excluding the two operator spellings above.
+USES_QUANTIFIER = re.compile(r"(?i)\bdistinct\b(?!\s+on\b)")
 # What each looks like once the keyword has been wrongly deleted.
 CORRUPTED = re.compile(r"(?i)\bselect\s+on\b|\bis\s+(?:not\s+)?from\b")
 
@@ -160,6 +169,82 @@ def run_live() -> int:
     return failures
 
 
+def run_semantic_arm() -> int:
+    """The semantic arm must grade against gold with its DISTINCT still on.
+
+    ex_base_external_pred receives the prediction as ROWS, already de-duplicated by
+    the engine as the agent's own DISTINCT asked. remove_distinct is one half of a
+    two-sided normalisation of two SQL STRINGS (grade_raw_submission still applies
+    both halves); running only the gold half here cannot make a wrong answer right,
+    it can only inflate gold past anything a correct prediction could return.
+
+    Checked directly: for every phase-1 Query gold carrying a set quantifier, the
+    rows the semantic arm now grades against must equal the rows gold itself
+    returns. A regression -- someone putting remove_distinct back in that chain --
+    shows up as a row-count difference on the fan-out golds rather than as a
+    handful of quietly unpassable tasks.
+    """
+    import psycopg2
+
+    golds = []
+    for line in open(DATA):
+        task = json.loads(line)
+        sqls = task.get("sol_sql") or []
+        joined = " ".join(sqls)
+        if not sqls or task.get("category", "Query") != "Query":
+            continue
+        # Strip the operator spellings before looking for the quantifier, so
+        # `DISTINCT ON` / `IS DISTINCT FROM` alone never qualify a gold.
+        if USES_QUANTIFIER.search(USES_OPERATOR.sub(" ", joined)):
+            golds.append((task["instance_id"], task["selected_database"], sqls))
+    print(f"  {len(golds)} phase-1 Query golds use a set-quantifier DISTINCT")
+
+    conns, failures, loadbearing, checked = {}, 0, 0, 0
+    for instance_id, db, sqls in golds:
+        if db not in conns:
+            conn = psycopg2.connect(host=settings.pg_host, port=settings.pg_port,
+                                    user=settings.pg_user, password=settings.pg_password,
+                                    dbname=f"{db}_template")
+            conn.set_session(readonly=True, autocommit=True)
+            conns[db] = conn
+        cur = conns[db].cursor()
+
+        def rows_of(queries):
+            out = []
+            cur.execute("SET statement_timeout = 30000")
+            for query in queries:
+                cur.execute(query)
+                out = cur.fetchall()
+            return out
+
+        try:
+            graded = rows_of(remove_round(remove_comments(list(sqls))))
+            verbatim = rows_of(list(sqls))
+            stripped = rows_of(remove_round(remove_distinct(remove_comments(list(sqls)))))
+        except Exception as exc:                                        # noqa: BLE001
+            failures += 1
+            print(f"  [FAIL] {instance_id}: {str(exc).splitlines()[0]}")
+            conns.pop(db).close()
+            continue
+        checked += 1
+        # The property: the cleanup the semantic arm applies must not change what
+        # gold means. remove_comments/remove_round do not; remove_distinct does,
+        # on any gold whose quantifier collapses a fan-out join.
+        if len(graded) != len(verbatim):
+            failures += 1
+            print(f"  [FAIL] {instance_id}: semantic-arm cleanup changed gold from "
+                  f"{len(verbatim)} rows to {len(graded)} — the set quantifier is being "
+                  f"stripped again")
+        if len(stripped) != len(verbatim):
+            loadbearing += 1
+    for conn in conns.values():
+        conn.close()
+    print(f"  [ok]   {checked - failures} golds survive the semantic-arm cleanup unchanged")
+    print(f"  [ok]   {loadbearing} of them are load-bearing: stripping the quantifier would "
+          f"inflate gold and make the task unpassable")
+    return failures
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--unit-only", action="store_true", help="skip the cases needing Postgres")
@@ -170,6 +255,8 @@ def main() -> int:
     if not args.unit_only:
         print("live (gold must execute after cleanup):")
         failures += run_live()
+        print("semantic arm (gold keeps its set quantifier):")
+        failures += run_semantic_arm()
     print(f"\n{'PASS' if not failures else f'{failures} FAILURE(S)'}")
     return 1 if failures else 0
 

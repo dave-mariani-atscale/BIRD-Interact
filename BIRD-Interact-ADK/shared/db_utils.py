@@ -1058,7 +1058,46 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     # Measured before adopting: 0 verdict changes either way across the 68
     # recorded semantic-layer submissions whose gold rounds, and 0 of 82 golds
     # across two domains change row count or fail to execute once stripped.
-    sol_sqls = remove_round(remove_distinct(remove_comments(sol_sqls)))
+    #
+    # remove_distinct is deliberately NOT in that chain, and this is the one
+    # place the raw arm and this one must differ. Upstream's remove_distinct
+    # normalises TWO SQL STRINGS so a prediction that omits DISTINCT still
+    # matches a gold that has it; grade_raw_submission accordingly strips BOTH
+    # sides (see its call below). Here the prediction is ROWS, already
+    # de-duplicated by the engine exactly as the agent's own DISTINCT asked.
+    # Stripping only the gold side is therefore not "the same cleanup" — it is
+    # half of a two-sided normalisation, and the half that can only ever hurt:
+    #   * conditions["order"] false -> _compare_rows compares SETS, so gold's
+    #     new duplicates are discarded and stripping changes nothing;
+    #   * conditions["order"] true  -> it compares ORDERED LISTS, so a gold
+    #     whose DISTINCT collapses a fan-out join arrives with duplicate rows
+    #     that no correct prediction can reproduce, and the task is unpassable
+    #     however good the answer is.
+    # That is the same "mangled gold makes a task unpassable" failure that
+    # remove_distinct's own docstring already carves DISTINCT ON and
+    # IS DISTINCT FROM out for; this is the third case and the only one that
+    # needs the caller rather than the tokeniser, because whether the
+    # quantifier is load-bearing depends on the join, not on the syntax.
+    #
+    # Measured across all 22 databases of the 2026-08-25 410-task run: 43
+    # phase-1 golds contain a set-quantifier DISTINCT, 41 of which are no-ops
+    # (stripping leaves the result unchanged, so this line never mattered for
+    # them). Only 2 are load-bearing AND order-sensitive:
+    #   museum_artifact_6  gold 545 rows -> 566 stripped, prediction 545
+    #   fake_account_15    gold  46 rows -> 2476 stripped, prediction  46
+    # The earlier "0 of 82 golds across two domains" check simply had no
+    # fan-out-join gold in its two domains.
+    #
+    # Re-grading all 804 recorded phase-1 submissions of that run, with and
+    # without this line, moves exactly ONE verdict and loses none:
+    # museum_artifact_6 goes 0 -> 1, having returned gold's 545 rows in gold's
+    # order and been marked wrong against a 566-row gold it could not produce.
+    # fake_account_15 stays 0 and should: its 46 rows only COINCIDE in count
+    # with gold's 46, and are different clients entirely. That the blast radius
+    # is one task is the point — the strip is not worth the risk of making a
+    # correct answer unpassable, and outside those 43 golds the code path here
+    # is byte-identical, so nothing else can move.
+    sol_sqls = remove_round(remove_comments(sol_sqls))
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
