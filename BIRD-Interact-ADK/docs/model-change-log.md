@@ -5772,7 +5772,7 @@ B-72). Twelve of the fifteen probes that a correct agent could write now pass.
   09:00 and 24:00 Pacific — the Postgres server session is `Asia/Hong_Kong` (already
   2026-08-28 at 14:30 PDT) and the engine's JDBC session is local, so `CURRENT_DATE`
   differs by one; recomputing gold at `CURRENT_DATE - 1` reproduces the model to three
-  decimals. Harness (tracker E-05). `_5` p2 is a gold fan-out (crisis ops × staffing rows ×
+  decimals. Harness (tracker E-06). `_5` p2 is a gold fan-out (crisis ops × staffing rows ×
   coordination rows, 27 rows from 6 operations).
 - `_6`: the simulator answers "old" as "finished more than 2 years ago", gold has no such
   filter (every operation started in 2025, so the answer is empty); gold also returns the
