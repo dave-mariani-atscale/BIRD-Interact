@@ -5119,3 +5119,116 @@ sml-cli validate, and the post-deploy gate (22 models in `_main`, template
 integrity clean). The local models checkout had been 6 commits behind `origin`,
 which is invisible from the ADK side and would have measured a stale catalog —
 `git fetch` in the models repo before a scored run, not just `git status`.
+
+## 2026-08-27 — robot_fault_prediction: formulas at the warehouse's own types, recorded calibration state, lowercase manufacturer, urgent-maintenance collision (models 4cc5ca5, 8cd9c7c)
+
+Deep dive on a database that scored 0/10 in 820, 824 and 825 (raw 820: 0/10).
+Before changing anything, every failure was classified with the offline grader
+(`scripts/probe_pred.py`, values rounded HALF_UP to 2 dp on both sides, strings
+byte-exact, order strict) and a ceiling test of the deployed model. The 10 Query
+tasks split as follows:
+
+- **2 unreachable, mislabelled gold** — `robot_fault_prediction_11` asks the
+  failure-rate comparison but its gold is "5 slowest robots by cycles per hour";
+  `_12` asks for the 5 least efficient robots but its gold is the fleet-wide
+  average joint vibration (one scalar). No model or agent can pass these.
+- **1 capped by a gold join fan-out** — `_10` joins `operation` to
+  `performance_and_safety` ON the ROBOT (528 pairs over 479 records), so its
+  "Other Applications" rate is 1/74 = 1.35% where the operation-grain figure is
+  1/68 = 1.47%. Not fitted (prompt rule).
+- **3 capped by a gold `LOWER()` no question asks for** — `_6`, `_7`, `_8`
+  lower-case the manufacturer / model series in the output; the data holds no
+  case variants (585 = 585 series, 5 = 5 makers). `_7`/`_8` also carry a tie on
+  the sort key (two rows at 53.43) that strict order cannot reproduce. `_6`'s
+  phase-2 wording does ask for lowercase, which licenses the twin below.
+- **4 reachable** (`_1`, `_3`, `_4`, `_5`) — every one failed on a VALUE-pipeline
+  defect, i.e. the model had done arithmetic differently from a plain SQL reader
+  of the warehouse and the 2-dp HALF_UP rounding exposed it:
+  - `rulhours` and `upkeepduedays` are bigint, so KB 10 `rulhours / 24` is
+    integer division (0, 1, 4 days; the model said 0.375, 1.125, 4.33) and KB 17
+    `1000 / (rulhours + 1)` is an integer quotient (113.37, the model said
+    113.48).
+  - `overseerloadvalue + memuseval` sums in float32 before the halving; the model
+    widened first and 138 of 1000 stress scores differed at 2 dp.
+  - `payloadwval / payloadcapkg` is a float32 quotient; 9 of 479 differed.
+  - a raw `real` such as `faultpredscore` reaches psycopg2 as the text `0.755`
+    and rounds to 0.76; the engine widens it to 0.7549999952 and rounds to 0.75.
+    27 of 241 fault scores end in a 5 at the third decimal.
+  - `calibstateval` is `character(20)`; gold returns `'Y' + 19 spaces`, the
+    model's `::text` returned `'Y'`. The grader does not trim.
+  - `_1`'s "urgent maintenance" is KB 48 (PMU > 50, 2 operations) but the model's
+    flag literally named "Urgent Maintenance Required" is KB 53 (24 operations);
+    the agent filtered on the name match three runs out of three without asking.
+
+Shipped in models `4cc5ca5` and `8cd9c7c`, both fully gated (firewall, dry-run
+250 pins, 19 generate gates, A8, A10, twin audit, sml-cli validate) and deployed:
+
+- **KB formulas evaluated at the warehouse's own types, widened afterwards.**
+  `Remaining Useful Life Days` and `Predictive Maintenance Urgency` carry the
+  integer-division reading under the bare name; `(Exact)` twins keep the
+  fraction. `Controller Stress Score` sums its reals before halving;
+  `Payload Utilization Ratio` divides in real. Pinned: every flag built on them
+  (urgent maintenance 24, trigger 2, intensive 6, anomalous 194) selects the
+  same population under either reading.
+- **Every `real` display column goes through `::text::numeric`** (the decimal
+  Postgres prints, not the IEEE widening). Arithmetic still reads reals as
+  double — M-31 is about the direct `real::numeric` cast, which this is not;
+  pinned `col::text = col::double::real::text` on all rows.
+- **`Calibration State`** is the recorded 20-character value; **`Calibration
+  State Code`** is the trimmed letter for filters. The bare description says an
+  equality test against a bare letter matches nothing, and that 521 operations
+  have no record (drop or print blank — ask).
+- **`Manufacturer Name (Lowercase)`** beside the recorded spelling, licensed by
+  the question set's own wording ("manufacturer names in lowercase" in `_6`'s
+  follow-up, a permitted source); the bare attribute names it and routes the
+  rendering to the user.
+- **`Urgent Maintenance Required` and `Predictive Maintenance Trigger`** each
+  lead with the fact that both answer urgent-maintenance wording, with both
+  populations; the count and rate metrics carry the same sentence.
+- **`Top Tier Usage Model (Above 75th Percentile Value)`** — KB 60's
+  `PERCENTILE_CONT` reading (146 series) beside the percent-rank reading (147);
+  they differ on one series whose total equals the interpolated value. Found by
+  the `_3` phase-2 ceiling test (138 vs 137 rows). Count metric added.
+- `RUL Days` description points at Imminent Failure Warning for "about to fail"
+  wording (KB 56 pairs the remaining-life cut with the High tier), so the
+  agent asks whether a fault-score condition applies (`_5`'s second, unstated
+  condition).
+- `utilities/twin_audit.py`: repo root from `BIRD_MODELS_DIR` / file location.
+
+**Ceiling after deploy** (`scripts/probe_pred.py`, hand-written queries, no
+agent): `_1` p1+p2, `_3` p1+p2, `_4` p1+p2, `_5` p1+p2 all pass; `_6` p1 passes
+with the lowercase twin; `_7` matches gold as a set (194/194) and fails only on
+the tie order and casing. Before the change the same queries passed `_4` p1 only.
+
+**Guidance change, both arms (B-49 decision recorded on the sheet):** the
+RESULT_SHAPE_TIP ORDER BY bullet's "coarse to fine — first the entity" clause
+was being read as `ORDER BY <id>` on one-row-per-entity screens; 824/825 lost
+`_1`, `_3`, `_4`, `_5`, `_7` with correct rows sorted by Robot. The bullet now
+says: rows one-per-entity selected on a quantity sort by that quantity, most
+extreme first (a screen is an implicit ranking — derivable from the question);
+several-rows-per-entity keeps coarse-to-fine. Runs before today used the old
+text, so their numbers are not comparable on order-sensitive tasks.
+
+**Not changed, reported:** grader rounds float32 values asymmetrically between
+arms at the .xx5 boundary (raw gets Postgres text, atscale gets IEEE widening);
+grader does not trim `character(n)` padding; gold `_11`/`_12` mislabelled; gold
+`_10` fan-out; gold `_6`/`_7`/`_8` `LOWER()` with no question wording.
+Build-prompt: `create_bird_model_prompt.v10.md` carries the five rules
+(warehouse-type arithmetic, real display decimals, `character(n)` padding,
+question-licensed renderings, same-wording KB collisions, value-pipeline ceiling
+test, percentile twins).
+
+**Measured 2026-08-27, n=1, tasks 1/3/4/5/6 only** (`results/robot_0827_n1_atscale_20260827_092045.json`,
+Sonnet, $1.66 from `llm_usage`: agent $1.26, user sim $0.41, 87% of agent input
+from cache): `_1` 1.0, `_5` 1.0, `_3` 0.7, `_4` 0.7, `_6` 0.0 — 3.4 over the five,
+against 0.0 for the same five in 824 and 825. The other five tasks were not
+re-run: `_11`/`_12` are mislabelled gold, `_10` a gold fan-out, `_7`/`_8` gold
+casing plus a sort tie (B-68), so on the 10-task database this reads as 0.34
+average reward against raw 0.00 (820), i.e. +34 pp, single run, subset-tested —
+a full 10-task run at n>=3 is what a quotable number needs. Phase-2 misses: `_3`
+sorted the follow-up by Robot (the ORDER BY tip's screen clause did not carry
+into phase 2); `_4` projected the raw Yes/No flag where gold wanted the user's
+'Warning Active'/'No Warning' text and had 2 coins left to ask. `_6` never
+reached the manufacturer summary: the simulator's column answer this time did
+not mention the by-manufacturer aggregation it had given in 824/825, and the
+agent listed robots.
