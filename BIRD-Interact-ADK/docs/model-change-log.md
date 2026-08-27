@@ -5827,3 +5827,150 @@ So the per-record references converted exactly where a KB formula carries the re
 nowhere else — the simulator, not the model, is the binding constraint on the other five
 reference joins. Recorded on B-72 so the next pass does not re-buy it.
 
+
+## 2026-08-27 — museum_artifact: strict ERF bare with Unrated As Zero twins over three factor sets, showcase-grain and artifact-grain reading summaries, all ten sensitivity factors, KB 13/16/59 verdicts per showcase (models 83e839e, 402ab4f)
+
+**Starting point.** 20 Query tasks; atscale 0.035 / 0.19 / 0.185 (820 / 824 / 825) against raw
+0.12 (820). Two warehouse facts decide almost everything: `ArtifactRatings` holds 10 rows and
+`SensitivityData` 3 (each reduced to one row per distinct primary-key value), so every
+CPI-based answer is over at most 10 artifacts and every ERF-based one over 3. Every gold was
+executed and every 825 submission re-graded offline (`scripts/probe_pred.py`) before any
+model edit.
+
+**What the 825 failures actually were** (reading the dispatched SQL, not the result):
+- `_18`, `_19`: the model's Environmental Risk Factor averaged over *whichever factors were
+  rated* (renormalised denominator). Two of the three profiles leave factors unrated
+  (ART54317 3 of 10, ART48028 2 of 10), and every gold use of KB 2 weighs an unrated factor
+  0 over the full denominator — `_18`'s MAX(CPI*ERF) is 129.83 that way and 162.28 the
+  model's way; `_19`'s AEC over the one Ming artifact is 5.62 against 7.29. The renormalised
+  reading is a third policy no source states: KB 2 writes no COALESCE, so by the build
+  rule the STRICT reading is bare and the zero-fill twin ships beside it.
+- `_19`, `_9`: gold's ERF is over three factors (light, temperature, humidity — KB 1's named
+  examples, and the three KB 4 multiplies), not the stored profile's five `environment`
+  keys. The first builder of this model had believed only those three existed
+  (CHANGED-MODELS.md 0820: "the warehouse holds only light, temperature and humidity
+  sensitivity ... those seven were agent inventions") — the JSON stores ten factors under
+  four keys, and the 0820 agent had been asking for real columns.
+- `_20`: gold counts failing showcases only among showcases that HAVE a stability rating
+  (its SESR CTE is an inner join) — 59; the model's three-valued flag says Yes on 67
+  (8 showcases with three critical indicators and no rated reading). Same shape as
+  disaster_relief's staffed-only MCI: the narrow-record reading ships as a twin. Also a
+  per-showcase verdict, where the model had only the per-assessment flag (71 rows).
+- `_5`: gold's "current temp and humidity" is the latest reading of the artifact's
+  showcase; the fact carries the reading row-aligned with the assessment, which differs on
+  44 of 1000 rows. The showcase (and the artifact) needed their own latest-reading columns.
+- `_8`: the agent asked for and got the thresholds, computed the status right, and failed
+  on 'Over-Exposed' vs KB 58's 'Over Exposure' (824 passed with the right words).
+- `_3`, `_13`: the 825 submissions return gold's rows and values exactly and grade 0 on the
+  tie order of two CPI=0 rows; both grade 1 with `GRADING_TIE_TOLERANCE=true`. Grading
+  flag, not model — tracker B-73.
+- `_6`: the identical `SELECT DISTINCT "Showcase" ... WHERE variation > ...` graded 1 in 824
+  and 0 in 825; re-probed today it grades 1. Not reproducible; noted, not chased.
+
+**Model changes (generator, 19 gates, 156 pinned constants, A8, A10, `sml-cli validate`,
+twin audit clean; deployed twice).**
+- `Environmental Risk Factor (ERF)` is now the strict five-factor average (1 of 3 profiled
+  artifacts: ART54254, 5.4); `(Unrated As Zero)` weighs an unrated factor 0 over five (4.0 /
+  5.4 / 5.2). `(Three Factors)` and `(Three Factors, Unrated As Zero)` over KB 1's named
+  trio; `(All Ten Factors)` and `(All Ten Factors, Unrated As Zero)` over every stored
+  factor. Six attributes on Artifact Record, six `Average ...` measures; the assessment-grain
+  twins keep their two names. The renormalised reading is gone. Every downstream strict
+  formula (AVS, AEC, MDR, SPA, ECI, VCSF, ESQ, Compliance Level) now covers 1; descriptions
+  and pins updated. `Artifact Vulnerability Score (Unrated As Zero)` with Average/Maximum
+  measures (max 129.83) and `Exhibition Compatibility (Three-Factor ERF, Unrated As Zero)`
+  with its Average (Ming 5.62) are the downstream twins the questions reach for.
+- Seven sensitivity attributes published on Artifact Record: Vibration, Pollutant, Pest,
+  Display Context, Storage Context, Handling, Transport Sensitivity — with per-artifact
+  rated/unrated counts, so the agent can recompute the average under any substitute weight
+  the user names (`_16`'s gold weighs an unrated factor 5; not shipped — no source says so).
+- Showcase Record: `Showcase Reading Count`, latest reading (timestamp, temperature, RH,
+  both variations), averages of readings, `Showcase Stability Rating (Average Of Readings)`
+  (812) and `(Latest Reading)` (807; differ on 36), and per-showcase verdicts `Showcase At
+  Failure Risk` (67, three-valued), `(Rated Showcases Only)` (59), `(Secondary Threshold)`
+  (KB 59, 67), `Showcase Unstable Environment (Any Reading)` (KB 13, 545), each with a count
+  measure (`Showcases At Failure Risk`, `... (Rated Showcases Only)`, `Unstable Showcases`,
+  `Average Showcase Stability Rating (Per Showcase)`). The assessment-grain flags now name
+  their per-showcase twins and the row-vs-entity counts (71 rows / 67 showcases; 566 / 545).
+- Artifact Record: `Artifact Current Temperature Celsius` (840), `Artifact Current Relative
+  Humidity Pct` (994), `Artifact Latest Reading Timestamp` — the most recent reading of the
+  artifact's showcase, the basis KB 57/58 judge exposure against. Second deploy (402ab4f).
+- `Conservation Priority Index (Missing Inputs As Zero)` (missing-input rule; 995 artifacts,
+  differs from the bare CPI only on ART69978). `Reading Year` / `Reading Date` (KB 54; 344
+  distinct dates). KB 58's label vocabulary ('Over Exposure' / 'Within Limits') on Humidity
+  Sensitivity, Relative Humidity Pct and the artifact's current RH, with the instruction to
+  ask for KB 57's masked thresholds.
+
+**Ceiling after deploy** (`scripts/probe_pred.py`, hand-written SQL, no agent): `_18` p1+p2,
+`_19` p1+p2 (p2 needs `COUNT(<key>)`, the engine refuses `COUNT(*)`), `_20` p1+p2 (p2 via
+`CONCAT`), `_6` p1 (both the showcase flag and the distinct assessment flag), `_8` p1,
+`_7` p1 (secondary flag), `_9` p1 (three-factor ERF by hand), `_1` p1, `_11` p1 (with the
+`Average Temperature Celsius` MEASURE for the yearly mean — `AVG` over the attribute inside a
+derived table returned 20.0 and 264 days, the measure 19.99 and 287; Q-21 class) all grade
+1. `_16` p1 grades 0 under every shipped reading because gold weighs unrated factors as
+Medium (5); reachable only by asking (the ambiguity is `is_mask: false`) and recomputing
+from the ten attributes. `_5` p1 grades 1 after the second deploy (`SELECT DISTINCT` of the
+artifact identity, `Artifact Current Temperature Celsius`, `Artifact Current Relative
+Humidity Pct`, the high-sensitivity count and the flag: 995 rows) — the showcase-grain latest
+reading alone left 994 or 1000 rows, because five artifacts sit in two showcases and one
+showcase has no reading. `_5` p2 grades 1 off the flag.
+
+**Capped, reported, not changed** — tracker **B-73**: `_3`/`_13` tie order (grading flag);
+`_2` p1 gold reads the key `'pollutANTS'` (jsonb keys are case-sensitive, so the pollutant
+factor is 0 for every artifact and 1 of 3 artifacts clears ERF>4 instead of 3 — p2 spells it
+right); `_10` p1 gold's CPI adds `exhibit_value` where KB 0 says Historical Significance
+Rating; `_15` gold flags a mismatch when the sensitivity level EQUALS the environment band;
+`_14` p2 joins an insurance value keyed on loan status to no artifact (B-34 plan-dependent
+pick); `_17` p1 gold requires light sensitivity High and the simulator names only the visLxh
+cutoff. **Engine, reported not changed:** `COUNT(*)` refused over the model; `ROUND(CAST(x AS
+NUMERIC), 2)` refused ("Numeric values are only accepted with specified precision and
+scale"); `AVG(<attribute>)` inside a derived table returns a different figure from the
+attribute's `Average` measure (Q-21).
+
+**Guidance change, shared `ASK_USER_TIP` (both arms; raw re-run owed before quoting lift):**
+one bullet — when the question wants ONE overall figure for a population and the quantity
+exists per entity, the aggregate (max / average / sum) is an open slot to ask about. `_18`
+in 824 and 825 submitted the Average where the reference is the MAX and the ambiguity was
+`is_mask: false`.
+
+**Build prompt** (`create_bird_model_prompt.v10.md`): a "What the 2026-08-27 museum_artifact
+pass changed" section with five rules (named-list average has two readings, not a
+renormalised third; KB's named examples are a factor set of their own; entity-grain reading
+summaries beside a row-aligned fact; a masked classification still owns its labels;
+enumerate a JSON profile's keys from the data), and the revision note at the top.
+
+**Measured 2026-08-27 15:44–15:53, n=1, tasks 5/6/8/11/16/18/19/20**
+(`results/museum_0827_n1_atscale_20260827_154416.json`, Sonnet, **$3.14** from `llm_usage`:
+agent $2.66, user sim $0.48, 93% of agent input from cache): `_5` **1.0**, `_6` **0.7**,
+`_8` **0.7**, `_18` **0.7**, `_11`/`_16`/`_19`/`_20` 0 — **3.1 over the eight against 0.0**
+for the same eight in 825 (and 824, 820). With `_1` 1.0, `_7` 1.0, `_9` 1.0, `_14` 0.7 from
+825 the database reads 6.8/20 = **0.34** against 0.185 (825) and raw 0.12: lift **+22 pp**
+where it was +6.5 pp. Single run, subset re-run, so not a quotable arm number; a full
+20-task n>=3 run and a raw re-run (the shared tip changed) are owed before any figure is
+quoted.
+
+What converted and what did not:
+- `_5` converted on `Artifact Current Temperature/Relative Humidity Pct` (one row per
+  artifact via MAX over the artifact); `_6` p1 on `Showcase Unstable Environment (Any
+  Reading)`; `_8` p1 on the KB 58 labels after asking for the thresholds; `_18` p1 on the
+  Missing-As-Zero / Unrated-As-Zero twins after asking which policy (the simulator chose the
+  zero readings), then ran out of budget before p2.
+- `_6` p2 is gold's `LOWER(conserve_status)` inside the string aggregate (B-71 class) plus
+  the agent's 'Unknown' fills. `_8` p2: gold ignores its own "Over Exposure" filter (no
+  artifact is over-exposed, gold returns all three); the agent's `IN (subquery)` was refused
+  by the engine ("Subqueries are not supported"). Both added to B-73.
+- `_19` and `_20` failed on SHAPE, not on the model: both agents had the right column and
+  filter (`Exhibition Compatibility (Three-Factor ERF, Unrated As Zero)` for Ming; `Showcase
+  At Failure Risk (Rated Showcases Only)` = 'Yes') and submitted one row per entity where
+  gold is a scalar (AVG; COUNT). The 825 agents asked "one number or rows?" on both and got
+  the scalar. Added a shared `ASK_USER_TIP` bullet: a bare "show me / find the X" with no
+  per-entity cue is a shape slot to ask before the first submit. Re-running 18/19/20.
+- `_16`: the simulator, asked about the fill, said "no need to exclude artifacts with
+  missing ratings; just apply the scale across all ten" — the agent read that as zero,
+  gold weighs an unrated factor 5, and the agent also grouped every material (0.0 for the
+  unprofiled) instead of the three profiled artifacts. `_11`: two columns where gold has
+  three (annual mean and distinct anomaly days) — shape the question does not cue.
+- Re-run of 18/19/20 under the new shape bullet (15:55) was stopped after one task: `_20`
+  this time reached the COUNT shape but counted the three-valued flag (67) instead of the
+  rated-only one (59) it had been told to use in the first run - the two open slots
+  (population, shape) each convert about half the time at n=1. Not re-launched; no results
+  file was written (partial spend, under $1).
