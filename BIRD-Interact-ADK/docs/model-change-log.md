@@ -5336,3 +5336,128 @@ asked what "bad measurement" excludes, after spending its ask on the grain cross
 per-star/per-planet question; `_14` got the 'V-Band' label by asking but kept K-band as
 a third row; `_4`, `_6`, `_9` are the B-70 caps. Follow-up models commit `37c171c` makes
 the Distance Limit Flag description say which rows `= 0` drops.
+
+## 2026-08-27 — cold_chain_pharma_compliance: KB 48's reliability score over its evidenced term, KB 36's delay term, conditional carrier counts (models 8bff586)
+
+Deep dive on a database that sat at 0.2611 / 0.2611 / 0.2833 in 825/824/820 against
+raw 0.2056, with eleven of its 18 Query tasks at 0 in every run. Every failing phase
+was classified before anything changed, using the offline grader on the recorded
+submissions (`scripts/regrade_flags.py`-style replay, no LLM calls) plus hand-written
+ceiling probes through `scripts/probe_pred.py`. Phase 2 only runs when phase 1 passes,
+so a phase-1 blocker forfeits the whole task, and that is where every one of these sits.
+
+**What the classification found.** Only three of the eleven zeros were model defects.
+The rest are gold conventions or gold ties:
+
+- **Gold applies a cosmetic `LOWER(TRIM(...))` to its grouping keys on six tasks**
+  (`_4`, `_5`, `_8`, `_11`, `_18`, `_19` phase 1, and `_20` phase 1 but NOT `_20`
+  phase 2). No question asks for lower case, and the warehouse holds no case variants
+  at all — `carriercert` is exactly {GDP, CEIV Pharma, Both, null}, `veh_qual` exactly
+  {Validated, Qualified, Under Review}, and so on for the route risk note, the
+  agreement status, the compliance status and the release status, so the `TRIM` and the
+  `LOWER` are both no-ops on the data and pure re-rendering on the output. A `(Lowercase)`
+  twin fails the build prompt's counterfactual test outright — no builder reading the KB
+  and the warehouse would produce one — so nothing was shipped for it. Measured instead
+  (below).
+- **Gold `_8` picks 3 rows out of a 64-way tie** (64 route groups sit at exactly 10.0
+  average excursions) and **gold `_18` picks 2 of a 265-way tie** (265 people have
+  exactly one rejected shipment out of 816 distinct names over 821 shipments). Neither
+  is reproducible under strict order.
+- **Gold `_14` returns NULL from a join that cannot match**: it reaches the product
+  batch through `shipsensorlink` with `productbatches pb ON ssl.devnode = pb.prodlink`,
+  i.e. a device reference (`MD####`) equated to a product code (`PH#####`). Zero rows,
+  so both phases are a single NULL, which no correct answer produces.
+- **Gold `_10`'s Supply Chain Resilience Score invents four 0-10 proxy scales** the KB
+  never states (route risk 8/5/2, certification 10/8/4, qualification 9/7/5, GDP
+  compliance 9/6/3) over a cross-island cartesian join. The agent asked for the scales
+  twice across two runs and the simulator declined both times. Unreachable, and the
+  model's existing "none of its four inputs are stored" stance is the honest one.
+- **Gold `_1` prints a synthetic label column** — `'High Risk Routes'` beside the
+  average, for a task whose `output_type` is `scalar`; phase 2 is the same shape per
+  risk level (`risk_note || ' Risk Routes'`). Probed: the value alone scores 0, the
+  value with that literal scores 1. Nothing in the question implies the column.
+- **Gold `_2` phase 2 labels the missing group `'Unspecified'`.** Values and row count
+  are exact with the NULL member kept; the word is gold's. Not fitted.
+
+**Three real defects, all shipped in model `8bff586`** (dry-run 101 pinned constants,
+19 generate gates, A8, A10, twin audit, sml-cli validate, deployed 12:58):
+
+- **KB 48 Data Logger Reliability Score was published as not computable, and it is
+  computable over its reading term.** It is masked `calculation_knowledge` — a KB-NAMED
+  FORMULA, which ships under its own name by the build prompt's own rule (7 of 7
+  elsewhere) — and one of its four rates has a column behind it: KB 44 reads a device
+  with no recording interval as an unplanned monitoring approach, so those 63 devices of
+  450 are the ones from which no reading was ever due. 14 per 100 deployments at
+  weight 10 gives a fleet score of -40. Download and battery failures have no column.
+  The calibration-drift term is a measured zero: every calibration timestamp falls in
+  2024-08-23 .. 2025-02-19, so under KB 55's twelve-month life nothing is out of
+  calibration for any reference date up to 2025-08-23, and the description asks the
+  caller to name the reference date rather than assuming one. Shipped as
+  `Data Logger Reliability Score (DLRS, Reading-Failure Term)`. Saying "not computable"
+  had the agent invent a homemade pass-rate ratio in 825 instead of applying KB 48.
+- **KB 36's Lane Risk Potential read its shipping-delay term as route deviation
+  incidents.** KB 36 says "the total count of shipping delays", and this warehouse
+  evidences that directly — the actual duration against the planned one, the same
+  comparison KB 12 and KB 13 both read as lateness. New measure
+  `Shipments Delivered Later Than Planned` (377 of 821); the calculation is renamed
+  `Group Lane Risk Potential (Temperature And Delay Terms)`. Warehouse-wide the old
+  reading gave 6.6736 where the delay reading gives 5.5615, and per lane the old one put
+  22 lanes in a tie at the top where the delay reading reproduces gold's own top three
+  values exactly.
+- **No conditional distinct-carrier count existed**, so "how many carriers operate a
+  validated vehicle" had no expressible form — a count-distinct over a carrier column
+  repeated only on the qualifying rows is the only shape this dialect offers. Added
+  `Carriers With A Validated Vehicle` (175) and `Carriers With A Qualified Vehicle`
+  (157), each stating that it counts CARRIERS where the vehicle counts count vehicles,
+  and that the vehicle island cannot see a carrier with no vehicle (pair with
+  `Carrier Count`, which covers all 798).
+
+**Ceiling after deploy** (`scripts/probe_pred.py`, hand-written queries, no agent):
+`_17` p1+p2 pass off the new calculation; `_11` p1 AND p2 return gold's rows exactly
+in one query — `(null, 281, 61)` and `(null, 281, 61, 49)` — and fail only on gold's
+casing; `_20` p1 returns gold's own top-three lanes and values and fails on casing plus
+the rank-3 tie (two lanes at 6.00, gold takes the alphabetically later one); `_3` p1,
+`_4` p2, `_5` p2, `_9` p1 and `_19` p1 all pass or fail only on casing. Every one of the
+five submissions that passed in 825 (`_2` p1, `_6`, `_7`, `_15`, `_16`) still passes
+against the new model, so nothing regressed.
+
+**Guidance change, atscale backend instruction only (no raw re-run owed):** the
+whole-population-value bullet covered a total shown beside DETAIL rows. The same silent
+failure hits a share-of-total column beside GROUPED rows, which is the commoner form:
+`_9`'s percentage column came back as 100.00 on every band because the engine evaluates
+a scalar-subquery denominator inside each group rather than once, and
+`SUM(COUNT(...)) OVER ()` errors outright rather than offering a fallback. The bullet now
+carries the grouped case, the measured 100.00, the working `JOIN ... ON 1=1` form
+(probed: 20.91 / 52.87 / 26.22, verdict 1) and the one window shape that does work — a
+window over a column already aggregated in an inner derived table, which is how a
+within-group percentage is written (probed on `_3` p2, verdict 1).
+
+**Measured 2026-08-27 13:01, n=1, tasks 3/9/11/17/20**
+(`results/coldchain_0827_n1_atscale_20260827_130149.json`, Sonnet, $1.41 from
+`llm_usage`: agent $1.13, user sim $0.29, 82% of agent input from cache): `_17` 1.0, the
+other four 0.0 — 1.0 over the five against 0.0 for the same five in 825. On the 18-task
+database that reads as 5.7/18 = 0.317 against 0.261 (825) and raw 0.206 (820), i.e. lift
++11.1 pp where it was +5.6 pp. Single run, subset re-run, so not a quotable arm number.
+What still fails and why: `_11` and `_20` are the casing/tie caps above, now numerically
+exact; `_3` returned the right four categories and counts and ordered them by band
+severity where gold orders by the count descending, having spent all three of its asks
+on the breakdown, the cut-offs and the null rows; `_9` returned one row (the largest
+zone) with no percentage column, where 825's attempt had the right three-row shape and
+lost only on the engine's scalar-subquery percentage — a shape the agent chooses,
+varying run to run.
+
+**Not changed, reported:** gold's cosmetic `LOWER(TRIM())` on six phase-1 golds — a
+casefold-only re-grade of the 825 run (offline, no LLM calls, reproduces the as-run
+0.2611 exactly) scores **0.3389, +7.8 pp on an unchanged trajectory**, recovering `_4`
+and `_5` phase 1, and would additionally let their phase 2 be attempted, which a replay
+cannot show; with the new metrics `_11` p1+p2 and `_19` p1 join that list under
+hand-written queries. `settings.grading_casefold` exists for exactly this case and its
+docstring already describes it; it was left off, since it is a grading flag and lifts
+both arms. Also reported: `_8` 64-way and `_18` 265-way gold ties; `_14`'s
+`devnode = prodlink` join; `_10`'s invented proxy scales; `_1`'s synthetic label column;
+`_2` p2's `'Unspecified'`; and the engine's silent per-group evaluation of a scalar
+subquery in the SELECT list. Build-prompt: `create_bird_model_prompt.v10.md` carries the
+three rules (a masked KB formula ships over the terms the warehouse evidences with the
+absent terms named; a KB term like "shipping delays" is read against what the warehouse
+records as that thing, not against a similarly-shaped column; a conditional
+count-distinct needs a derived key column at build time).
