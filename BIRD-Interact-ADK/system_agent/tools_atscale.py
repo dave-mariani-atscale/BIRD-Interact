@@ -28,7 +28,14 @@ from google.adk.tools.tool_context import ToolContext
 
 from shared.config import settings
 from shared.environment_backends import get_domain_config, query_domain_violation
-from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
+from shared import feedback
+from shared.mcp_client import (
+    MCPClient,
+    MCPClientError,
+    MCPEndpoint,
+    MCPToolError,
+    TaskSessionMCPClient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,12 @@ def _mcp_client() -> MCPClient:
     return MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url, bearer_token=settings.semantic_layer_mcp_token))
 
 
+def _task_client() -> TaskSessionMCPClient:
+    return TaskSessionMCPClient(
+        MCPEndpoint(url=settings.semantic_layer_mcp_url, bearer_token=settings.semantic_layer_mcp_token)
+    )
+
+
 def _domain_or_error(tool_context: Optional[ToolContext]):
     """Resolve {catalog, schema, table} for the active task's domain, or None
     plus an error string if this domain has no semantic model configured."""
@@ -58,8 +71,19 @@ def _domain_or_error(tool_context: Optional[ToolContext]):
     return domain, None
 
 
-async def _call(tool_name: str, arguments: dict) -> str:
+async def _call(tool_name: str, arguments: dict, tool_context: Optional[ToolContext] = None) -> str:
+    """Invoke one MCP tool.
+
+    Under feedback_memory, calls ride ONE MCP session per task (real MCP clients
+    hold one session per conversation; the per-call default silently defeats the
+    server's per-conversation memory — repeat-search suppression, list_models
+    caching). Flag off keeps the historical per-call behavior so control runs
+    stay comparable.
+    """
     try:
+        task_id = tool_context.state.get("task_id", "") if tool_context else ""
+        if feedback.enabled() and task_id:
+            return await _task_client().acall_tool(task_id, tool_name, arguments)
         return await _mcp_client().acall_tool(tool_name, arguments)
     except (MCPClientError, MCPToolError) as e:
         return f"Error calling {tool_name}: {e}"
@@ -92,7 +116,7 @@ async def list_models(tool_context: ToolContext) -> str:
     domain, err = _domain_or_error(tool_context)
     if err:
         return err
-    return await _call("list_models", domain)
+    return await _call("list_models", domain, tool_context)
 
 
 async def explore_columns(
@@ -182,7 +206,7 @@ async def explore_columns(
                 "/ column_group, with folder and column_group names taken from "
                 "list_models — or both in the same call, which returns the "
                 "union of the two.")
-    return await _call("explore_columns", {**domain, **args})
+    return await _call("explore_columns", {**domain, **args}, tool_context)
 
 
 async def focus_columns(columns: List[str], tool_context: ToolContext) -> str:
@@ -200,7 +224,7 @@ async def focus_columns(columns: List[str], tool_context: ToolContext) -> str:
     domain, err = _domain_or_error(tool_context)
     if err:
         return err
-    return await _call("focus_columns", {**domain, "columns": columns})
+    return await _call("focus_columns", {**domain, "columns": columns}, tool_context)
 
 
 async def get_sml_skills(tool_context: ToolContext) -> str:
@@ -211,7 +235,7 @@ async def get_sml_skills(tool_context: ToolContext) -> str:
     Returns:
         The query-construction guide as text.
     """
-    return await _call("get_sml_skills", {"skill_name": _GET_SML_SKILLS_NAME})
+    return await _call("get_sml_skills", {"skill_name": _GET_SML_SKILLS_NAME}, tool_context)
 
 
 async def run_query(query: str, tool_context: ToolContext) -> str:
@@ -234,7 +258,19 @@ async def run_query(query: str, tool_context: ToolContext) -> str:
     if violation:
         logger.warning("run_query blocked (wrong model): %s", query)
         return violation
-    return await _call("run_query", {"query": query})
+    args = {"query": query}
+    if feedback.enabled() and tool_context is not None:
+        # Feedback memory (flag-gated, telemetry only): label the exchange with
+        # the task's ambiguous question so the server can store the NL->SQL
+        # pairing; capture_exchange then strips the exchangeId line so the
+        # agent-visible response is byte-identical to a flag-off run.
+        question = tool_context.state.get("user_query", "")
+        if question:
+            args["question"] = question
+    result = await _call("run_query", args, tool_context)
+    if feedback.enabled() and tool_context is not None:
+        result = feedback.capture_exchange(tool_context.state, query, result)
+    return result
 
 
 # ── Build tool list for ADK Agent (semantic-layer backend) ──

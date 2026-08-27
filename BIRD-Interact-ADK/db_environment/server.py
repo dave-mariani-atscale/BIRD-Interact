@@ -176,7 +176,16 @@ def _run_query_via_semantic_layer(query: str) -> str:
     Returns the raw MCP result text, or an "Error: ..." string on failure."""
     try:
         client = MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url, bearer_token=settings.semantic_layer_mcp_token))
-        return client.call_tool("run_query", {"query": query})
+        # log_exchange=False: this is a grading re-execution of the agent's SQL,
+        # not a user-facing answer, so it must not be recorded as a rateable
+        # exchange in the MCP server's certified-answer memory. Without it every
+        # submission logged a second, question-less duplicate of the same query.
+        # Gated on the flag so a flag-off run sends the exact pre-feature
+        # payload (an older MCP server may not know the param at all).
+        args: dict = {"query": query}
+        if settings.feedback_memory:
+            args["log_exchange"] = False
+        return client.call_tool("run_query", args)
     except (MCPClientError, MCPToolError) as e:
         return f"Error: {e}"
     except Exception as e:

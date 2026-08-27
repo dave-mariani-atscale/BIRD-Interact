@@ -263,6 +263,22 @@ class Settings(BaseSettings):
     # the results JSON either way. See tracker B-12.
     semantic_layer_knowledge_tools: bool = False
 
+    # FEEDBACK MEMORY (semantic-layer path only; telemetry capture, P1 of the
+    # certified-answer-memory PRD). True makes the harness (1) pass the task's
+    # ambiguous question as run_query's `question` param, (2) capture — and
+    # strip before the agent sees it — the exchangeId line the MCP server
+    # appends to run_query results, and (3) record the simulated user's
+    # accepted/rejected verdict about each submission via the server's
+    # record_feedback tool (source=end_user_explicit, rater=bird_simulator),
+    # fire-and-forget from the harness. The agent-visible surface, coin costs,
+    # simulator and grader are all unchanged, so a flag-on run is directly
+    # comparable to a flag-off run. Requires the MCP server started with
+    # ATSCALE_MCP_FEEDBACK_MEMORY=true over an engine image carrying the
+    # 20260826_create_mcp_feedback changelog; when the server side is absent,
+    # every call degrades to a logged warning. Off preserves prior behavior
+    # exactly. Recorded per run in the results JSON.
+    feedback_memory: bool = False
+
     @property
     def data_dir(self) -> Path:
         return PROJECT_ROOT / f"bird-interact-{self.dataset}"

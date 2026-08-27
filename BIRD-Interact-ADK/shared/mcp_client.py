@@ -150,3 +150,126 @@ def _stringify_result_content(content: list[Any]) -> str:
         except Exception:
             parts.append(str(block))
     return "\n".join(parts)
+
+
+# ── Per-task session reuse ────────────────────────────────────────────────────
+#
+# The plain client above opens a fresh MCP session per tool call. Real MCP
+# clients (Claude Desktop, IDE integrations) hold ONE session per conversation,
+# and the server keys its per-conversation memory (repeat-search suppression,
+# list_models caching, the skill breadcrumb) off that session — so the per-call
+# client silently defeats all of it and is LESS realistic, not more neutral.
+# TaskSessionMCPClient maps the harness onto the honest equivalent: one MCP
+# session per BIRD task (one task = one conversation).
+#
+# Implementation is raw streamable-HTTP rather than the SDK's ClientSession:
+# the SDK transport is an async context manager that cannot be held open across
+# ADK tool invocations (anyio cancel scopes bind to the entering task), while
+# the protocol itself only needs the Mcp-Session-Id header echoed back. An
+# expired/unknown session (server restart, GC) gets one transparent re-init.
+
+_task_sessions: dict[str, str] = {}
+
+
+class TaskSessionMCPClient:
+    """One persistent MCP session per task id, over bare streamable HTTP."""
+
+    def __init__(self, endpoint: MCPEndpoint) -> None:
+        self._endpoint = endpoint
+
+    def _headers(self, session_id: str | None = None) -> dict[str, str]:
+        h = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        if self._endpoint.bearer_token:
+            h["Authorization"] = f"Bearer {self._endpoint.bearer_token}"
+        if session_id:
+            h["Mcp-Session-Id"] = session_id
+        return h
+
+    @staticmethod
+    def _parse_sse(text: str) -> dict[str, Any]:
+        """Last JSON object in an SSE body (or plain-JSON body)."""
+        payload: dict[str, Any] = {}
+        for line in text.splitlines():
+            if line.startswith("data: "):
+                try:
+                    payload = json.loads(line[6:])
+                except json.JSONDecodeError:
+                    continue
+        if not payload and text.strip():
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                pass
+        return payload
+
+    async def _initialize(self, http: httpx.AsyncClient) -> str:
+        resp = await http.post(
+            self._endpoint.url,
+            headers=self._headers(),
+            json={
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "bird-interact-adk", "version": "1.0"},
+                },
+            },
+        )
+        resp.raise_for_status()
+        session_id = resp.headers.get("mcp-session-id", "")
+        if not session_id:
+            raise MCPClientError("MCP server returned no Mcp-Session-Id on initialize")
+        await http.post(
+            self._endpoint.url,
+            headers=self._headers(session_id),
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+        )
+        return session_id
+
+    async def acall_tool(
+        self, task_id: str, name: str, arguments: dict[str, Any] | None = None
+    ) -> str:
+        async with httpx.AsyncClient(timeout=self._endpoint.timeout_s) as http:
+            session_id = _task_sessions.get(task_id)
+            if not session_id:
+                session_id = await self._initialize(http)
+                _task_sessions[task_id] = session_id
+            body = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments or {}},
+            }
+            resp = await http.post(
+                self._endpoint.url, headers=self._headers(session_id), json=body
+            )
+            if resp.status_code in (400, 404):
+                # Session expired/unknown (server restart, GC): one re-init.
+                session_id = await self._initialize(http)
+                _task_sessions[task_id] = session_id
+                resp = await http.post(
+                    self._endpoint.url, headers=self._headers(session_id), json=body
+                )
+            if resp.status_code in (401, 403):
+                raise MCPClientError(
+                    f"MCP server rejected the request with HTTP {resp.status_code}. "
+                    "Check SEMANTIC_LAYER_MCP_TOKEN.",
+                    status_code=resp.status_code,
+                )
+            resp.raise_for_status()
+            payload = self._parse_sse(resp.text)
+            result = payload.get("result") or {}
+            if "error" in payload:
+                raise MCPToolError(str(payload["error"]))
+            parts = [
+                c.get("text", "") for c in result.get("content", []) if isinstance(c, dict)
+            ]
+            text = "\n".join(p for p in parts if p)
+            if result.get("isError"):
+                raise MCPToolError(text or f"tool {name} reported an error")
+            return text

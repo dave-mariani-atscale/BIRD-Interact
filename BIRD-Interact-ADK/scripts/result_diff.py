@@ -302,10 +302,17 @@ def main():
             v, pa, pg = four_way(arows, grows, cond)
             cls = classify(v, pa, pg, aerr, gerr)
         verdicts[cls] += 1
-        report.append(dict(db=t["db"], iid=t["iid"], phase=t["phase"], verdict=cls,
-                           four_way=v, agent_rows=(len(arows) if arows is not None else None),
-                           gold_rows=(len(grows) if grows is not None else None),
-                           agent_err=aerr, gold_err=gerr))
+        rec = dict(db=t["db"], iid=t["iid"], phase=t["phase"], verdict=cls,
+                   four_way=v, agent_rows=(len(arows) if arows is not None else None),
+                   gold_rows=(len(grows) if grows is not None else None),
+                   agent_err=aerr, gold_err=gerr)
+        # keep a bounded sample of both sides so value-level divergence is analyzable
+        if arows is not None and grows is not None:
+            rec["agent_sample"] = [[str(c)[:60] for c in row] for row in arows[:8]]
+            rec["gold_sample"] = [[str(c)[:60] for c in row] for row in grows[:8]]
+            rec["agent_sql"] = (t.get("sql") or "")[:2000]
+            rec["gold_sql"] = (t.get("gold_sql") or gsql or "")[:2000]
+        report.append(rec)
         print(f"  [{n}/{len(tasks)}] {t['iid']:36} p{t['phase']}  {cls}", flush=True)
 
     pathlib.Path(a.out).write_text(json.dumps(report, indent=1))

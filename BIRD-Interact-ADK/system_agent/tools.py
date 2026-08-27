@@ -17,6 +17,7 @@ from typing import Optional
 from google.adk.tools import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 from shared.config import settings
+from shared import feedback
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,14 @@ def submit_sql(sql: str, tool_context: ToolContext) -> str:
             raw_msg = data.get("message", "")
             # Store raw message for orchestrator (has [exec_err_flg] for debug routing)
             tool_context.state["_last_submit_raw"] = raw_msg
+
+            # Feedback memory (flag-gated, telemetry only): the simulated user
+            # just told the agent whether this answer was right — record that
+            # verdict against the run_query exchange for this SQL. Fire-and-
+            # forget; costs no coins; the agent never sees the result.
+            feedback.record_submission_verdict(
+                tool_context.state, sql, bool(data.get("passed")), raw_msg
+            )
             # Clean message for agent
             agent_msg = raw_msg.replace("[exec_err_flg] ", "")
             parts = [agent_msg]
