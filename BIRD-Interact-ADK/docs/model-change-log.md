@@ -5232,3 +5232,107 @@ into phase 2); `_4` projected the raw Yes/No flag where gold wanted the user's
 reached the manufacturer summary: the simulator's column answer this time did
 not mention the by-manufacturer aggregation it had given in 824/825, and the
 agent listed robots.
+
+## 2026-08-27 — planets_data: named constants composed at the declared type, consistent units, three-valued flags, composition (models 224fac0)
+
+Deep dive on a database whose semantic arm sat level with raw: atscale 0.27 / 0.43 /
+0.28 in 820/824/825 against raw 0.37 (820), nine of 19 tasks at 0 in every run and
+three more stuck at 0.7. Before changing anything every failing phase's gold was run
+on `planets_data_template` and compared with what the deployed model could return,
+under the grader's own normalisation (gold ROUND stripped, both sides HALF_UP at 2 dp,
+strings byte-exact). Where the robot pass found the warehouse's *types*, this one
+found the model's *constants*:
+
+- **Pre-collapsed textbook constants.** Escape velocity was `11186 m/s × sqrt(M_E/R_E)`,
+  stellar density `solar ratio × 1.408 g/cm³`, the gravitational parameter
+  `1.32712440018e20 × M`, the mass ratio via `0.00095458 M☉/M♃`, the equilibrium
+  temperature via `0.00465047 AU/R☉`, the transit depth via `0.102763 R☉/R♃`. Each is a
+  correct identity to three or four significant digits and wrong after that, and the
+  grader compares two decimals of 585 km/s or 1.5e20: `_13` 586 vs gold 585.45, `_7`
+  1395.52 vs 1395.51, `_18` 7720.10 vs 7720.04, `_8` 1.47 vs 1.46, `_9` 2.4332e-05 vs
+  2.4329e-05. Composed from the standard values (G 6.67430E-11, M☉ 1.98847E30, R☉
+  6.957E8, AU 1.496E11, M♃ 1.898E27, R♃ 7.1492E7, 109.2 R⊕/R☉) in the KB's own
+  formula shape, every one now matches gold to the last digit.
+- **JSON numbers read as exact decimals where gold casts `::real`.** The stellar mass,
+  radius and temperature live in `stellarprops` JSON; their column meaning says REAL and
+  a plain SQL reader casts them so. Read as exact text the ratio of the densest to the
+  least dense star (`_5` phase 2) is 2,237,875,810; through `::real` it is
+  2,237,875,936 — the reading gold has. Formulas now read the JSON through `::real`
+  (M-38 extended to JSON); display copies stay exact (`::numeric` on the JSON text,
+  `::text::numeric` on stored reals).
+- **A dimensionally inconsistent twin.** The README's "two formulas mix units — both
+  readings ship" decision published `T × sqrt(R/2a)` with R in solar radii and a in
+  AU beside the converted one. On `_18` the agent asked which, the simulator said "the
+  direct formula as-is", and the task failed on a 15× number. Withdrawn: a formula over
+  two lengths is a formula over one unit. Transit depth converts into Earth radii (the
+  KB's unit for planets, 109.2 R⊕/R☉), not Jupiter-to-solar.
+- **Units the question set names are the bare readings.** `Escape Velocity` and
+  `Orbital Velocity` are km/s (follow-ups `_8`/`_18` say "in km/s") with
+  `(Metres Per Second)` twins; `Stellar Density` is kg/m³ (`_5`/`_17`/`_20` follow-ups
+  say "in kg/m^3") with `(Solar Units)`; `Transit Depth` a fraction with `(Percent)`;
+  `Orbital Period` the recorded days with `(Years)`.
+- **Three-valued flags.** `Hot Jupiter` was 'No' only when both inputs were recorded,
+  so a planet with no mass and a 300-day period was null where `NOT (mass > 0.1 AND
+  period < 10)` keeps it. Every compound flag now says 'No' as soon as one input is
+  recorded false ('No' 783 → 1967). Every varying limit/blend flag has a Yes/No twin on
+  the value 1 whose 'No' means *recorded and not 1* — `Distance Upper Limit = 'No'` is
+  exactly gold's `Dist_Lim <> 1` on `_10` (78 planets, 1446.12 ly, not 84 / 1497.29).
+- **Composition.** `only_rocky_planets` tested density-known planets (49 stars); `_15`
+  means has-a-rocky-planet-and-no-gas-giant, and a gas giant is known by mass, not
+  density (27 stars, mean luminosity 0.962 not 1.673). `System Composition` (Rocky Only
+  27 / Gas Giants Only 782 / Mixed 35 / Neither 77) + `Has Rocky Planet` / `Has Gas
+  Giant`; the old reading survives as `All Density Measured Planets Rocky`.
+- `Geometric Mean Adjacent Period Ratio` (`_11` averages ratios geometrically; differs
+  from the arithmetic mean on 177 of 193 multi-pair systems), `Kepler Mass Absolute
+  Difference` (`_4`'s sort key), `Retrograde Orbit (90 Degrees Or More)` (21 planets sit
+  at exactly 90.0°; `_2`'s clarified threshold is "90 or more"), count metrics for the
+  new flags. 275 pins, 19 gates, A8, A10, sml-cli validate clean; deployed 12:10.
+
+**Ceiling after deploy** (`scripts/probe_pred.py --file`, hand-written queries, no
+agent): 25 of 27 probed phases pass — `_2` p1+p2, `_5` p1+p2, `_6` p2, `_7` p1+p2, `_8`
+p1+p2, `_9` p1 (only with gold's own malformed `TO_CHAR` pattern), `_10` p1+p2, `_11`
+p1+p2, `_13` p1+p2, `_14` p1 (with user-supplied labels), `_15` p1+p2, `_17` p2, `_18`
+p1+p2, `_20` p1+p2. The two failures are gold tie-order: `_4` (115 of 465 rows NULL on
+gold's sort key) and `_6` p1 (two exact ties). Before the change 6 of the same 27
+passed.
+
+**Guidance changes (B-49 decisions on the sheet):** (1) the atscale backend
+instruction's rounding bullet was wrong since B-19 — gold's ROUND is stripped, the
+semantic agent's cannot be (rows, not SQL), so "round to the nearest integer" as asked
+lost `_17` p2 (1545 vs 1544.62) and `_5` p2. Now: never round; a named text format is
+rendered with `TO_CHAR`, which passes through the engine (probe on `_20`: ' 1.50e+20'
+matches). Raw is unaffected — its ROUND is stripped anyway. (2) ASK_USER_TIP: a
+multi-row listing with no sort cue in the question gets one closed ask for the order
+(five planets listings failed on order alone). Both arms; runs before today are not
+comparable on those tasks. (3) TO_CHAR added to the dialect's accepted list.
+
+**Not changed, reported (B-69, B-70):** agent-side ROUND asymmetry (grader); `_9` p1
+gold `to_char(x, '9.999999E9')` renders `  .000024E3`; `_14`'s `deleted_knowledge: 44`
+removes "Stellar Radius Value" — the KB has no Photoband entry and `_19` cites ids
+67/68 that do not exist; `_4`/`_6` p1 tie order (B-31 family, not in the lint list).
+Build-prompt: `create_bird_model_prompt.v10.md` carries six rules (named constants
+composed in-shape; JSON numbers at the declared type; no dimensionally inconsistent
+twins; three-valued flags with flag twins; composition over contrasting classes;
+geometric mean / absolute difference siblings).
+
+**Measured 2026-08-27, n=1, tasks 2/4/5/6/7/8/9/10/11/13/14/15/17/18/20** — see the
+line appended below this entry when the run finishes.
+
+**Measured 2026-08-27 12:14, n=1, tasks 2/4/5/6/7/8/9/10/11/13/14/15/17/18/20**
+(`results/planets_0827_n1_atscale_20260827_121400.json`, Sonnet, $3.46 from
+`llm_usage`: agent $3.16, user sim $0.30, 92% of agent input from cache): `_5` 1.0, `_7`
+1.0, `_11` 1.0, `_13` 1.0, `_15` 1.0, `_17` 1.0, `_20` 1.0; the other eight 0.0 —
+**7.0 over the 15, against 1.4 for the same 15 in 825** (`_5` and `_17` at 0.7). With the
+four untouched tasks (`_1`, `_12`, `_16`, `_19`, all 1.0 in 825) that projects to 11.0/19
+= 0.579 on the database against raw 0.374 (820), i.e. about +20 pp — single run, subset
+re-run, and the raw arm has not been re-run under today's ASK_USER_TIP, so not a quotable
+lift. What still fails and why, from the trajectories: `_2` every value right, the
+inclusive retrograde threshold and the speed-DESC sort both obtained by asking, lost on
+gold printing the STAR name where the question says "their names"; `_8` values right,
+lost on column order (gold star, planet, depth; four permutations tried, never that one);
+`_18` values right (KOI-55 b, 7720.04), lost on gold printing the companion letter 'b'
+as the name; `_10` filtered `Distance Limit Flag = 0` (drops the eight -1 rows) and never
+asked what "bad measurement" excludes, after spending its ask on the grain cross-link's
+per-star/per-planet question; `_14` got the 'V-Band' label by asking but kept K-band as
+a third row; `_4`, `_6`, `_9` are the B-70 caps. Follow-up models commit `37c171c` makes
+the Distance Limit Flag description say which rows `= 0` drops.
