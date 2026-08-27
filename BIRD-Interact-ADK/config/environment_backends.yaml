@@ -233,7 +233,17 @@ backends:
           about, ask that slot now - one question, with your row and column counts in view. If no shape
           slot is open, the VALUES are wrong: compare your definition clause by clause against what the
           user and the column descriptions said - the usual defect is one dropped condition or the wrong
-          basis, not a typo - and fix that before resubmitting. A third attempt on the same phase
+          basis, not a typo - and fix that before resubmitting. Two ROW POPULATION checks first, because
+          they are the cheapest and both are measured causes of a right-looking wrong answer: (1) if any
+          column you projected came back NULL on some rows in your run_query, those rows are outside that
+          column's support set - a per-entity listing built on a formula covers only the rows where the
+          formula exists (its description says how many: "present on 312 of 1000"), so add WHERE
+          "<column>" IS NOT NULL rather than listing every entity (measured: 1000 rows submitted where the
+          reference had 312, every value right); (2) if the entity you listed is reached through a record
+          with narrower coverage than the identifier itself - an operation known from a staffing record,
+          a hub known from a supply record, and the column descriptions give the coverage counts - the
+          reference may cover only that record's rows, and which population is meant is a question the
+          user answers, not one you decide. A third attempt on the same phase
           converts at 5%: do not make one unless you can say exactly what changed and why. Never
           resubmit an unchanged query. With fewer than 5 coins you cannot afford both an ask and a
           submit; spend them on a submit only if you know what changed.

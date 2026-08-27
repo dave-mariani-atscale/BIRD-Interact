@@ -5461,3 +5461,369 @@ three rules (a masked KB formula ships over the terms the warehouse evidences wi
 absent terms named; a KB term like "shipping delays" is read against what the warehouse
 records as that thing, not against a similarly-shaped column; a conditional
 count-distinct needs a derived key column at build time).
+
+## 2026-08-27 — backfill from the models repo: changes committed 2026-08-20..27 that this log never recorded
+
+Reconciled `docs/model-change-log.md` against `git log origin/main` in
+`bird-atscale-models` (per-database). Several rounds of model work were recorded
+only in commit messages and in the models repo's own `CHANGED-MODELS.md`, so
+this log had four databases down as never-reviewed that had in fact been read
+against failures and fixed. Entries below are condensed from the commit bodies;
+the hash is the record. Dates are the commit dates, not today.
+
+### Repo-wide (2026-08-20 .. 08-25)
+
+- **`3fd666e` 2026-08-20 — 15 entity-name aliases across 8 models.** The
+  0820 atscale run logged 50 `Unknown column name(s)`; 15 were the agent asking
+  for `<Entity> ID` / `<Entity> Name` where the level published bare with the
+  synonym only in prose (NAME DECIDES, NOT DESCRIPTION failing in production).
+  Each alias is a secondary attribute on the level's own column, no SQL change:
+  cold_chain (Carrier/Shipment/Vehicle ID), hulushows (Content ID),
+  mental_health (Facility/Patient ID), museum_artifact (Artifact ID/Name),
+  planets_data (Planet/Star Name), reverse_logistics (Return ID), sports_events
+  (Circuit/Driver Name), virtual_idol (Fan ID/Key). Seven `<hazard> Sensitivity`
+  columns the agent asked for in museum_artifact were NOT added — the warehouse
+  holds only light/temperature/humidity. Same commit: CURRENT_DATE-derived pins
+  in hulushows/virtual_idol now pin the drift-invariant spread exactly and the
+  absolutes with a season's tolerance.
+- **`edf6e29` / `f478912` 2026-08-20 — degenerate-dimension merge** (already
+  described above under "Repo-wide: degenerate dimensions ... merged"; hashes
+  recorded here).
+- **`f0691f9` 2026-08-21 — descriptions must not instruct the caller to project
+  extra columns.** From the 0821 diagnosis: 46 of 328 failing submissions
+  carried a label column gold omits; on 11 dropping it alone fixes the column
+  count. Cause was our own text ("select Site Code alongside...", "display
+  Platform Name alongside", "Show SRS alongside if..."): 8 instances in
+  archeology_scan, cybermarket_pattern, cross_border rewritten to state what the
+  identity IS. Non-uniqueness and never-GROUP-BY warnings kept (facts, not
+  instructions). Repo audit: 0 imperative projection instructions.
+- **`0422017` → `3044d6b` 2026-08-21 — window-function patterns as MDX
+  calculations, ranks then dropped.** Engine cannot filter/sort on a SQL
+  window alias (`WHERE rn = 1` → "constraints [rn] incorrectly constructed";
+  26 filter + 18 sort shapes across 22 dbs). Shipped as MDX: mental_health
+  Patient Stability Metric Rank; sports_events Constructor Reliability Rank +
+  four cumulative measures, Race level sorted by `round_number` (race IDs
+  disagree with calendar order in one 19-race season). Live test: cumulative
+  half reproduces `sports_events_5` gold exactly; **rank half removed** —
+  `Rank` ranks only the full member set (gold ranks a filtered 44 of 212;
+  McLaren 44 vs calc 129), `Existing`/`Filter` unsupported, and grouped by a
+  secondary attribute it silently returns 1 on every row.
+- **`45e586a` 2026-08-25 — AVG-able attributes point at their measure twins
+  (R2).** Six databases hit `assertion failed: We already handled attribute
+  values` (Q-21) in the 0825 run, all `AVG(<attribute>)` where an `Average
+  <attribute>` measure already exists. Descriptions only. Verified vs gold:
+  `sports_events_12` twin → 8.375 = gold; `fake_account_22` twin reproduces all
+  four gold rows. crypto_exchange, disaster_relief, cold_chain, museum_artifact
+  twins confirmed to execute. museum_artifact Light Level Lux worded
+  differently on purpose: gold averages `COALESCE(lux,0)` over 1000, twin
+  averages the 850 with a reading.
+- **`bd526bf` 2026-08-24** — sports_events (driver age / DPV) and
+  disaster_relief (burn rate, runway) CURRENT_DATE pins given ~a year of drift
+  tolerance; no deployed change, stops red builds on untouched trees.
+
+### sports_events — reviewed 2026-08-21, 08-25, 08-27 (Dave)
+
+- **`4fda394` → `eb78ac7` → `4bc1927` 2026-08-21.** `sports_events_5`: agent
+  queried the cumulative measures correctly but got every race in the season,
+  gold only the four McLaren entered. First fix (NULL-guard the running sums)
+  reverted the same day — a CASE returning NULL is a computed value, not an
+  empty cell, so rows survived; and a running total on a race sat out is a real
+  question. Descriptions now say a per-race listing needs
+  `HAVING "Constructor Result Count" > 0`. The revert stripped CASE openers from
+  two unrelated pooled calcs; `sml-cli validate` passed the broken MDX, the
+  engine refused the whole 22-model catalog. **Gate G20** added: every
+  `metric_calc` must balance CASE/END, parens, brackets.
+- **`ca071f1` 2026-08-25 — Driver Key published.** Description said "use the
+  driver key when identity matters" but it was never projectable; 174 of 861
+  drivers have no name and collapse to one blank label. Checked and NOT
+  changed, model follows the KB where the reference does not: KB 20 age floors
+  (ref `_1` takes AGE() year component), KB 32 population stddev (ref `_14`
+  uses sample STDDEV: 10.0 vs 9.64), `_11` invents 0.35×0.25 probabilities.
+- **`4d77121` 2026-08-27 — as-of-race twins.** From certified-answer-memory
+  failure telemetry: Driver Standing gains Points Per Race Before Race and
+  Driver Performance Value At Race (KB 26/37 as-of-race reading; career reading
+  keeps its name and cross-links); Sprint Driver Age Exact + its average beside
+  the floored one (floor(avg(exact)) = gold's EXTRACT(YEAR FROM AVG(AGE)) on
+  the winner subset). NOT fixed: 100/stddev "consistency champion" (not in KB),
+  qualifying-specialist denominator (gold contradicts KB 28).
+- **`8d9eef1` 2026-08-27 — round 2 from watching agents use round 1.** Nulls in
+  the as-of-race series are part of the series, not rows to drop (agents
+  filtered them); "whole-year part" read as rounding (28.72 → 29), now says
+  TRUNCATE with a worked figure; Average Sprint Performance Index RETRACTS the
+  round-1 one-population claim and discloses both (all classified 0.49565/345;
+  points-paying 8.375/144) symmetrically, ask the user.
+
+### polar_equipment — reviewed 2026-08-23/24 (Dave, 8 commits)
+
+- **`8520589` — ordinal non-join.** Fact reached ThermalSolarWindAndGrid by
+  `THERMAL_ID = CHASSIS_ID`, both just 1..1000. Declared key `comm_link`
+  agrees on all 850 real rows; the ordinal join invented 150 orphan rows —
+  total solar output 1014445 vs 863973 attributable. WeatherAndStructure
+  deliberately left ordinal at first (its key `loc_link` fans 1000 → 17840).
+- **`bcf19c2` — same defect on WeatherAndStructure**, fixed via
+  `opmaint_link` → OperationMaintenance: 859 real pairs, 141 invented.
+  Critical Equipment 151 → 136, protection level C 997 → 856, temperature
+  zones 293/301/406 → 255/252/352. All 12 subsystem registry IDs published
+  (three golds project one; questions ask for "the registry ID").
+- **`44beb95` — station-weather bridge.** Weather is station data (20 stations
+  × 50 readings); every gold touching it joins on `loc_link`, which the model
+  could not express. Equipment Weather Reading = 859 units × 50 = 43,942 rows,
+  related to both entity dimensions; every object leads with the fan-out
+  warning. Six pins lock the bridge shape.
+- **`c063396` — the warning was on the wrong side.** Three tasks
+  ceiling-verified against the bridge by hand; the run converted none — agents
+  found the unit-grain twin by name and never learned the bridge existed. The
+  unit-grain columns now lead with "plain name does not settle which reading"
+  and carry both live counts (Structural Safety Factor 5 vs 238; Temperature
+  Zone 255/252/352 vs 850/850/850). Station states 859/1000 coverage and that
+  comm/cabin/weather branches are different populations.
+- **`ce92603`** KB 25 water-quality band: label 'Unsuitable' (KB's adjective)
+  → 'Unsafe' (KB's label), Poor cut 31 → 26; moved 51 units.
+  **`d9cbc1b`** KB 5 wear: 281 chassis lack one wear figure; both readings ship
+  (342 vs 467 units), PTEC follows. **`1c71f35`** KB 56 temperature bands also
+  as 'Extreme Cold (<-40C)' display twin. **`e640f76`** CRI/BSCSI IEEE
+  negative zero (171/283 rows rendering "-0") normalised with `+ 0.0`.
+
+### virtual_idol — reviewed 2026-08-24 (Dave, 7 commits; M-37 twins logged above)
+
+- **`5a4a71e` — three silent defects.** Commerce attributed via
+  interactions → engagement → commerce; warehouse FK runs
+  commerce_member_pivot → membership → fan; 19 of 356 pairs on the wrong fan,
+  Collector Fan wrong for five (58 vs warehouse 57). Interaction gaps cast to
+  `::date` before subtracting (311.94 → 312); now EPOCH/86400. NPS tiers were
+  plural; KB names them singular.
+- **`eb04ee4`** — mean gap and longest quiet stretch split: fractional
+  consecutive-interaction gap vs whole calendar days between DISTINCT active
+  dates (gold `_16` vs `_12` make the same distinction). A pin asserting the
+  two equal had encoded the conflation.
+- **`3302852`** — engagement branch anchored on membership, not interaction:
+  27 of 555 engagement rows point at another fan's interaction, so 26 fans read
+  someone else's followers (`_3`: victoria89 took annawilliams's rank 13).
+  Engagement attributes added at fan grain so Engaged Lurker × Content
+  Preference conforms to Fan Count (`_2` now Music 6/Dance 4/Gaming 3/Chat 2).
+- **`1b9fe61` / `432cc89`** — Fan Segment ranked only the 37 fans with both
+  axes; KB's own segmentation coalesces to zero and ranks all 972
+  (249/237/237/249). Gold `_13` reports 251/242/242/251 = 986: LEFT JOIN
+  double-counts 14 fans with two membership rows; **not reproduced**, task
+  stays failing. Descriptions that still said "37 fans... 935 unsegmented" made
+  the agent gate on `Fan Segment Available` — renamed `Has Both Segment
+  Inputs`, "not a filter".
+- **`83955a5` → `219df12`** — percentile ranks as MDX `Rank` calcs for `_11`
+  (no PERCENT_RANK in the SQL front end), **reverted**: correct per-fan values
+  but re-materialises the fan dataset per row; `_11` wedged a warehouse query
+  25+ min at 74% CPU for 22 rows and converts nothing (gold ranks over its own
+  797-fan CTE). Average Fan Platform Stickiness Score kept. **`c8c9b6b`** Idol
+  ID / Idol Key published (736 names over 742 idols; DENSE_RANK per idol merged
+  them).
+
+### disaster_relief — reviewed 2026-08-27 (Dianne; models `9581253`, `c40e579`)
+
+Same pass shape as robot/planets/cold_chain. README carries the reasoning:
+
+- **Agreeing references are not the same population.** The four operation
+  references agree in value but not coverage (coordination 967, beneficiary
+  800, financial 201, staffing 57). Each record's own reference now ships
+  beside the coalesced `Operation` (`Operation On Coordination/Beneficiary/
+  Financial/Staffing Record`); bare `Operation` leads with the four counts and
+  routes the choice to the user. Hub reference likewise (`On Transport Record`
+  987/405, `On Supply Record` 312/312); `Hub Strain Index (Supplied Events)`
+  twin disagrees with the union HSI on 327 of 405 hubs.
+- **Narrow-record twins.** `Mass Casualty Incident (Staffed Events Only)`
+  (54/57 vs 955/1000); GSI reads the stored staff total and is null where
+  unrecorded (33 events), old staff+volunteers zero-fill kept as
+  `(Footprint, Missing As Zero)`.
+- **Two cost operands.** KB 4 burn rate divides `total_operational_costs` =
+  `ops_costs_usd` (one column); KB 5's four-line sum is a different term.
+  Bare FBR / Budget Runway / Funding Crisis read the ops line (8 in crisis);
+  `(All Four Cost Lines)` twins (16). `Total Cost USD` vs
+  `Total Operations Cost USD`.
+- **As-recorded text twins** for nine numbers stored as text (money, %, star,
+  `WQI`); `Hazard Type (Lowercase)` rendering twin.
+- **`c40e579`** — REAL-declared JSON numbers read through `::real` inside every
+  formula, exact decimal only for display (4 of 405 HSI values flipped at 2 dp
+  — the robot 0827 type finding again). Pins 120 → 144.
+
+Not measured yet — no scored run since either commit.
+
+### Also unlogged, already-reviewed databases
+
+- **crypto_exchange `ba8f589` 2026-08-25.** Worked back from nine phase-1
+  failures in the 0825 run; five are gold artefacts, left alone. Four changes:
+  raw Arbitrage Potential published (existed only inside the composite score);
+  Arbitrage Window drops "also asked as significant arbitrage opportunity"
+  (task 19's wording, on a column that is 'No' on all 1000 snapshots) and names
+  the component; Bid/Ask Size say they are one row per market so a snapshot
+  filter neither narrows nor corrects (task 10 failed only on
+  `WHERE "Market Snapshot" = 1000`); Average Margin Utilization gains its
+  twin's wordings.
+- **labor_certification_applications / hulushows `1bf966c` 2026-08-22.** Two
+  levels keyed at the wrong grain ("points to multiple key values", attribute
+  resolves to an arbitrary row): hulushows Content Tier Profile keyed on
+  content_record alone over a 7-tier rollup (7000 rows, 24 warnings) → keyed on
+  record + tier; labor Application Status As Recorded made the level below the
+  normalised status rather than a secondary attribute. 25 warnings → 0 across
+  22 models.
+- **fake_account `568e210` 2026-08-25** — missing-inputs-as-zero pair for
+  Content Impact Score (already noted above; hash recorded).
+
+### Review status after this reconciliation
+
+Per-task failure pass done: archeology_scan, exchange_traded_funds,
+crypto_exchange, organ_transplant, households, mental_health, insider_trading,
+hulushows, robot_fault_prediction, planets_data, cold_chain_pharma_compliance,
+sports_events, polar_equipment, virtual_idol, disaster_relief.
+Partial (KB-gap passes only, no per-task classification):
+labor_certification_applications (0814-17), cybermarket_pattern (0810 run-1
+fixes, old prompt). **Never had one:** museum_artifact, reverse_logistics,
+cross_border, fake_account, solar_panel (35 hand-tuned commits 0804-07,
+pre-firewall, untouched since; no section in this log).
+
+`CHANGED-MODELS.md` in the models repo carries Dave's own round notes since the
+0820 baseline; check it alongside this file before calling a model unreviewed.
+
+## 2026-08-27 — disaster_relief: per-record references beside the coalesced ones, staffed-only readings, the operational-cost operand, warehouse-typed formulas (models 9581253, c40e579, f315484)
+
+Deep dive on a database that sat at 0.1000 / 0.1250 / 0.1000 in 820/824/825 against raw
+0.0833 (820), with ten of its 12 Query tasks at 0 in every semantic run and eleven of 12 at
+0 in raw. Every gold was executed against the warehouse and every failing phase classified
+before anything changed, then each reachable task was ceiling-tested by hand through
+`scripts/probe_pred.py` against the deployed model (no LLM calls).
+
+**What the classification found.** Seven of the twelve golds reach the operation through
+one specific satellite — `JOIN humanresources ... hr.hr_ops_ref` — and so cover only the 57
+events that carry a staffing record (all 57 also carry a coordination, beneficiary and
+financial record; the four references agree on every overlap). The model published one
+coalesced `Operation` over 967 events, which is the right *value* and the wrong
+*population* for those tasks: `_1` wants 30 rows through the staffing record where the
+coalesced reference gives several hundred, `_3` wants 54 mass-casualty events of 57, `_11`
+wants the pooled cost per person over the 20 completed events with both a financial and a
+staffing record (4.03 against 3.08 over every financed event). No question names the record;
+the reference author's join habit does. The rest of the zeros split into gold defects and
+two value-pipeline defects, below.
+
+**Model changes, all three commits on the same day:**
+
+- **Per-record references.** `Operation On Coordination Record` (967), `... Beneficiary
+  Record` (800), `... Financial Record` (201), `... Staffing Record` (57) beside the coalesced
+  `Operation`, whose description now leads with the four counts and routes the population to
+  the user; `Distribution Hub On Transport Record` (987 events, all 405 hubs) and `... On
+  Supply Record` (312 / 312) beside `Distribution Hub`. Counterfactual test: the schema shows
+  four FKs to operations and two to hubs; the build prompt's multiple-join-path rule already
+  says to ship each path — the earlier build applied the measure-before-twins rule (identical
+  values → coalesce) and lost the coverage difference. Pinned: the refs never disagree (0).
+- **Hub strain in both readings of "serves".** `Events Supplied`, `Average Severity Served
+  (Supplied Events)` and `Hub Strain Index (Supplied Events)` (a hub that supplied nothing
+  carries the load term alone; 327 of 405 hubs differ from the union reading) beside the
+  existing union objects, plus `Average Hub Strain Index (Supplied Events)`. `_4`'s gold
+  averages severity over the supply record only.
+- **`Mass Casualty Incident (Staffed Events Only)`** (54 Yes / 3 No / null elsewhere) and its
+  count, beside the three-valued all-events flag (955); the bare flag's description carries
+  both counts and the population ask. This is the missing-input-policy rule applied to a
+  classification.
+- **Gridlock Severity Index re-read.** KB 40's `total_personnel` is the staffing record's
+  stored `total` (documented "Total number of staff"), and KB 40 writes no COALESCE — so the
+  bare `GSI` now exists on the 33 events with a recorded total (14.2–119.2, mean 75.2) and is
+  null elsewhere, which the model's own stated coalesce policy already required and the
+  build had violated (943 events coalesced to zero). The earlier reading — KB 17's
+  staff-plus-volunteers footprint, missing as zero, 967 events — is kept as `Gridlock
+  Severity Index (Footprint, Missing As Zero)` with its average twin. `_9`'s values now match
+  gold (119.20 / 119.00 / 112.70 / 81.00 and one null).
+- **The burn-rate operand.** KB 4 divides `total_operational_costs`; the warehouse has one
+  column documented "Operational costs in USD" (`ops_costs_usd`); KB 5's four-line sum is the
+  definition of a different term ("total cost", for the cost per person). Bare `Financial
+  Burn Rate (FBR)`, `Budget Runway (Days)`, `Funding Crisis` (+ count, rate) now read the
+  operational-cost line (8 events in crisis; 11 under a week of runway); the four-line
+  versions ship as `(All Four Cost Lines)` twins (16 / 29) with average twins. The four-line
+  sum is renamed `Event Total Cost USD` / `Total Cost USD` (was "Total Operational Cost",
+  which contradicted the KB 4 reading), and `Total Operations Cost USD` sums the operational
+  line. Gold itself uses the stored column in `_5` and the four-line sum in `M_1`'s
+  follow-up, which is why both must exist.
+- **As-recorded text twins** (v10 rule) for the nine columns stored as text with a unit or
+  symbol: budget, funds utilisation, cost per beneficiary, partner organisations, public
+  perception (star), lessons recorded, best practices, improvement recommendations, water
+  quality index. `Partner Organisations (As Recorded)` returns gold's `'45.0'`-style text for
+  the two "which partners" follow-ups (`_9` p2, `_10` p2).
+- **`Hazard Type (Lowercase)`** — the rendering two follow-ups ask for by name ("type of
+  hazard (in lowercase)"), permitted-source wording.
+- **Warehouse-typed formulas** (commits c40e579, f315484). The REAL-declared JSON numbers
+  (damage percentages, delivery figures, break rate, availability, sanitation, WQI) are read
+  `::real` inside every formula and kept as the exact decimal for display; the three damage
+  percentages are added as reals before the division, as `COALESCE(a::real,0) +
+  COALESCE(b::real,0) + COALESCE(c::real,0)` does. Found by the ceiling test, not by any
+  gate: `_4`'s hub strain matched gold to six digits and flipped at the second decimal on 4
+  of 405 hubs (halved values sit on .xx5 boundaries), then on 3 after the casts alone, then
+  on 0. This is tracker E-04's disaster_relief row, now closed model-side.
+
+Build: dry-run 144 pinned constants, 19 generate gates, A8, A10, `sml-cli validate` clean;
+deployed three times (last 15:0x). Sibling commits on the shared repo (sports_events
+4d77121, 8d9eef1, another session) went out in the same deploys.
+
+**Ceiling after deploy** (`scripts/probe_pred.py`, hand-written, no agent): `_1` p1+p2 (30
+rows / 30), `_2` p1+p2 (312 / 310, with `WHERE "Supply Sufficiency (Days)" IS NOT NULL`),
+`_3` p1 (54), `_4` p1+p2 (405; both the AVG-over-derived-table and the measures-grouped-by-
+CASE shapes), `_9` p1 (5, null row first — the engine put the null first on DESC here, so
+the NULLS-LAST cap did not fire), `_11` p1+p2 (4.03; five hazard rows), and the two passes
+from 825 (`_8` p1, `_12` p1) all grade 1. `_10` p1+p2 grade 1 with `LOWER("Region Tag")`
+and a coordination-record filter — reachable, but no question asks for lower case (see
+B-72). Twelve of the fifteen probes that a correct agent could write now pass.
+
+**Capped, reported, not changed:**
+- `_5` p1: the runway values are one day short of gold whenever the grader runs between
+  09:00 and 24:00 Pacific — the Postgres server session is `Asia/Hong_Kong` (already
+  2026-08-28 at 14:30 PDT) and the engine's JDBC session is local, so `CURRENT_DATE`
+  differs by one; recomputing gold at `CURRENT_DATE - 1` reproduces the model to three
+  decimals. Harness (tracker E-05). `_5` p2 is a gold fan-out (crisis ops × staffing rows ×
+  coordination rows, 27 rows from 6 operations).
+- `_6`: the simulator answers "old" as "finished more than 2 years ago", gold has no such
+  filter (every operation started in 2025, so the answer is empty); gold also returns the
+  raw coordination table (`c.*`).
+- `_7`: gold's RES joins beneficiary rows to the transport record of a *different* event
+  through the operation (148 of 205 pairs are cross-event) — a join fan-out no model should
+  reproduce.
+- `_9` p2: gold's top-3 ops carry duplicates (10 rows from 3 ops); `_3` p2 (three hazard
+  types tied at 12), `_8` p2 (two hazard types tied at 4, gold's LIMIT 1), `_12` p2 (ties in
+  the break rate under strict order) are tie caps.
+- `_10`: cosmetic `LOWER(region_tag)` on a code no question asks to lower-case (B-71 class).
+
+**Guidance change, atscale backend `error_hints` only (no raw re-run owed):** the
+`Your SQL is not correct` hint now puts two ROW POPULATION checks ahead of the VALUES
+check — a projected column that came back NULL on some rows marks those rows as outside its
+support set (`_2` submitted 1000 rows where gold has 312, every value right), and an entity
+reached through a narrower record is a population question for the user. Services
+restarted 14:29.
+
+**Measured 2026-08-27 14:42–14:49, n=1, tasks 1/2/3/4/9/11**
+(`results/disaster_0827_n1_atscale_20260827_144224.json`, Sonnet, **$2.04** from `llm_usage`:
+agent $1.59, user sim $0.46, 90% of agent input from cache): `_2` **1.0**, `_3` **0.7**, the
+other four 0.0 — 1.7 over the six against 0.0 for the same six in 825 (and in 824 and 820).
+With `_8` and `_12` at 0.7 each in 825 the database reads 3.1/12 = **0.258** against 0.117
+(825) and raw 0.083 (820): lift **+17.5 pp** where it was +3.4 pp, about 3x raw. Single run,
+subset re-run, so not a quotable arm number; a full 12-task n>=3 run and a raw re-run are
+owed before any figure from this database is quoted.
+
+What converted and what did not, from the trajectories:
+- `_2` passed both phases on the NULL-rows check: the agent asked "all 1000 events or only
+  the 312 with a supply record" as its first question, got "only the 312", and filtered.
+- `_3` p1 passed on the staffed-only twin: the agent read both counts (955 / 54) off the bare
+  flag's description and asked which population, and the simulator answered "only disasters
+  that have a matching staffing record". p2 is the three-way tie at 12.
+- `_1` did NOT convert: the same population question, phrased as "the model links operations
+  through four satellite records (coordination 967, beneficiary 800, financial 201, staffing
+  57) — which population", came back **out of scope**. Where the record is the *input* of a
+  KB formula (`_3`) the simulator routes the question to the join; where it is only the
+  reference's path to an identifier (`_1`, `_9`) it reads as a schema question and refuses.
+  The agent then dropped the severity column as well.
+- `_11` did not convert for the opposite reason: the agent asked whether to restrict to
+  events with both a cost and a population and the simulator said **"don't restrict"** —
+  gold's `JOIN humanresources` restricts to 20 events, and the simulator read its SUM/SUM
+  without seeing that. A simulator answer that contradicts gold; capped (B-72).
+- `_4` got the supplied-events reading from the simulator ("use each hub's supply records")
+  and the two labels, then projected hub + status without the strain index (the question says
+  "list the hubs and their status"; gold adds the index). Agent-side shape.
+- `_9` used the severity index where the question's "calculated severity score" was the
+  gridlock index, and never applied the transport-access half of the gridlock rule.
+
+So the per-record references converted exactly where a KB formula carries the record and
+nowhere else — the simulator, not the model, is the binding constraint on the other five
+reference joins. Recorded on B-72 so the next pass does not re-buy it.
+
