@@ -5974,3 +5974,115 @@ What converted and what did not:
   rated-only one (59) it had been told to use in the first run - the two open slots
   (population, shape) each convert about half the time at n=1. Not re-launched; no results
   file was written (partial spend, under $1).
+
+## 2026-08-27 — reverse_logistics: the record's nine cost lines as a second reading of cost, the days-lapsed total over the costed population, the pooled RRD on one population, Total/Average pairs cross-named (models 8954399, 92ca57f)
+
+**Why.** `reverse_logistics` (20 Query tasks) sat level with raw: atscale 0.49 / 0.44 /
+0.405 in 820 / 824 / 825 against raw 0.42 (820), with eight tasks at 0 in every run in
+BOTH arms (`_1 _3 _7 _9 _10 _17 _18 _19`) and `_14`/`_15` scoring where raw scored 1.0 /
+0.7. First per-task pass this database has had (the 0827 backfill lists it under "never
+had one"). Method: `scripts/failing_sql.py` on the three runs, the 825 `dialogue_history`,
+gold hand-graded against the deployed model with `scripts/probe_pred.py` (no LLM calls),
+and a row diff (`rowdiff.py`, scratchpad) where the verdict alone did not explain the
+failure.
+
+**Root facts.** 1500 returns, 995 financial records (1:1 on the case number), 1500 quality
+records; `dayslapsed` is 1–60 on every return (never 0 or null); the fraud risk LEVEL is
+null on 645 returns. Everything the engine returns for a costed figure is over a 1500-row
+wide fact with 505 NULLs, where gold's `JOIN financial_management` sees 995 rows — the
+atscale backend instruction already tells the agent to filter those out, and the agent did
+where it mattered.
+
+**What was wrong in the model (fixed, `8954399`):**
+- `Group Recovery Rate Per Day (Pooled)` divided a 995-row numerator (`Total Recovery
+  Value`, 740008.86) by the 1500-row `Total Days Lapsed` (46855) = 15.79, a ratio over no
+  population. `Total Days Lapsed (Costed Returns)` = 31776 now ships and the pooled RRD
+  divides by it (23.288). `_3` asks for the average per-day recovery "with the daily
+  recovery value and recovery rate" — gold's two totals are over the 995 costed returns;
+  the model's only days total was over 1500. Ceiling probe: 0 → 1.
+- KB 0 names five cost components; the financial record's `cost_breakdown` holds nine.
+  `_17`'s gold (both phases) sums all nine, `_2 p2`'s sums the KB's five. Both readings now
+  ship: `Total Return Cost (All Recorded Cost Lines)` (758841.81 vs 458677.38 strict) and
+  `Return Profit Impact (All Recorded Cost Lines)` (−18832.95 — a net LOSS where the KB
+  reading is +281331.48; Store Credit +8088.06, Bank Transfer −12793.93, Original Payment
+  −14127.08), each as attribute + Sum measure, named on the bare readings with both figures.
+  Ceiling probe `_17` p1+p2: 0 → 1.
+- Descriptions on `Days Lapsed`, `Total Days Lapsed`, `Average Recovery Rate Per Day`, the
+  two TRC readings and `Return Profit Impact` name the twins. Pins for all four new figures.
+- `92ca57f`: every Total/Average pair over one per-record amount (13 pairs, 26 measures)
+  names its twin and says a per-group breakdown with no aggregate word does not settle which
+  — the model-flagged-ambiguity trigger the backend instruction already tells the agent to
+  ask on. Run 3 is the first in which `_10` and `_15` both asked.
+
+**What was wrong in the agent's behaviour (guidance, shared `ASK_USER_TIP` /
+`RESULT_SHAPE_TIP`, both arms — B-49 decision recorded on the sheet):**
+- `_10`, `_15`: "break down relabeling cost by category" / "which disposal route releases
+  the most carbon" — the agent submitted the TOTAL three times each; gold is the AVERAGE;
+  the ambiguity is masked and the simulator answers it when asked (`_18` asked and was told
+  "average"). New bullet: a per-record amount broken down by a category with no aggregate
+  word is an open aggregate slot — ask total vs average.
+- `_14`: "what portion of returns" — the agent returned 0.208 twice; gold is 20.80. New
+  bullet: a share/portion/rate with no scale word — ask percent vs fraction.
+- COLUMN ORDER, the largest single failure class on this database once values were right:
+  `_18` p1 gold prints (condition, avg carbon, avg disposal) where the question asks disposal
+  first; `_7` p1 gold prints (case, flags, weight, score) where the question says "score
+  along with flag count and weight"; and in every one of the four "also include the number
+  of returns while keeping the average" follow-ups (`_5 _10 _13 _15` p2) gold puts the
+  added count BEFORE the kept measure — the agent appended it in 820/824/825 and again in
+  the first 0827 run (`_13` p2 count-first in 820 is the one that passed). New bullet: when
+  one row holds two or more figures and nothing in the wording fixes their order (a prose
+  list, separate sentences, or an added column with no position), ask the order once;
+  `_2` p1 asked exactly this in 825 and got gold's order.
+- `_19`: the agent asked, was told "count and average", and submitted count, total AND
+  average. New RESULT_SHAPE_TIP clause: once the user names the columns, project exactly
+  those. Second clause, from `_3` in the first 0827 run: quantities the question says to
+  include or show beside the main figure are columns of the answer, not inputs to drop —
+  the agent returned the average alone where gold shows it with its two totals.
+- `_7`, `_5`, `_1`: sorted by the identifier where gold sorts by the score / the average /
+  the cost — the 0827 sort-order ask (already shipped) covers it; `_7` also needs the
+  no-level rows excluded (backend instruction already says so). `_2 p2`, `_6 p2`, `_13 p2`
+  failed on `ROUND(CAST(...))` — the 0827 never-round rule covers it.
+
+**Capped, reported, not changed — tracker B-74:** `_1` p1 returns gold's 995 rows set-equal
+and fails on tie order alone (`GRADING_TIE_TOLERANCE`; worth 1.0 here); `_9` gold's "latest
+hundred" is `ORDER BY logtime DESC` on a TEXT column of six date shapes — alphabetically
+last is "September 9th, 2024" — unwinnable by either arm (raw 0 in every run); `_18` p1 gold
+column order (now an ask); `_17` nine-line cost (now a twin, needs the ask).
+
+**Build prompt** (`create_bird_model_prompt.v10.md`): "What the 2026-08-27
+reverse_logistics pass changed" — two rules (a pooled ratio's terms are totalled over one
+population, with the restricted denominator total published beside the bare one; the
+record's own cost lines are a competing reading of "cost" even when no KB entry sums them)
+and the revision note at the top.
+
+**Measured** (all n=1, Sonnet, `llm_usage`; three subset runs, **$5.58** in total —
+$2.53 + $1.75 + $1.30, 88–91% of agent input from cache):
+- Run 1, 16:23, tasks 3/5/7/10/13/14/15/17/18/19 (`results/rl_0827_n1_atscale_20260827_162308.json`),
+  model `8954399` + the first four guidance changes: **4.1/10 against 0.7/10** for the same
+  ten in 825 — `_14` 1.0 (was 0 in every atscale run; ×100 after the scale ask), `_19` 1.0
+  (was 0; count + average, sorted by count), `_10` 0.7, `_15` 0.7, `_13` 0.7. `_17` asked
+  which cost reading, was told all nine lines (the twin works) and then "just the net figure"
+  — two columns where gold has four. `_3` was told the columns twice, contradictorily.
+- Run 2, 16:33, tasks 3/7/10/13/15/18 (`rl_0827_n1b_…163343.json`), after broadening the
+  column-order bullet: **0.7/6** — the same six scored 2.1 in run 1. `_10` and `_15` took the
+  Total without asking; `_13` p2 tried three column orders and never the right one; the
+  column-order ask fired 0 of 3 times. Single runs on this database swing by ±1.5 over six
+  tasks, so no subset number here is a lift figure.
+- Run 3, 16:41, tasks 7/10/13/15/18 (`rl_0827_n1c_…164143.json`), after models `92ca57f`
+  (Total/Average pairs cross-named) and the softened "in the order asked" clause: **2.4/5**
+  — `_13` **1.0** (first phase-2 pass since 820: the added count went first), `_10` 0.7,
+  `_15` 0.7 (both asked total-vs-average this time — the model-flagged ambiguity is what the
+  backend instruction tells the agent to ask about). `_7` and `_18` failed on column order
+  alone for the third time each: every value right, gold's order not the question's.
+
+Projected from the best observed per task (`_2` 0.7, `_4 _8 _11 _12 _16 _20` 1.0, `_6` 0.7
+from 825; `_13 _14 _19` 1.0, `_10 _15` 0.7 here): 11.8/20 = **0.59** against 0.405 (825)
+and raw 0.42 — but that is a ceiling-shaped projection, not a measurement. What is
+measured: the three tasks that converted (`_13` p2, `_14`, `_19`) had been 0 or 0.7 in
+every prior run in both arms. A full 20-task n>=3 run and a raw re-run (four shared-tip
+changes) are owed before any lift is quoted.
+
+**Left on the table:** `_7` p1 and `_18` p1 (column order — the ask exists and did not
+fire in six tries; the values are right in every run), `_3` p1 (simulator inconsistent on
+the columns), `_5` p1 (the agent keeps reaching for a window AVG over an attribute the
+engine refuses; the measure grouped by site passes probe_pred), `_17` (simulator shape).
