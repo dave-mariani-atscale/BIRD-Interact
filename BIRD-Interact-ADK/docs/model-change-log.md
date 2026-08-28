@@ -6238,3 +6238,78 @@ before changing anything:
   `polar_equipment_2`/`_11` is nil — both received the rule from the simulator in 825 and failed
   on the SSF join path.
 
+
+## 2026-08-27 — fake_account: TEI's VPN percent divided by 100, zero-fill of every input for every composite, the all-accounts TEI quartile, the membership grain for the cluster-mixed composites, TPDS demoted to a stated proxy (model 5417f4e)
+
+**Kind of change, and why.** Six generator changes, all reproduced against the warehouse
+and graded with `scripts/probe_pred.py` before any run, none using a gold-only fact
+(the pre-checks compared to gold; every shipped object is derived from the KB, the
+column meanings, or the data). Baseline: atscale 8.8 / 6.4 / 6.4 of 24 in 820/824/825
+vs raw 5.1; thirteen tasks at 0 in every atscale run. `scripts/result_diff.py` on the 825
+run: 8 value mismatches, 4 wrong column counts, 2 order-only, 4 row-count differences.
+
+- **TEI (KB 7) reads the stored VPN percent divided by 100.** `vpn_usage_pct` is text
+  `'0.00%'..'1.00%'`, described "VPN usage percentage"; the build had taken the figure
+  before the sign as the ratio and shipped the /100 reading as the twin. KB 16's 0.8
+  cutoff does not decide (482 vs 447), so the unit does: a percentage is a ratio x 100.
+  Bare TEI, ARS, ABS, quartile and risk category now follow the /100 reading;
+  `(VPN Percent As Stored)` is the twin. Pinned in `dry_run.py` (447/426 bare, 482/464 twin).
+- **Every zero-filled twin coalesces every input; NTS, CBR, NMI and LBS gain twins at
+  row and aggregate grain.** The TEI twin had coalesced only proxy count, so
+  `Authentication Risk Score (Missing Inputs As Zero)` was a third unnamed reading: a
+  "> 0.7" screen returned 467 rows where the honest zero-filled reading has 431 (and the
+  strict one 225 of 283). "Average latest bot-likelihood over all accounts" had no
+  all-accounts reading (0.648 over 558; 0.414 over 670).
+- **`TEI Quartile (All Accounts)` / `TEI Risk Category (All Accounts)`.** NTILE over all
+  670 with a null TEI last: 168/168/167/167, the 106 no-TEI accounts in quartile 4. The
+  bare quartile (141 x 4 over 564) stays. NTILE is rejected on the inbound interface, so
+  both must be materialised.
+- **`Cluster Membership Record`** — a degenerate dimension on the link fact carrying
+  `Network Influence Centrality / Coordinated Activity Score / Coordinated Bot Risk /
+  Content Impact Score (Per Membership)` (+ zero-filled CBR and CIS), each evaluated for
+  the account-cluster pair with that cluster's own influence, coordination and size;
+  every `Average Member ...` measure re-based on the per-pair value (a per-cluster
+  average of the account-collapsed NIC was wrong for every cluster - CL0130 0.536 vs
+  0.624); `platform_id/platform_kind` added to the link fact with a relationship to
+  Platform Record so the per-pair CIS rolls up per platform (previously "no candidate
+  paths" on every attempt). Account grain keeps the collapsed reading bare and gains
+  `Coordinated Bot Risk (Highest Cluster Membership)`. Verified live: degenerate
+  dimension on the link fact beside `Account` returns 1354 x 2; `GROUP BY` on a
+  non-projected column is accepted.
+- **NMI and CBR both carry "overall bot-and-coordination score" and name the KB's own
+  cutoffs** (KB 49 puts NMI at 0.9, KB 40 puts CBR at 0.8; 509 / 553 above 0.8).
+- **`Temporal Pattern Deviation Score (TPDS)` → `(Spread Proxy)`.** KB 50 needs 24-hour
+  observed and expected series; `count(hourly_observed) = 0` over `security_sessions`.
+  The three-bucket deviation was shipped under the KB's bare name; it is now a stated
+  proxy whose description says KB 50 is not computable here.
+
+**Not shipped, deliberately:** a `(Cluster Influence Column)` twin for KB 6 CAS. KB 51
+calls the raw cluster column "network influence score" and KB 6/37 say "network influence
+centrality" (KB 51's title); two references (`_13`, `_14`) read it as the raw column
+anyway. Shipping that reading would be gold-informed; recorded as a cap in B-76.
+
+**Guidance (ADK `system_agent/agent.py`):** one sentence — a one-figure-per-group
+listing with no sort cue and no ask is ordered by the figure, largest first, never by the
+group label or unsorted (`_10` and `_22` were set-equal and failed on exactly that).
+
+**Probe ceiling before the run** (free): `_4` p1+p2, `_5` p1, `_15` p1+p2, `_16` p1,
+`_17` p2 moved 0 → 1; `_10`, `_22` grade 1 sorted by the figure; `_2` p2 and `_20` p1
+grade 1 with the id beside the value.
+
+**n=1 run** `results/fa_0827_n1_atscale_20260827_195217.json` (8 tasks, $2.24 from
+`llm_usage`, 85% of input tokens from cache): **3.4/8 against 0.7/8 for the same tasks
+in 825** — `_10` 1.0 (was 0), `_17` 1.0 (0.7), `_16` 0.7 (0), `_22` 0.7 (0); `_4` and
+`_5` 0: the agent asked the closed question and the simulator answered "only accounts
+with a computable TEI", the opposite of its 825 answer to the same question and of its
+own reference's NTILE; `_15` 0: right rows, sorted by cluster id where the reference
+sorts by member count with no cue; `_24` 0: reference has no ORDER BY under `order: true`
+(in `config/order_undetermined.json`, lint off). Projected on the 825 base: 9.1/24 =
+0.379 vs raw 0.213, **+16.7 pp** (was +5.4 pp on 825, +15.4 pp on 820). Full 24-task
+n>=3 run and a raw re-run still owed.
+
+**Caps, reported not changed (B-76; B-31 note):** tie order on `_3` `_9` `_12` p1 and
+`_16` p2 (set-equal to gold, `GRADING_TIE_TOLERANCE` off); `_22` p2 and `_24` p1
+references have no ORDER BY under `order: true` (`GRADING_ORDER_LINT` off; both listed in
+`order_undetermined.json`); `_11` reference's top 10 are ten NULL-CMS rows; `_18`
+reference is one NULL row; `_21` and `_7` simulator answers omit what the reference
+projects/filters; `_13`/`_14` KB 6 operand; `_18` p2 / `_24` p2 percentile (Q-06).
