@@ -178,6 +178,10 @@ def record_submission_verdict(
         "rater": "bird_simulator",
         "note": (message or "")[:500],
     }
+    if settings.feedback_rater_token:
+        # Authorizes the privileged source above; without it the server records
+        # the verdict at agent_inferred weight, which never certifies alone.
+        payload["raterToken"] = settings.feedback_rater_token
 
     def _send() -> None:
         try:

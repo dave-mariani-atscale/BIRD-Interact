@@ -279,6 +279,13 @@ class Settings(BaseSettings):
     # exactly. Recorded per run in the results JSON.
     feedback_memory: bool = False
 
+    # Shared secret matching the MCP server's ATSCALE_MCP_FEEDBACK_RATER_TOKEN.
+    # The server honors privileged feedback sources (end_user_explicit) only when
+    # record_feedback carries this as raterToken; without it the verdict is
+    # recorded at agent_inferred weight and never certifies on its own. Empty
+    # means "send no token" - fine when the server has none configured.
+    feedback_rater_token: str = ""
+
     @property
     def data_dir(self) -> Path:
         return PROJECT_ROOT / f"bird-interact-{self.dataset}"
