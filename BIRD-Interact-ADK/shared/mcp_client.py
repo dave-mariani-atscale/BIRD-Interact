@@ -170,6 +170,23 @@ def _stringify_result_content(content: list[Any]) -> str:
 
 _task_sessions: dict[str, str] = {}
 
+# One in-flight call per task session. The streamable-HTTP server loses
+# responses when two POSTs run concurrently on one Mcp-Session-Id — caught
+# live 2026-08-28: a parallel explore_columns pair whose handlers both
+# finished in 20ms while NEITHER response ever reached the client, which
+# waited out its full deadline (the 30-minute production freezes, pre-
+# deadline). ADK issues parallel tool calls, so without this lock a shared
+# session races that server bug; with it they queue for the milliseconds a
+# discovery call takes.
+_task_locks: dict[str, asyncio.Lock] = {}
+
+
+def _task_lock(task_id: str) -> asyncio.Lock:
+    lock = _task_locks.get(task_id)
+    if lock is None:
+        lock = _task_locks[task_id] = asyncio.Lock()
+    return lock
+
 
 class TaskSessionMCPClient:
     """One persistent MCP session per task id, over bare streamable HTTP."""
@@ -241,10 +258,11 @@ class TaskSessionMCPClient:
         # (observed live 2026-08-27, ~1 task in 12). A timed-out call surfaces
         # as a normal tool error the agent can retry; the run keeps moving.
         try:
-            return await asyncio.wait_for(
-                self._acall_tool_inner(task_id, name, arguments),
-                timeout=240.0,
-            )
+            async with _task_lock(task_id):
+                return await asyncio.wait_for(
+                    self._acall_tool_inner(task_id, name, arguments),
+                    timeout=240.0,
+                )
         except asyncio.TimeoutError:
             raise MCPClientError(
                 f"MCP call {name} exceeded the 240s task-session deadline "
