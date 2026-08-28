@@ -6382,4 +6382,32 @@ question. Both derivable from the question alone. Services restarted.
   service. socket hang up` after a successful compile; the local dev engine's JVM was gone
   afterwards (nothing listening on 10502 / 15432). Redeploy and probes pending its restart.
 
-**Probe ceiling and run:** pending the engine restart - see the next entry.
+**Probe ceiling after the redeploy** (engine restarted by Dianne; `316ea34` then `c7b7791`, a
+sibling session's ADR-basis description tweak, deployed together): `_2` p1 (75465921.34) and
+`_2` p2 (3.2804) moved 0 -> 1 from the `::real` reads and the whole-year age; `_6` p1, `_15` p1,
+`_17` p1+p2, `_5` p1 grade 1 through the new flags; nine regression probes on passing tasks
+(`_3` p1+p2, `_7`, `_11`, `_12` p2, `_14`, `_19`, `_20`) all still 1; `_10` p1 still 0 (ties).
+
+**n=1 run** `results/solar_0827_n1_atscale_20260827_204920.json` (6 tasks, **$1.42** from
+`llm_usage`, 88 calls, 85% of prompt tokens from cache): **3.7/6 against 2.1/6 for the same
+tasks in 825 and 1.4/6 raw** - `_15` 1.0 (was 0: asked for the projection formula, used the
+spec rate), `_17` 1.0 (0.7: found `Chronic Downtime Asset`, kept coins for phase 2), `_8` 1.0
+(0.7: did not round), `_5` 0.7 (unchanged: three asks and four verification queries on an
+empty result spent phase 2's coins), `_6` 0 (asked amount-vs-ratio, got the right 0.0617, then
+projected the plant name beside it - twice - where the reference is a bare scalar), `_2` 0
+(asked the grain and used every snapshot as told, but took the snapshot-anchored ADR where
+"years since go-live" meant as of now: 73.8M vs 75.5M). Projected on the 825 base: 14.4/20 =
+0.720 vs raw 0.420, **+30.0 pp** (825 was +22.0 pp).
+
+**Second pass on the two misses** (model `adea7ae`: both ADR readings name the two age anchors
+as not interchangeable and say to ask; guidance sentence in `RESULT_SHAPE_TIP`: an entity
+singled out by a superlative and then asked one figure about is the route, not the answer -
+the corpus's two such questions, `solar_panel_6` and `planets_data_13`, both grade a single
+value): re-run of `_2` and `_6` recorded below.
+
+**Re-run** `results/solar_0827_n1b_atscale_20260827_205602.json` (2 tasks, **$0.58**, 33 calls,
+80% of prompt tokens from cache): **`_6` 1.0 and `_2` 1.0, both phases.** Across the two runs the
+six target tasks total **5.7/6** against 2.1/6 in 825 and 1.4/6 raw. Projected on the 825 base:
+**16.4/20 = 0.820 vs raw 0.420, +40.0 pp** (825 was +22.0 pp; 820 +6.5 pp). Total spend this
+pass: $2.00. Full 20-task n>=3 run and a raw re-run still owed before the number goes in the
+sheet as a score; `_5` p2 remains budget-bound (three asks), `_10`/`_13`/`_16` capped (B-77).
