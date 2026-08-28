@@ -6215,3 +6215,26 @@ the task failed downstream. The 3-database run was therefore not spent: there is
 where the rule changes what the agent can see, other than shipping Mesh Quality and EWRS in
 those two models' next passes. Total spend this pass: **$6.01** ($2.37 + $0.86 + $2.78).
 
+## 2026-08-27 — polar_equipment: KB 50 Extreme Weather Readiness Status shipped; archeology_scan: Mesh Quality stays withheld, and why (models: polar/archeology commit after 8d267c4)
+
+The two models the corrected masked-cutoff rule still touched, checked at the mechanism
+before changing anything:
+
+- **archeology_scan — no change.** `archeology_scan_6` DELETES KB 13 High Fidelity Mesh from
+  the task's knowledge tool (`knowledge_ambiguity.deleted_knowledge = 13`), so the agent must
+  get its three thresholds from the user; KB 53 Mesh Quality Classification depends on 13 and
+  goes with it by closure. The corrected rule keeps both withheld — the 08-20 omission was
+  right, for a reason the generator now records in a comment on `UNPUBLISHED_KB_TERMS`.
+- **polar_equipment — `Extreme Weather Readiness Status (EWRS)` ships** as a KB flag over the
+  `extreme_weather_readiness_status` column the dataset SQL already computed. The entry the
+  harness deletes on `polar_equipment_2` is KB 10 "Extreme Weather Readiness (EWR)" (insulation
+  not *Poor*); KB 50 "EWRS" (insulation not *Good*) is a different, conflicting rule that stays
+  in every task's tool, so publishing it is parity with raw. On this warehouse it labels all
+  1000 units 'Not Ready' (only 5 clear SSF > 0.7 and none of those meets the three status
+  conditions) — a degenerate flag, said so in its description, kept because the rule selects
+  from the KB rather than from what the data makes interesting. KB 10's conditions are not
+  stated anywhere; the description says a second readiness concept exists and to ask. 19 gates,
+  A8, A10 and `sml-cli validate` clean. No run (none requested); expected effect on
+  `polar_equipment_2`/`_11` is nil — both received the rule from the simulator in 825 and failed
+  on the SSF join path.
+
