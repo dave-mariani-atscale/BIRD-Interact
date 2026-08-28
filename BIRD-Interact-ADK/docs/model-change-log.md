@@ -6313,3 +6313,73 @@ references have no ORDER BY under `order: true` (`GRADING_ORDER_LINT` off; both 
 `order_undetermined.json`); `_11` reference's top 10 are ten NULL-CMS rows; `_18`
 reference is one NULL row; `_21` and `_7` simulator answers omit what the reference
 projects/filters; `_13`/`_14` KB 6 operand; `_18` p2 / `_24` p2 percentile (Q-06).
+
+## 2026-08-27 — solar_panel: one whole-year age convention, ADR undefined before go-live, `::real` JSON reads, six uniform KB flags, amount-vs-ratio and recorded-vs-projected naming (model 316ea34)
+
+First per-task pass on this database (35 hand-tuned commits 0804-07, untouched since, no
+section here until now). Baseline: raw 8.4/20 (820); semantic 9.7 / 13.1 / 12.8 in 820 / 824 /
+825 - already the largest lift in the suite, with `_2 _6 _10 _13 _15 _16` at 0 in every run and
+`_5 _8 _17` losing phase 2 every run. Method: `result_diff.py` on 825 (3 value mismatches, 2
+order-only, 1 order+case, 1 column count, 1 reference-no-rows), gold re-executed on
+`solar_panel_template`, candidate SQL graded with `probe_pred.py` against the DEPLOYED model
+before anything changed. No LLM spend before the run.
+
+**What the free probes said before any change:** `_15` p1+p2, `_17` p2, `_5` p2, `_6` p1+p2 and
+`_1` p2 already grade 1 with the old model. The agent lost them by summing `Revloss Amount` for
+a "projected" loss it never asked the formula for (`_15`, twice), by running discovery to -1
+coins with the right query already run (`_5`, `_17`: 15-19 calls each), and by returning
+`Power Loss W (Current)` beside the plant name where the glossary's ratio was meant (`_6`).
+
+**Model defects found and fixed (bird-atscale-models `316ea34`):**
+
+- **Two age conventions.** `Age In Years (Current)` was whole years (`EXTRACT(YEAR FROM
+  AGE(NOW(), goliveon))`); `Age In Years` was `(snapts - goliveon) / 365.25`. KB 7 ADR divided
+  by each, so the same snapshot carried two rates, different on 449 of 462 post-first-year
+  snapshots. `Age In Years` is now `EXTRACT(YEAR FROM AGE(snapts, goliveon))` (a new
+  `pr_age_at_snapshot_years` column, avg-aggregated); the old calc is `Age In Years
+  (Fractional)`, with `Annual Degradation Rate (Fractional Age)` as its twin.
+- **ADR before commissioning.** 445 of 998 snapshots predate their plant's go-live and 91 more
+  fall inside the first year; the old ADR returned negative rates for the former. Bare ADR is
+  NULL at age <= 0; the descriptions of both age readings and both ADRs carry the 445 / 91 /
+  462 counts and the per-snapshot grain ("a sum or average across plants counts every snapshot
+  unless reduced to one row per plant - ask").
+- **JSON REAL fields widened before arithmetic.** `_2` p1 sums 57 per-snapshot ADR (Current)
+  values times constants at 75M magnitude: 75465921.43 through the model's double reads,
+  75465921.34 through `::real` as the warehouse's own reader writes it. Every field the column
+  meaning declares REAL in `elec_perf_snapshot` and `env_snapshot` now reads `::real` (29
+  casts); `series_res_ohm` (TEXT with unit suffix) keeps its parsed double.
+- **Six non-deleted numeric KB flags were missing** (uniform-flag rule, cross_border entry):
+  `Chronic Downtime Asset` (KB 33; 0 of 998 snapshots, 400 NULL for missing MTBF/MTTR),
+  `Tracker Malfunction` (KB 21; 684), `Structural Integrity Warning` (KB 23; 658), `Critical
+  Mechanical Health` (KB 35; 451, three-valued AND), `High Degradation Panel Model` (KB 20; 535
+  of 939 plants via the primary model), `High Environmental Risk Site` (KB 27; 313 plants). All
+  Yes/No secondary attributes on Plant Record with live counts.
+- **Descriptions:** `Power Loss W` / `(Current)` say "ABSOLUTE amount in watts" and name
+  `System Power Loss Ratio` as the PROPORTION, not interchangeable, confirm which; the two
+  ratios say the reverse. `Revloss Amount` says recorded / realised, not a projection - a
+  projected, potential, expected or lifetime loss is a formula the user supplies. `Plants
+  Envtag`, `Primary Panel Model Degyrrate`, `Mtbfh` point at their new flags.
+
+**Guidance (ADK `system_agent/agent.py`, `ASK_USER_TIP`, both arms):** two bullets - a
+projected / potential / expected / lifetime figure is a formula, ask for it and its constants
+rather than substituting a recorded amount; and a per-record rate summed or averaged "across
+the plants / assets" opens the every-record-vs-one-per-entity slot, ask it once as a closed
+question. Both derivable from the question alone. Services restarted.
+
+**Not changed, reported:**
+- *Firewall discrepancy.* The model still publishes `Electrical Integrity Failure` (KB 30,
+  `deleted_knowledge` on `_9`/`_18`) and `Warranty Claim Risk` (KB 28, deleted on `_13`), and
+  `Operational Expenditure Index (Current)` carries a question-shaped sentence. The prompt's
+  own rule would withhold the two flags; `_9` and `_18` score 1.0 vs raw 0 on them today.
+  Owner's call.
+- *Grading (B-77).* Tie order: `_10` p1 (336 rows, 328 distinct sort values), `_13` p1 (51 rows
+  sorted on three distinct claim counts), `_13` p2 (reference `LIMIT 1` among tied plants).
+  Casing: `_16` p1 set-equal, reference `LOWER()`s the group label. ROUND asymmetry: `_8` p2
+  (1436.915 grades 1, 1437 grades 0) - covered by the semantic-arm instruction added on the
+  planets pass, which postdates the 824/825 runs read here. `_10` p2 reinterprets "the previous
+  list".
+- *Engine.* `sml-cli atscale-deploy` of `316ea34` returned `500 ... No response from the
+  service. socket hang up` after a successful compile; the local dev engine's JVM was gone
+  afterwards (nothing listening on 10502 / 15432). Redeploy and probes pending its restart.
+
+**Probe ceiling and run:** pending the engine restart - see the next entry.
