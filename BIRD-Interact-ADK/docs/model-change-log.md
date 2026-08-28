@@ -6188,3 +6188,30 @@ re-run (two shared-tip changes) are owed before any lift is quoted.
 **Left on the table:** `_1` (scale ask), `_6` (month order), `_10` p2 (budget), `_18`/`_20`
 (grading flags, B-75).
 
+**Uniform flags (model `8d267c4`) and the generalisation check.** Publishing exactly the six
+masked concepts was question-informed selection, so the remaining 20 non-deleted
+`domain_knowledge` cutoff concepts (KB 19, 40-47, 49, 60-69) now ship too; KB 76/77 (wall-clock,
+degenerate: all 240 deadlines are past) and KB 78 (repeats KB 76's text) are excluded on data
+grounds. Run 3, 18:38, same eight tasks (`cb_0827_n1c_atscale_20260827_183805.json`, **$2.78**):
+**4.0/8** — `_2 _4 _10 _12` 1.0 (`_10` both phases this time), `_3` 0 (took `Is High-Pressure
+Data Flow`, KB 42, DSRP > 50 and BSI > 50 — the KB's literal name for the question's
+"high-pressure flows", where gold means KB 18; the description says "not the same concept as
+Is Overloaded Data Flow" and it did not help), `_8` 0 (asked which CBRF reading; the simulator
+answered "option 1 ... risk_score * (100 / control_effectiveness_pct)" — option 1's label with
+option 2's formula — and the agent took the label), `_6` 0 (rank order, fourth time), `_1` 0
+(pct-scale RES, third time). Attributable to the extra flags: `_3` only. Kept anyway: the raw
+arm's KB list carries the same KB 42 entry, so this is parity, and trimming back to the
+concepts the questions touch would be the selection bias the uniform rule exists to remove.
+
+**Generalisation survey (no spend):** across all 825 atscale phase-1 failures whose question
+masks a term standing for a readable KB cutoff, the withholding rule had only ever been
+enforced where a paraphrase-to-KB mapping was hand-made — cross_border, archeology_scan (Mesh
+Quality Classification), polar_equipment (EWRS). The other models already publish the cutoff
+(planets_data Rocky Planet "exceeds 3", robot_fault_prediction "3.0 mm/s", polar KB 52/53 bands,
+solar_panel "exceeds 2", museum Rotation Recommendation "below 0", sports Sprint Winner ...):
+62 of 99 failing concept-task pairs sit in models that publish it, and in the two still-withheld
+cases (archeology_scan_6, polar_equipment_2/11) the simulator supplied the rule when asked and
+the task failed downstream. The 3-database run was therefore not spent: there is no model left
+where the rule changes what the agent can see, other than shipping Mesh Quality and EWRS in
+those two models' next passes. Total spend this pass: **$6.01** ($2.37 + $0.86 + $2.78).
+
