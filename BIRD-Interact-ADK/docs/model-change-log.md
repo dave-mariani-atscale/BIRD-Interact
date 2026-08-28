@@ -132,6 +132,71 @@ truncated prices.** The aggregate error is small (76 cents in $7.8M) but 973 of
 Swept clean at the same time: `archeology_scan` (no cast on any of its four
 float columns), `exchange_traded_funds`, `households`,
 `labor_certification_applications` and `solar_panel` (no `::numeric` at all).
+### 2026-08-27 - ceiling audit and three description fixes (model `392574f`, B-78, Q-35, E-08)
+
+Three runs had the semantic arm flat at 0.585 / 0.57 / 0.585 (820 / 824 / 825) against raw
+0.535 (820), with `_1 _2 _3 _4 _5 _6 _7 _9` at 0 every time and `_19` at 0.7 every time.
+Method: trajectories of every failing task in all three runs, then `probe_pred.py` on the
+DEPLOYED model before any edit, zero LLM spend.
+
+**What the probes said (nothing here is a model object):**
+
+- `_1 _4 _5 _9` phase 1 already return gold's rows and fail only on the order of tied rows:
+  954 rows / 629 distinct MRS, 1000 / 799 THR, 1000 / 807 SSD, 1000 / 649 OpSec. All four
+  grade 1 with `GRADING_TIE_TOLERANCE=true` and 0 under the flags of record. The raw arm
+  passed `_5` in 820 because near-gold SQL on the same Postgres sorts ties the same way -
+  the asymmetry the flag was written for, live on this database. Only `_4`/`_9` are in
+  `config/order_undetermined.json` (the lint is a lower bound).
+- `_1` p2 (two platforms tie at the minimum MRS), `_5` p2 (positions 10 and 11 tie at 1.0
+  under `LIMIT 10`), `_19` p2 (17 threads tie at 20 under `LIMIT 1`): gold picks one row of a
+  tie; the simulator, asked, says "pick any one".
+- `_2` (7 columns, tercile buckets, three anonymity percentages that are all 0 because
+  `AnonLevel` is continuous live), `_7` (8 columns for "how many live listings per type"),
+  `_3` (9 columns, recorded PLR, 8 tied rows), `_6` (7 columns: code, status, five alert
+  counts): references wider than the question. `_6` passed phase 1 in 824 because one
+  "what exactly should the output contain" ask was answered with the alert counts; the
+  same ask shape in two runs today got two-column answers. Simulator variance, not model.
+
+Recorded as **B-78**; cybermarket numbers appended to B-31.
+
+**Model changes (descriptions only, generator `model_spec.py`, regenerated, deployed):**
+
+- The orientation text and `Anonymity Score Average` named an `Anonymity Tier` attribute
+  that was computed in dataset SQL and never published. `_2` and `_9` spent two to four
+  discovery calls hunting for it, one `focus_columns` errored on the name, and `_9`
+  submitted its own NTILE bucketing. Both now say the KB's High/Medium/Low tiers have no
+  stored labels, no tier attribute exists, and 'each anonymity level' groups by the score.
+- `Platform Identifier Code` said it was "an internal code rather than a display name",
+  which read as "show the name"; `_1` and `_6` each spent 2 coins asking "name or code?".
+  It now says it is the column that identifies a platform in any listing, that a name
+  shared by ~9 platforms identifies none of them, and to show the name only when asked for
+  the name. Platform Name's warning says the same from its side; orientation (4) updated.
+- `Transaction/Vendor/Buyer Identifier Code` now say they are row-for-row identical to
+  their level twin and that a swap never changes a result: `_4` and `_5` each resubmitted a
+  failed listing with the twin swapped in, 3 coins for the same verdict.
+
+**Guidance (ADK `system_agent/agent.py`, `ASK_USER_TIP`):** a part of the question that is
+not a column ('and what's their status', 'add info about the routes') opens a content slot -
+ask for the complete row before the first submit, phrased about the whole row, not "this
+column or something else" (the narrow form was answered with the one field it named in
+every run); a unique code beats a non-unique display name as the listing identifier
+without an ask; the "categories named in sequence" bullet now applies to printed labels
+only - a stored category with one figure per category sorts by the figure, largest first
+(`_8` passed sorted by count in 825 and failed sorted Simple/Medium/Complex in 824).
+
+**Runs (atscale n=1, $0.96 total):** `_8` + `_6`: `_8` 1.0 (10 coins), `_6` 0 ($0.52);
+`_6` re-run after tightening the ask wording: 0 ($0.44) - asked narrowly again, then asked
+row-vs-summary and was told "a row per platform showing its code and its own operational
+status". Stopped spending there. Projected database ceiling under the flags of record:
+12 passing tasks + `_19` p1 = 0.62 at best; under `GRADING_TIE_TOLERANCE` +2.8 (0.76).
+
+**Reported, not changed:** Q-35 - the MCP `run_query` validator unions every column
+reference in the statement (`referenced_columns`, `statement.find_all(exp.Column)`), so
+two conforming subqueries joined on `Vendor Identifier Code` are refused as one flat
+projection (`_3`, five refusals); E-08 - the flat fallback (`PLR Group Formula` +
+`SUM(CASE ...)` grouped by vendor) dies in the planner with `None.get`;
+`GRADING_TIE_TOLERANCE` is where the remaining semantic-arm lift on this database sits.
+
 ## archeology_scan
 
 ### Unit-ambiguous-threshold audit: no change needed, 2026-08-17
