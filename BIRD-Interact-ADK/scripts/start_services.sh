@@ -27,7 +27,15 @@ fi
 HOST="${SERVICE_HOST:-127.0.0.1}"
 
 pkill -f uvicorn 2>/dev/null || true
-sleep 1
+sleep 2
+# TERM is delivered through the event loop, and a service whose loop is frozen
+# never processes it — the survivor keeps its LISTEN socket, later starts race
+# it for accepts, and new runs land on stale code. Seen live 2026-08-27: three
+# system_agent processes on port 6000. Force-kill whatever TERM didn't stop.
+if pgrep -f uvicorn >/dev/null 2>&1; then
+    pkill -9 -f uvicorn 2>/dev/null || true
+    sleep 1
+fi
 
 # Start all three microservices.
 # BIRD_LLM_ROLE tags this process's rows in the LLM usage log

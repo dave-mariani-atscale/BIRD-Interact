@@ -12,11 +12,20 @@ Supports two modes:
   - /chat_with_tools: legacy non-ADK fallback for old orchestrator clients
 """
 
+import faulthandler
 import logging
+import signal
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+# `kill -USR1 <pid>` dumps every thread's Python stack to stderr (the service
+# .out file) WITHOUT killing the process. Registered because this service froze
+# for 30 minutes at a time with an idle event loop and no log output, and macOS
+# `sample` shows only C frames while py-spy needs root — this is the only
+# root-free way to see the stuck Python frames on the NEXT occurrence.
+faulthandler.register(signal.SIGUSR1, all_threads=True)
 
 from shared.config import settings
 from shared.models import SetBackendRequest, SetBackendResponse

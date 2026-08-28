@@ -26,13 +26,15 @@ Integrity notes (binding — see the PRD's Section 7 and the harness tracker):
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
 from typing import Any, MutableMapping
 
+import httpx
+
 from shared.config import settings
-from shared.mcp_client import MCPClient, MCPEndpoint
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,74 @@ _EXCHANGE_LINE = re.compile(r"\n?^exchangeId:\s*([0-9a-fA-F-]{36})\s*$", re.MULT
 # Session-state keys (underscore prefix: internal, never surfaced to the agent).
 STATE_EXCHANGE_BY_SQL = "_exchange_by_sql"
 STATE_LAST_EXCHANGE = "_last_exchange_id"
+
+
+def _parse_sse_result(text: str) -> str:
+    """Tool-result text from a streamable-HTTP response body (SSE or plain JSON)."""
+    payload: dict[str, Any] = {}
+    for line in text.splitlines():
+        if line.startswith("data: "):
+            try:
+                payload = json.loads(line[6:])
+            except json.JSONDecodeError:
+                continue
+    if not payload and text.strip():
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return ""
+    content = (payload.get("result") or {}).get("content") or []
+    # "\n" join, matching shared.mcp_client._stringify_result_content — the
+    # exchangeId line is matched with a line-anchored regex downstream.
+    return "\n".join(c.get("text", "") for c in content if isinstance(c, dict))
+
+
+class _RawMCP:
+    """Minimal SYNC streamable-HTTP MCP caller for the verdict thread.
+
+    The SDK client this replaced spawns an anyio task group, a GET event
+    stream and a 1000ms reconnect loop per call — machinery that, run under
+    asyncio.run inside a fire-and-forget thread, was observed hung for 30
+    minutes holding open MCP connections (one per stuck thread) while the
+    verdict was silently lost. Plain POSTs with hard timeouts cannot hang the
+    thread past the timeout, and there is no event stream to reconnect.
+    """
+
+    def __init__(self, url: str, token: str, timeout_s: float) -> None:
+        self._url = url
+        self._headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        if token:
+            self._headers["Authorization"] = f"Bearer {token}"
+        self._http = httpx.Client(timeout=httpx.Timeout(timeout_s, connect=10.0))
+        self._session_id = ""
+
+    def __enter__(self) -> "_RawMCP":
+        resp = self._http.post(self._url, headers=self._headers, json={
+            "jsonrpc": "2.0", "id": 0, "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                       "clientInfo": {"name": "bird-feedback", "version": "1.0"}},
+        })
+        resp.raise_for_status()
+        self._session_id = resp.headers.get("mcp-session-id", "")
+        if self._session_id:
+            self._headers["Mcp-Session-Id"] = self._session_id
+        self._http.post(self._url, headers=self._headers,
+                        json={"jsonrpc": "2.0", "method": "notifications/initialized"})
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self._http.close()
+
+    def call_tool(self, name: str, arguments: dict[str, Any]) -> str:
+        resp = self._http.post(self._url, headers=self._headers, json={
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+        })
+        resp.raise_for_status()
+        return _parse_sse_result(resp.text)
 
 
 def enabled() -> bool:
@@ -111,30 +181,31 @@ def record_submission_verdict(
 
     def _send() -> None:
         try:
-            client = MCPClient(
-                MCPEndpoint(
-                    url=settings.semantic_layer_mcp_url,
-                    bearer_token=settings.semantic_layer_mcp_token,
-                )
-            )
-            ex_id = exchange_id
-            if not ex_id:
-                # Create the exchange the verdict belongs to. The extra
-                # warehouse execution is harness-side telemetry: no coins, and
-                # the agent never sees it. A submission the engine rejects
-                # produces no exchangeId line and the verdict is dropped —
-                # there is no stored SQL to protect or poison in that case.
-                text = client.call_tool("run_query", {"query": sql, "question": question})
-                match = _EXCHANGE_LINE.search(text or "")
-                if not match:
-                    logger.info(
-                        "submitted SQL produced no exchange (engine error or "
-                        "model-less query); verdict dropped"
-                    )
-                    return
-                ex_id = match.group(1)
-            payload["exchangeId"] = ex_id
-            client.call_tool("record_feedback", payload)
+            # 120s ceiling: an exchange-creating run_query executes real
+            # warehouse SQL; record_feedback itself is milliseconds. A raw
+            # sync client with hard timeouts — never the SDK client, whose
+            # per-call task group + GET-stream reconnect loop hung these
+            # threads for 30 minutes and leaked one MCP connection per hang.
+            with _RawMCP(settings.semantic_layer_mcp_url,
+                         settings.semantic_layer_mcp_token, 120.0) as client:
+                ex_id = exchange_id
+                if not ex_id:
+                    # Create the exchange the verdict belongs to. The extra
+                    # warehouse execution is harness-side telemetry: no coins,
+                    # and the agent never sees it. A submission the engine
+                    # rejects produces no exchangeId line and the verdict is
+                    # dropped — there is no stored SQL to protect or poison.
+                    text = client.call_tool("run_query", {"query": sql, "question": question})
+                    match = _EXCHANGE_LINE.search(text or "")
+                    if not match:
+                        logger.info(
+                            "submitted SQL produced no exchange (engine error "
+                            "or model-less query); verdict dropped"
+                        )
+                        return
+                    ex_id = match.group(1)
+                payload["exchangeId"] = ex_id
+                client.call_tool("record_feedback", payload)
         except Exception as exc:  # telemetry only — never disturb the run
             logger.warning("record_feedback failed (exchange %s): %s", exchange_id or "new", exc)
 

@@ -234,6 +234,26 @@ class TaskSessionMCPClient:
     async def acall_tool(
         self, task_id: str, name: str, arguments: dict[str, Any] | None = None
     ) -> str:
+        # Hard OVERALL deadline, independent of httpx's per-read timeout: a
+        # streamable-HTTP response that keeps sending SSE keepalive pings never
+        # trips a read timeout, and a tools/call whose result event never
+        # arrives froze the whole agent for exactly the orchestrator's 1800s
+        # (observed live 2026-08-27, ~1 task in 12). A timed-out call surfaces
+        # as a normal tool error the agent can retry; the run keeps moving.
+        try:
+            return await asyncio.wait_for(
+                self._acall_tool_inner(task_id, name, arguments),
+                timeout=240.0,
+            )
+        except asyncio.TimeoutError:
+            raise MCPClientError(
+                f"MCP call {name} exceeded the 240s task-session deadline "
+                "(response stream stalled); retry the call"
+            )
+
+    async def _acall_tool_inner(
+        self, task_id: str, name: str, arguments: dict[str, Any] | None = None
+    ) -> str:
         async with httpx.AsyncClient(timeout=self._endpoint.timeout_s) as http:
             session_id = _task_sessions.get(task_id)
             if not session_id:
