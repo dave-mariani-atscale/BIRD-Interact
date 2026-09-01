@@ -1,0 +1,10 @@
+virtual_idol_1
+virtual_idol_2
+virtual_idol_3
+virtual_idol_7
+virtual_idol_9
+virtual_idol_12
+virtual_idol_14
+virtual_idol_15
+virtual_idol_16
+virtual_idol_19

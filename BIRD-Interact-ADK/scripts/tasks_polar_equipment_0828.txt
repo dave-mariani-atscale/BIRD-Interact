@@ -1,0 +1,7 @@
+polar_equipment_9
+polar_equipment_11
+polar_equipment_13
+polar_equipment_14
+polar_equipment_16
+polar_equipment_17
+polar_equipment_18

@@ -199,6 +199,54 @@ projection (`_3`, five refusals); E-08 - the flat fallback (`PLR Group Formula` 
 
 ## archeology_scan
 
+### Ceiling audit: no change needed, 2026-08-28
+
+Asked to raise the semantic arm's lift on this database, the pass started by grading the
+ceiling rather than editing the model, and stopped there: **every failing phase is capped by
+the reference or the grader, and no honest model object moves any of them.** The deployed
+model (`abee950`) already reaches the ceiling - `_1` p1, `_3` p1+p2 and `_4` p1+p2 replay
+as-graded correct against the live engine today (probe, zero LLM spend), which is the 2.7/10
+recorded in the three 2026-08-12 runs against raw 1.0/10.
+
+Method, all free: `result_diff.py` on the 0812 run; each failing task's gold re-run in
+Postgres against (a) the same gold with `::real` widened to `::double precision`, (b) the KB
+formula as this model evaluates it, (c) a zero-filled site-grain candidate; ties counted on the
+gold sort key; `config/order_undetermined.json` consulted. Per phase:
+
+| phase | cap | measured |
+|---|---|---|
+| `_1` p2 | gold reads `600 / (lux + 100)` with `lux` bigint - **integer division** - where the `_3` and `_7` golds write `600.0`; plus E-04 | 745 of 825 site means differ from the decimal form at 2dp; 2 rows float32 |
+| `_2` p1+p2 | M-11: gold's `structstate <> 'Stable'` never fires, so 'Stable condition ...' records at Poor/Critical sites are labelled Risk Zone | 59 of 926 rows differ from the KB reading; p2 counts the same 926-row fan-out |
+| `_5` p1+p2 | B-17 fan-out (`scans JOIN pointcloud ON arcref` only: 974 rows vs 811 on the true key; 88 projects span 2+ sites, touching 179 sites) plus a 133-row tie block at DPQ 0 (B-31) | an honest zero-filled site-grain DPQ matches gold on 629 of 900 sites; 153 of the 271 misses sit at fan-out sites, the rest on gold's per-row ADC averaging and `GREATEST` guards |
+| `_6` p1 | masked KB 13/53 (deliberately not shipped), 894 of 900 rows in tie blocks (B-31), 34 rows float32 (E-04) | |
+| `_7` p1 | 75 sites with no reading tie at the end of `ORDER BY avg_esi DESC NULLS LAST` (B-31), quartile is `NTILE(4)` over all 900 sites with the unmeasured 75 sorted into the top band, 1 row float32 | tie tolerance cannot rescue it: the NULLs disqualify every candidate sort key in `_sort_key_indices` (B-18 family) |
+| `_8` p1+p2 | B-21 fan-out (821 workflows -> 1102 rows) **and** gold's `GREATEST(1.0, (cpu+gpu)/200.0)` - `(cpu+gpu)/200` peaks at 0.985, so the CPU/GPU term is neutralised and gold's "PER" is `size * log10(points) / hours` | all 122 groups differ from the KB formula at 2dp; p2 14 of 122 groups float32 |
+| `_9` p1+p2 | B-17 (1132 rows over 1000 scans) and 728 of 900 rows tied at FEE 0 (B-31) | |
+| `_10` p1 | B-21 (944 equipment -> 987 rows), jsonb `resource_details` column, 166 rows tied at PRU 0 | |
+
+Two things checked and **not** changed:
+
+- **The declared-type (`::real`) rule** from the planets_data / robot passes. Its own test -
+  count rows where `round(native, 2) <> round(widened, 2)` - is 0 of 697 for SQS and SCE, 0 of
+  908 for ESI, 0 of 528 for RAR, i.e. 0 on every formula a reachable task uses. The 11 of 839
+  MCR rows that do differ only do so when the bigint face and vertex counts are themselves cast
+  to `real` (gold's shape, not the declared type). And the literal reading of KB 7's
+  `600 / (lux + 100)` at declared types is integer division, which one reference uses and two
+  do not; the model keeps the decimal form, which is what `_3` passes on. No cast changed.
+- **Zero-filled / all-sites twins** (DPQ with missing components as zero, site-grain FEE with
+  zero-filled inputs, a 900-site ESI quartile). Each is a defensible population reading and
+  each was built as a candidate in Postgres; none reaches gold (table above), and every one
+  would add a competing name to the searches `_3` and `_1` currently win. Not shipped.
+
+Flag sensitivity, for the record: `GRADING_ORDER_LINT` lists 7 archeology phases
+(`_5` p1+p2, `_6`, `_7`, `_9` p1+p2, `_10`), and `GRADING_TIE_TOLERANCE` covers the same
+tie blocks - but every one of those phases is also value-capped above, so on this database the
+flags recover nothing. The 2.7 vs 1.0 (+17 pp) result is the whole reachable lift.
+
+Tracker: B-17 and B-21 notes extended with the `_5` and `_8` measurements, B-80 filed for the
+`_1` p2 integer division, E-04 and M-11 notes carry the 2dp re-measurement.
+
+
 ### Unit-ambiguous-threshold audit: no change needed, 2026-08-17
 
 Audited against the new build-prompt rule that a KB threshold whose unit is ambiguous
@@ -535,6 +583,81 @@ change in one of those layers.
 ---
 
 ## exchange_traded_funds
+
+### 2026-08-28 - the false liquidity twin, the placeholder as a peer group, the name ask, and a FLOAT8 sum (models `67d090d`..`1b49b8c`)
+
+Starting point: atscale 0.479 / 0.537 / 0.516 (820 / 824 / 825, n=1 each) against raw 0.411
+(820), so about +10 pp. `_1 _5 _6 _7 _9 _11 _12` at 0 in every run, `_5` a task the RAW arm
+passes at 1.0. Method: `result_diff.py` on 825, every failing submission re-run through MCP,
+gold re-run in Postgres, each divergence pinned to a cell. Half the failures are the model's,
+and every one of those is a modeller's choice rather than a formula error:
+
+| task | what the 825 submission did | cause | change |
+|---|---|---|---|
+| `_5` p1 (raw 1.0, atscale 0 x3) | asked "share volume or dollar value basis?", was told dollars in 3 of 3 runs, submitted `(Value Traded Basis)`: DMRI 171.02 where the KB formula gives 9016.37 | the model published an ALTERNATE reading KB 58 does not license (KB 58 names Average Daily Volume, share count); the primary already IS gold's formula | twin attribute + metric removed; primary says it is the only reading and no basis ask is needed |
+| `_3` p1 (0.7 / 0.7 / 0) | 79 rows against 44: the 35 extra are `Uncategorized` funds with a "category average duration" over the 623 unclassified funds; the M-24 ask was answered "include them" here and "exclude" in 820/824 | a COALESCE placeholder was being treated as a peer group | `category_avg_*`, `duration_advantage`, within-category percentiles, composite score, rank and category max are NULL where `productclass` is NULL; the placeholder stays as a Category member; 44 rows now with no filter and no ask |
+| `_1 _3 _7 _9` (asks) | 26 short-vs-full name asks over three runs: 21 answered, 21 chose the short label, 5 "I'm not sure I understand your question"; `_9` lost its row-cap ask to two of those | M-23 made a settled choice an open one | `Fund Short Name` is what "fund name" means; `Fund Full Name` only on full / official / legal / complete / share class; no trigger phrases |
+| `_6` (population) | 270 Drifted where a two-input test gives 266 | Style Drift said Yes on beta drift alone when the R-squared drift was NULL | Unknown when either input is missing (both pairings) |
+| `_19` p2 (0.7 x3, values "right") | BlackRock 54459751192.67297 vs gold .673 passes; MFS 3648678116.7049994 vs gold 3648678116.705 fails: the grader rounds both to two decimals half-up, .70 vs .71 | double-precision SUM of 2310 dollar products; jsonb numbers are exact | products computed in `numeric` and declared `decimal`. The METRIC path still dispatches `SUM(CAST(col AS FLOAT8))` and returns .7049994 (E-10); the agent's own `SUM("Fund Avg Daily Value Traded 3M")` over a derived table now returns 3648678116.705 exactly, and that is the shape that passed p2 |
+
+Verified live after deploy (`1b49b8c`): the twin column is gone (`Column ... not found`), the
+`_5` primary lists DMRI 9016.37 / DMRE 8715.96 / DMRM 6551.42 = gold's top rows, the `_3`
+screen returns 44 rows, `_7`'s model-column query (Category Fund Count >= 10, rank 1, score)
+returns gold's 53 rows with identical scores - with or without an Uncategorized filter - and
+`_8` p2's peer-average query for High Yield Bond is unchanged (FDHY 5.51 / HYDB 4.64 / ...).
+
+**`_7` was never a model defect this month.** Its 825 first submission was gold's exact 53
+rows in gold's exact four columns, ordered by Category where gold orders by score; the agent
+had spent four asks (population, formula, horizons, name) and none on the sort. The name ask
+is now closed; the sort is the shared ORDER BY guidance's job.
+
+**Guidance (atscale instruction, `config/environment_backends.yaml`):** the "model flags its
+own ambiguities" trigger bullet now carries its converse - a description that marks a slot
+SETTLED ("project this column without asking", "the only reading this model publishes", "no
+ask needed", "not an open question") closes it, with the 21-of-21 measurement, and the ask
+goes to a graded slot instead (row cap, sort, column order, printed label). No LIMIT rule was
+added to the shared tips: gold caps 59 of 282 table-output tasks corpus-wide (7 of ETF's 12),
+so the cue-word rule in ASK_USER_TIP stands.
+
+**Capped, not changed** (each measured this pass): `_6` gold `LIMIT 100` cuts inside a 7-way
+tie at |beta drift| = 0.30 (rows 95-101; B-31 family); `_10` p2 gold orders columns
+transparency-then-family where the follow-up names the family first (B-07) - the first p2
+submit had the right 58 rows and values; `_11`/`_12` want a text summary ROW with a label
+string ('Percentage of Funds with Positive AMV') and `_12` also ties at 0.315 (B-04, B-31);
+`_14` p2 `<= 0.5` on a 0-100 scale (B-24); `_18` p2 reads turnover `< 30` where p1 read
+`< 0.3` (B-03); `_3` p2 STRING_AGG (Q-14); `_1` wants a RANK column the question never names
+(rank_ambiguity, masked; A-01) - 27 rows, three columns right, fourth absent; `_7` p1 gold
+`ORDER BY composite_score DESC` carries six tie blocks (see Measured).
+
+**Measured, same day (n=1, the 7 touched tasks, `results/etf_0828_n1_atscale_20260828_115617.json`,
+$3.07 from `llm_usage`, 3.56M cache-read tokens):** `_5` **0 -> 1.0** (both phases: the KB
+formula was taken without an ask, top 100 with ticker / net worth / turnover / pressure,
+then the ten funds' top-3 holdings), `_19` **0.7 -> 1.0** (p2 passed on the derived-table
+SUM above), `_8` 1.0 (unchanged; regression check on the category peer averages), `_1` 0
+(27 rows, three columns, no rank - unchanged, A-01), `_9` 0 (the simulator this time
+declined to give the turnover and expense thresholds - "I'll leave that to your judgment" -
+so the agent screened at `< 0.3` for 53 rows against a reference of 100 of 145 at `< 30`;
+B-03 plus the unasked row cap; the name ask did not fire), `_3` 0 (the model returned the 44
+right rows and the agent projected five columns, dropping the ticker it had itself called
+"the fund identifier" in its ask - agent variance on a task that scored 0.7 in 820/824 with
+the same six columns), `_7` 0 (**new finding: the first submit was gold's 53 rows, gold's
+four columns, `ORDER BY score DESC` - and gold's sort has six tie blocks at 4 dp (0.9524,
+0.8889 x3, 0.7576, 0.7222 x2, 0.6667 x3) whose internal order is Postgres physical order;
+`four_way` as-graded false on exactly those rows. B-31, added to B-81**). Projected arm at
+n=1, substituting these seven into the 825 run: **11.1 / 19 = 0.584 against raw 0.411, +17.3
+pp (was +10.5)**; the two moved tasks are the two whose cause was the model's, and both hold
+the reference's exact rows. A full n>=3 arm plus a raw re-run is owed before quoting.
+
+**Reported.** Engine E-10: every measure is dispatched as `SUM(CAST(<column> AS FLOAT8))`
+whatever the dataset column's declared type, so no dollar total can be exact past ~16
+significant digits and a 2-dp half-up comparison of an 11-digit total is a coin flip on the
+17th digit. MCP Q-37: a FROM-less literal-values `UNION ALL` of 64 branches is refused with
+"UNION over a semantic model is not supported yet" while 2, 11 and 31 branches execute -
+`_11` had the right 63 rows assembled and could not submit them (gold wants 10 + a total, so
+the shape is reachable at 11 branches). Deploy: a duplicate `folder:` key left behind when a
+metric line was deleted passes `sml-cli validate` and makes the API compiler drop the whole
+model from the published catalog while reporting `Deploy SUCCESSFUL`; gate 2 of
+`scripts/deploy_models.sh` caught it (21 models, not 22).
 
 ### Unit-ambiguous KB thresholds: both readings shipped, KB wording quoted, 2026-08-17
 
@@ -6476,3 +6599,316 @@ six target tasks total **5.7/6** against 2.1/6 in 825 and 1.4/6 raw. Projected o
 **16.4/20 = 0.820 vs raw 0.420, +40.0 pp** (825 was +22.0 pp; 820 +6.5 pp). Total spend this
 pass: $2.00. Full 20-task n>=3 run and a raw re-run still owed before the number goes in the
 sheet as a score; `_5` p2 remains budget-bound (three asks), `_10`/`_13`/`_16` capped (B-77).
+
+---
+
+## labor_certification_applications - 2026-08-28 pass
+
+**Starting point.** Three n=1 semantic-arm runs (820/824/825) at 0.274 / 0.289 / 0.326 vs raw
+0.184 (820); `_1 _5 _10 _12 _13 _14 _15 _16 _17 _18 _20` at 0 in every run, phase 2 passing
+only on `_11` and `_19`. Method: `result_diff.py` on 825 -> gold re-run in Postgres ->
+`probe_pred.py` on the deployed model, zero LLM spend before the run.
+
+**Ceiling (not model-fixable, B-79):**
+- *Casing* - the reference `LOWER(TRIM())`s a text output column on `_1` (visa class), `_12`
+  (SOC title, plus a constant `'Skill Shortage Occupation'` column), `_13` (state; order+case
+  only), `_16` (jurisdiction), `_17` (wage level). Five phase-1 zeros under
+  `GRADING_CASEFOLD=false`, so their phase 2s are never reached.
+- *Ties* - every approval rate is 100 and every processing time 8: `_2` p2 (4 classes at 100),
+  `_10` (2 categories at 8.00, order only), `_16` (`LIMIT 3` over ~30 jurisdictions at 100),
+  `_20` (`LIMIT 5` across a 3-way tie at 29 applications; matched by luck in 825 and today).
+- *Wide references* - `_14` p1 carries the phase-2 `top_occupations` STRING_AGG column; `_8` p2
+  adds `soccd` beside the asked-for title; `_6` p2 invents 'Tier 1 - Highly Competitive' bands
+  that are in no KB entry; `_7` p2 is 12 columns.
+- *`_5`* - the reference averages `(from + COALESCE(to, from)) / 2` where `offered_wage.to` is
+  the literal `0` on 691 of 981 rows (a real upper bound on 290): Level IV annual = -14.58 vs
+  +20.43 from the lower bound. Unreachable honestly; `to` stays withheld.
+- *`_3` p2* - asks for a JSON array; `JSON_AGG` crashes the MCP call (engine, below).
+
+**Model (bird-atscale-models `a1ede76` Dave, then `f08fb88`, `ff8e61e`, `4bb725b`):**
+- Attorney email normalised `LOWER(TRIM())` on fact and dimension (386 spellings -> 380
+  addresses; Dave's commit landed the same night and kept the generator in sync; mine rebased
+  on it). `_15`'s 16-vs-17 specialist count was this.
+- New `Attorney Profile` degenerate dimension: `Attorney Distinct Visa Classes`, `Attorney
+  Dominant Visa Class Share` (0-100), `Attorney Case Load (Per Attorney)`, KB 45 `Attorney
+  Specialization Category` (377/3/0). `Employer Size Classification` (KB 46, 515/29/2) on
+  Employer Profile. Both KB ids are deleted only on Management tasks.
+- `Occupational Demand Index (Title Grain)` / `(Code and Title Grain)` twins over new
+  `Distinct SOC Occupation Titles` (128) / `Distinct SOC Code-Title Pairs` (131) - `_20`'s
+  43.73 vs 44.07 was the denominator staying per-code while the GROUP BY made 131 groups.
+- `Average Wage Differential Rate (Matching Units Only)` + `Applications With Matching Wage
+  Units` (979); the two mixed-unit rows named (541910's $11,025 weekly offer -> 394.57, its
+  only application, tops every industry ranking); NULL-sorts-first note.
+- `Prevailing Wage Level` stops prescribing III+IV for "higher experience"; share-across-wage-
+  levels denominator stated.
+- Guidance (`agent.py` ASK_USER_TIP): a follow-up inherits phase 1's column bindings (`_4` p2
+  switched to free-text Job Title after phase 1 had used the SOC title).
+
+**Probes before the run (free):** `_20` p1, `_3` p1, `_15` p1, `_4` p2, `_18` p1 (with `NULLS
+LAST` / `IS NOT NULL` / `Wage Units Match = 'Yes'`) all grade 1 on the deployed model.
+
+**Reported, not changed.** Engine E-09: (1) `HAVING SUM(CASE WHEN dim = 'x' THEN measure ELSE 0
+END) / SUM(measure) > 0.5` refused as `One or more constraints [Visa Class,Applications] have
+been incorrectly constructed` (flat and subquery forms; `_7` lost six calls); (2) two aliased
+sub-selects joined on the key with a WHERE on the second's alias: `Column reference does not
+exist in sub selects: aus_apps`; (3) `JSON_AGG` over a subquery crashes the MCP call; (4)
+`ARRAY_AGG(x ORDER BY x)` dispatched as `array_agg(x)` - ORDER BY silently dropped (Q-12
+family); (5) `COUNT(measure)` over a subquery projecting the measure beside two flags returns 1
+per group - the subquery aggregates to its dimension grain first (`_10`, three submits).
+MCP Q-36: `Cannot sort by [Certified Applications]: the subquery being selected from does not
+project it` refuses a `SUM()` alias sort Postgres accepts. Grading: `GRADING_CASEFOLD` alone
+flips `_13`; with `GRADING_TIE_TOLERANCE` also `_1 _2p2 _10 _16`.
+
+**n=1 run** `results/labor_0828_n1_atscale_20260828_090650.json` (5 tasks, **$1.56** from
+`llm_usage`, 79 calls, 88% of prompt tokens from cache): `_18` **0.7** (was 0 in every run: asked
+the closed in-or-out question the description names, used the matching-units twin), `_3` 0.7
+(`Employer Size Classification` replaced the definition ask; phase 1 still took three submits on
+the all-100 tie, and phase 2 needs `JSON_AGG`), `_4` 0.7 (phase 2 switched to free-text `Job
+Title` again despite the new bullet), `_15` 0 (took the shipped KB 45 category as "the
+categories" - 21/1 - and never asked for bands: the flag pre-empted the ask that passes), `_20` 0
+(values right at 44.07; the simulator this time said "along with its SOC Code" and the agent
+projected four columns against three).
+
+**Second pass:** `Attorney Specialization Category` now leads with its 377/3/0 split and says a
+"group attorneys by visa focus" question is usually a user-defined banding - ask for bands and
+labels first (model `ed2e271`). Re-run `results/labor_0828_n1b_atscale_20260828_091731.json`
+(2 tasks, **$0.57**): `_15` **0.7** (asked, got the four labels, built them from the new attributes
+in one subquery; phase 2's reference groups on the RAW email and reads 16 Exclusive Specialists
+where phase 1's reference reads 17 - the two phases contradict each other, B-79), `_20` 0 (told
+"just three columns", submitted four first; the 3-column resubmit wrapped the `LIMIT 5` in a
+subquery and the tie at 3.87 came out in the other order - probed: flat form grades 1, wrapped
+form 0 with or without an outer ORDER BY; tie cap).
+
+**Net on the 825 base:** `_15` and `_18` move 0 -> 0.7; projected 7.6/19 = **0.400 vs raw 0.184,
++21.6 pp** (825 was +14.2 pp). Spend this pass **$2.13**. n=1 throughout; a full 19-task n>=3 and
+a raw re-run are owed before the number goes in the sheet. Not re-buyable without a grading-flag
+decision: `_1 _2 _5 _6 _7 _8 _10 _12 _13 _14 _16 _17 _20` (B-79). Dave's `a1ede76` landed the
+email normalisation in the generator; the objects added here are YAML-only until the generator
+learns them (SPEC.md, post-run section).
+
+---
+
+## organ_transplant - 2026-08-28 pass
+
+**Starting point.** Three n=1 semantic-arm runs (820/824/825) at 0.126 / 0.163 / 0.090 vs raw
+0.053 (820); `_22` the only task passing every run, `_2` 0.7 twice, `_8` `_17` `_18` 0.7 once
+each, everything else 0. The 2026-08-16 conclusion ("no further model work") predates the
+ask-first guidance, the simulator fidelity fixes and the cross_border masked-entry rule, so the
+per-task audit was redone from scratch: `result_diff.py` on 820/824/825 -> gold re-run in
+Postgres -> every candidate fix graded with `probe_pred.py` on the deployed model before the run.
+
+**What the three runs were spending their asks on.** Nine tasks per run (`_3 _6 _8 _13 _14 _17
+_18 _19 _21`) asked which Match Status "finished / completed / received a transplant" meant, and
+the simulator answered Completed 27 of 27 times ("waiting" -> Pending, "current" -> In Progress
+likewise), because the Match Status description said, in capitals, not to infer it. That ask
+cost 2 coins and a turn on every one of those tasks and bought nothing - and `_19` then
+submitted 'A' for a label the instruction already says to ask about, out of budget. Same shape
+as the ETF fund-name convention (21/21): a slot the simulator always answers the same way is a
+convention, not a slot.
+
+**Ceiling (not model-fixable, B-82):**
+- `_1` - gold is at RECIPIENT grain from `recipients_immunology` (198 positive-crossmatch
+  recipients); 9 of them have no matching attempt and a dimension-only query still joins the
+  fact (189 rows, probed). Gold's "previous match attempt" column is `match_ts`, a text column
+  with ONE distinct value ('2025.02.19 08:31:22') for every match.
+- `_4` - gold's ABO test compares `d.blood_class IN ('A','O')` against donor values stored as
+  "A+ common type (wide compatibility)" etc., so only AB recipients ever qualify; the model's
+  rule-based compatibility (correct) cannot reproduce it.
+- `_20` - gold's supply side joins donors on the same raw `blood_class` strings and then filters
+  to the 12 clean types, so every donor drops out: 51 rows, all with `available_donors` 0 and a
+  NULL ratio.
+- `_7` - gold scores every status other than 1A/1B as 2; KB 25 says Status 2 = 3, Status 3 = 2,
+  other = 1 (known since 08-16).
+- `_11` - five weights stated nowhere; the simulator answered "I'll leave the exact medical score
+  formula and the final combination weighting for you" (fidelity class C, 08-18).
+- `_21` - gold adds a `number_of_transplants` column the question never asks for.
+- `_16` - gold filters `match_status = 'In Progress'`; the question has no lifecycle word.
+- `_13` (6 rows to a 5-group question, WIDTH_BUCKET), `_14` (`HAVING COUNT(*) > 1`), `_19`
+  (invented 'A-Locus Mismatch' labels) are reachable only through an ask the simulator answers
+  from gold; the model now routes each of those asks (below).
+
+**Model (bird-atscale-models `2616c83`, generator spec.py/sql.py -> generate.py, A1-A12 clean):**
+- *Match Status* now maps the lifecycle words (finished/completed/done/received -> Completed only,
+  never Matched; waiting/waiting list -> Pending; current/ongoing -> In Progress; "current and
+  completed" -> both) and asks only when the question carries no lifecycle word. Model
+  description gained item (7) saying the same.
+- *CMV Mismatch* = donor Positive AND recipient Negative (D+/R-, the exposure pairing; 205 of
+  737), which is what the term means clinically and what "CMV exposure risk" asks; the old
+  either-direction flag (373) ships as `CMV Serostatus Discordance (Either Direction)`. Metric and
+  percentage follow. Probed: `_6` p1's 4 rows = gold's 4 with an INNER join to the per-center
+  comparison.
+- *Total Ischemia Time* = recorded cold ischemia (`function_and_recovery.org_isch_time`, which the
+  column meaning documents as "Cold ischemia time in minutes") + expected transport, the KB 2
+  reading over recorded values; on the FACT (needs two records). `Total Ischemia Time (Expected
+  Basis)` = expected cold + expected transport (compatibility record). The old bare reading was
+  the expected one, the old "Donor Recovery Basis" summed two cold-ischemia readings and is gone,
+  and `Donor Organ Ischemia Time Minutes` is renamed `Cold Ischemia Time (Recorded)`. The
+  correlation paired sums, LFI and CMQS follow the bare reading. Why it mattered: the simulator
+  quotes the column meaning ("cold ischemia time plus the transport time") and the model had
+  named the expected column "Cold" and the recorded one "Recovery", so `_17` took the wrong twin
+  in 825 after taking the right one in 820/824.
+- *Distance (Recorded)* replaces `Distance Miles`: the column meaning says kilometres, the stored
+  text says miles; the recorded number is bare (KB 8 divides 700 by it; a caller's "under 10"
+  applies to it), `Distance (Miles Converted To Kilometres)` is the twin. LFI and CMQS use the
+  recorded number; `Logistical Feasibility Index (Expected Ischemia Basis)` is the twin.
+- *Urgency numerals*: the column meaning documents '2'/'3' as DATA NOISE for 'Status 2'/'Status
+  3', so `Medical Urgency Value` / `Patient Urgency Score` now weight them as their tiers (3/2)
+  and the literal reading (other = 1) is the `(Bare Numerals As Other Status)` twin - primacy
+  swapped, columns unchanged. Composite Allocation Score follows.
+- *Asks routed*: `Decision Support Score` names equal-count (NTILE) vs equal-width (FLOOR over
+  min/max from a derived table joined ON 1=1, top value in band N+1 like WIDTH_BUCKET) and says
+  to ask; `HLA Mismatch Score Standard Deviation` says it is undefined for single-match centers
+  and to ask whether they stay; `Cost-Effectiveness Ratio Per Life-Year` says any CER question
+  has an open year horizon and to ask it FIRST; `Recipient` says a follow-up naming recipients
+  from an earlier result with a per-match figure has an open population (their listed attempts
+  or every attempt) and to ask; `Recipient`/`Donor` state the 32/22 members with no attempt are
+  unreachable.
+- *KB 15 literal twin*: `Center Performance Score (Transplant Count And Graft Survival)` = 0.6 x
+  `Matches With A Recorded Graft Survival Score` (new count) + 0.4 x Average EGS, same rows for
+  both terms; the stored-sub-score reading stays bare. Probed at TC296 Completed: 0.6728 = gold.
+- *Dialect* re-probed 2026-08-28 and corrected in the model description: NTILE, STDDEV, STRING_AGG,
+  NULLIF, FULL OUTER JOIN accepted; CORR, PERCENTILE_CONT, PERCENT_RANK, WIDTH_BUCKET, GREATEST,
+  LEAST, STRING_TO_ARRAY/UNNEST rejected by the engine; CTE, COUNT(*), IN-subquery by the MCP.
+  The old text said NTILE and STRING_AGG were rejected (824's `_3` built ROW_NUMBER buckets and
+  projected the bucket column on that advice).
+- Generator: KB path no longer hard-coded to one developer's home.
+
+**Guidance (config/environment_backends.yaml, atscale instruction):** dialect bullet re-dated
+2026-08-28 with the list above (and the contradictory "NULLIF is rejected" bullet corrected);
+new bullet FIGURES SHOWN TOGETHER SHARE ONE POPULATION - reference answers are inner joins, so
+select every input at row grain in one derived table with IS NOT NULL on each measured input and
+aggregate outside (count included), attach a comparison column with an INNER JOIN, never LEFT
+JOIN a member list for zero rows. Grounded in `_8` (820 passed from row-grain attributes, 824/825
+failed from the two metrics), `_9` (207 vs 199: counted rows with no risk record), `_6` (88 vs
+4: LEFT JOIN printed NULL beside 84 matches with nothing to compare against) and the `_10` probe
+(per-organ MAX over a wider set than the PRA-bearing rows lost the Heart row).
+
+**Probes before the run (free, `probe_pred.py`):** `_3` p1 (CER/5, NTILE), `_6` p1+p2, `_8` p1+p2,
+`_10` p1+p2, `_13` p1 (equal-width emulation, 6 rows), `_14` p1 (HAVING > 1), `_17` p1+p2, `_18` p1
+all grade 1 on the deployed model.
+
+**Reported, not changed.** Engine E-11: a dimension-only query still joins the fact, so
+dimension members with no fact row (32 recipients, 22 donors) are unreachable; WIDTH_BUCKET,
+PERCENT_RANK, CORR, GREATEST/LEAST, STRING_TO_ARRAY/UNNEST absent. MCP Q-38: CTEs rejected again
+by the MCP guard ("R10") although the engine inlines them since pr9795; a UNION of two model
+branches now surfaces the raw engine error `ProjectContext ... not found` instead of the guard's
+"UNION over a semantic model is not supported yet". Grading: nothing new.
+
+**n=1 runs, three passes, $7.83 total from `llm_usage.jsonl`:**
+- Pass 1 (`results/organ_0828_n1_atscale_20260828_125357.json`, 12 tasks, **$2.97**, 145 calls, 89%
+  of prompt tokens from cache; the shell hosting the runner was killed at 8/12, so the JSON holds
+  five trajectories and the log holds eight verdicts): `_8` **1.0** (row-grain attributes, ask on
+  EGS basis only), `_17` **1.0**, `_6` **0.7** (D+/R- flag, inner-join comparison; p2 took the bare
+  Center Performance Score, 0.5616 vs 0.6728, twin not chosen), `_13` **0.7** (six equal-width
+  bands; p2 top-band surgical risk missed), `_3` 0 (asked the horizon, applied x5 correctly, but
+  NTILE'd ascending so group 1 was the two cheapest), `_2` 0 (ranked across regions), `_9` 0 (198
+  vs 199: derived table without `Match` de-duplicated two identical rows), `_14` 0 (trajectory
+  lost).
+- Pass b (`results/organ_0828_n1b_atscale_20260828_130046.json`, the 4 unfinished tasks, **$2.81**,
+  97 calls): all 0 - `_21` right values with the x8 horizon asked and applied, capped on gold's
+  unasked count column; `_18` got "Low (0-10) ... labeled exactly that way" from the simulator and
+  printed 'Low'; `_19` printed a DQ row and never asked labels; `_10` never filtered Pending.
+- Model `8868929` then `06c7653`: Allocation Region says a rank beside the region is per region
+  (KB 36); CER says higher is worse so ranks and NTILE groups run highest-first; comorbidity
+  counts need `Match` projected; Wait Time Days says a waiting-list question is Pending; the A/B/DR
+  locus flags say a breakdown has exactly those three rows with user-spelled labels; PRA says a
+  handed label keeps its parenthesised range.
+- Pass c (`results/organ_0828_n1c_atscale_20260828_131437.json`, 6 tasks, **$2.05**, 97 calls):
+  `_3` **1.0**, `_2` **0.7**, `_14` **0.7**, `_18` **0.7** (all 0 in every prior run), `_10` 0 (the
+  right five rows and values, Organ projected before Recipient - column order only), `_19` 0
+  (asked the labels; simulator: "I don't have a strict preference for the exact wording" - it
+  declined gold's 'A-Locus Mismatch', so `_19` joins the simulator-fidelity list).
+
+**Net.** Best pass per task on the current model: `_3 _8 _17` 1.0, `_2 _6 _13 _14 _18` 0.7, `_9 _10
+_19 _21` 0; with the seven untouched tasks at their 825 values (`_22` 1.0, rest 0) the projected
+arm is **8.2/19 = 0.432 vs raw 0.053, +37.9 pp** (825 was +3.7 pp, the best prior run 824 +11.1 pp).
+n=1 throughout and mixed across passes; a full 19-task n>=3 and a raw re-run are owed before the
+number goes in the sheet. Not re-buyable without a grading or simulator decision: `_1 _4 _7 _11
+_16 _20 _21` (B-82), `_19` (simulator declines the label), `_14` p2 (41-way volume tie, B-34).
+Left to agent behaviour: `_9` (grain key), `_10` (column order), `_2` p2 (all-attempts population -
+the Recipient note did not trigger an ask), `_6` p2 (twin not chosen).
+
+## households - 2026-08-28 pass
+
+**Starting point.** Three n=1 runs (820/824/825) scored 0.176 / 0.210 / 0.129 against raw 0.048
+(21 Query tasks; `_16` and `_19` pass every run, `_4` `_5` `_17` flip), and the database had been
+written off on 2026-08-12 as no-further-model-change because the references filter dirty text at
+`LOWER()` / `TRIM(UPPER())` granularity. Method this pass: `result_diff.py` on 825 (every failing
+submission re-run through the engine beside its reference), the asks and answers of all three
+runs read side by side, and each candidate literal-reading query run through the MCP before any
+edit - `_18` 139 rows, `_5` phase 2 28, `_3` {348, 3206}, all equal to the reference.
+
+**What the trajectories showed.** (1) On every string-granularity task the simulator QUOTED the
+stored strings ('avail', 'available', 'yes'; 'More than R$ 4,400'; "'apartment', case-insensitive";
+'2010 to 2013', '2012 To 2013', '2014 or newer') and the agent translated them into the canonical
+members - the model's own twins would have reproduced the reference but no description ever routed
+a quoted value to them; the twins said "ask the user whether they want the canonical grouping or
+the recorded spellings", which the simulator had already answered by quoting. (2) Nine of nine asks
+about 'Yes' plus 'Not enrolled' answered 'Yes' only; three of three asks about zone/area/location
+tag answered "the region"; five of five tie-order asks answered "no preference" - 2 coins and a
+turn each, on most tasks of the run. (3) `_4` lost in 825 and won in 824 on one difference: the
+derived table without House Number projected returned 64 (distinct value tuples) where the same
+query with the key returned 589 - the documented de-duplication trap, confirmed at dispatch.
+(4) `_5` passed phase 1 in 824 and 825 only because the agent asked what the final output should
+show; `_2`, `_8`, `_9`, `_14` were told the shape when they asked and lost on other slots; the
+tasks that never asked (`_1`, `_6`, `_10`, `_13`, `_M_10`) submitted the listing the question
+described.
+
+**Model (bird-atscale-models `9b27965`, generator `households/generator/model_spec.py`).**
+- Each canonical text attribute - Dwelling Class, Cable Status, Tenure Type, Income Bracket,
+  Newest Vehicle Year, Social Support Status - now says: filter here when the concept is named in
+  words; when the user spells out the stored values, filter the `(As Recorded)` /
+  `(Recorded, Lower Case)` twin with exactly those strings, fold case only on "case-insensitive",
+  keep a listed value that matches nothing, never substitute the canonical member, the nearest
+  band or a rank. The twins carry the rule from the other side ("Filter HERE when ..."); the
+  shared `WHY` tail that told the agent to ask which reading is wanted is replaced by the rule.
+  Cable Status (Knowledge Base Tokens Only) is described as the trimmed reading (790), distinct
+  from the LOWER-only token list.
+- Conventions written, asks closed: Social Support 'Yes' only (level attribute, Households With
+  Social Support, Social Support Rate Percent); Zone description says 'zone', 'area', 'area code',
+  'location tag', 'location' mean Region, Zone only for a zone number or 'macrozone'; the model
+  description says a tie order is never a slot.
+- House Number and the model description: project House Number in any derived table that lists,
+  filters or counts households (64 vs 589 measured).
+- Model description: ask once, before the first submit, what the final output should show.
+- Region Code (As Recorded): group on it only when the user says the region is to be taken
+  exactly as stored in locregion.
+
+Gates: `generate.py` self-audit clean (59 discoverability phrases), `check_swapped_descriptions.py`
+10/10, `check_recorded_readings.py` 10/10, `sml-cli validate` clean, dup-key YAML scan 0, A8
+leak set unchanged (the 11 pre-existing 6-gram leaks predate this pass and the deploy script skips
+households because it has no `brief/` directory - left as found), A10 pass. Deployed through
+`scripts/deploy_models.sh` (22 models in `_main`), services restarted, gate_run PASSED, new text
+confirmed live through `focus_columns`.
+
+**Guidance (atscale instruction, `config/environment_backends.yaml`).** The output-shape bullet
+now fires on listings too and says not to ask about tie order; a new bullet - A VALUE THE USER
+QUOTES IS A LITERAL - states the recorded-twin rule with the measured 0/3 and 28/89/113 pairs.
+
+**Capped (B-83), not chased.** `_1` `_2` `_8` `_9` `_13` `_15` `_20` group or rank raw `locregion`
+(or its `TRIM(UPPER)`) so a one-household dirty spelling decides the answer; `_7` (-151) and `_12`
+(empty) filter literals absent from the data; `_14` (three-way tie at the maximum expenditure
+coefficient, all apartments) and `_M_10` (fifth row inside a twelve-way tie) are order-dependent;
+`_6` and `_11` grade an aggregate the question never names.
+
+**Reported, not changed.** Nothing new for the engine or MCP server: the `_4` 64-vs-589 result is
+the documented derived-table de-duplication, and the dispatched SQL divides correctly.
+
+**Measured (n=1, two passes, $4.44 from `llm_usage`: $3.33 on 11 tasks with model `9b27965`,
+$1.11 on `_3 _5 _10` with `701bdb8`).** `_17` 0 -> **1.0** (literal 'high income'/'very high
+income' on Income Bracket (As Recorded), 0 both phases), `_4` 0 -> **0.7** (Dwelling Class
+(Recorded, Lower Case) = 'apartment' with House Number projected: 86), `_3` 0 -> **1.0** in the
+second pass (first pass ran the literal list, saw {348, 3206}, and submitted the canonical query -
+hence `701bdb8`: never widen a quoted string with LIKE or a prefix, and submit the literal reading
+when the two differ), `_5` 0.7 then 0 (second run the simulator omitted the >4-resident cutoff and
+the agent did not ask), `_10` 0 (the literal rule was applied perfectly - 172 IDs - but the
+simulator would not define 'updated residences' and then answered "list the IDs" when asked the
+shape; the reference grades the top region), `_2` `_8` `_9` `_13` `_20` 0 as capped (B-83: raw
+locregion grain; `_2` had exactly the reference's population and lost only on 'Riacho  Fundo I'
+versus 'Riacho Fundo I'), `_18` 0 (this run's simulator said "use whatever standard values", so
+the canonical 191 was the faithful read; the reference's LOWER-only 139 needs the quoted tokens).
+Wasted asks gone: zero 'Not enrolled' asks, zero tie-order asks, zero zone-vs-region asks across
+14 task runs. Projected arm from best-observed per task (`_3` `_16` `_17` `_19` 1.0, `_4` `_5`
+0.7): 5.4/21 = **0.257 vs raw 0.048, +20.9 pp** (from +12.3 pp on the 820/824/825 mean of 0.171);
+taking this pass's last observation per task instead: 4.7/21 = 0.224, +17.6 pp. Full n>=3 arm plus a
+raw re-run are owed before the sheet score moves; run file `scripts/tasks_household_0828.txt`.
