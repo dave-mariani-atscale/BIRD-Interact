@@ -9,7 +9,8 @@ backend, the harness:
      agent-visible surface is byte-identical to a flag-off run,
   3. records the simulated user's verdict about each submission (accepted ->
      correct, rejected -> incorrect) against the matching exchange via the
-     server's record_feedback tool, fire-and-forget on a daemon thread.
+     server's record_feedback tool, fire-and-forget on a daemon thread, with
+     the task's ask_user clarifications attached to the verdict's note.
 
 Integrity notes (binding — see the PRD's Section 7 and the harness tracker):
   - Nothing here changes what the agent sees, pays, or can do: record_feedback
@@ -154,6 +155,69 @@ def exchange_for(state: MutableMapping[str, Any], sql: str) -> str:
     return by_sql.get(normalize_sql(sql), "")
 
 
+# Budgets for the two halves of the recorded note. The simulator's verdict
+# message is why THIS answer was judged as it was, so it is never crowded out;
+# the clarifications are context and take what is left.
+_NOTE_MESSAGE_CHARS = 500
+_NOTE_CLARIFICATION_CHARS = 1500
+
+
+def clarification_transcript(state: MutableMapping[str, Any], budget: int) -> str:
+    """The task's ask_user exchanges as compact "Q -> A" lines, newest first.
+
+    ask_user answers are the highest-signal intent data a run produces: they are
+    the simulated user resolving the ambiguity the task was built around, in
+    their own words. The agent pays 2 bird-coins per ask and the answer shaped
+    every query that followed, yet none of it reached the memory — a run's whole
+    disambiguation was discarded while its SQL was kept.
+
+    Newest first because a later clarification usually refines an earlier one,
+    so when the budget truncates, the binding constraint survives.
+    """
+    history = state.get("dialogue_history") or []
+    pairs: list[str] = []
+    pending_question = ""
+    for turn in history:
+        if not isinstance(turn, dict):
+            continue
+        content = " ".join(str(turn.get("content", "")).split())
+        if turn.get("role") == "agent":
+            pending_question = content
+        elif turn.get("role") == "user" and content:
+            pairs.append(f"Q: {pending_question} -> A: {content}" if pending_question else f"A: {content}")
+            pending_question = ""
+    out: list[str] = []
+    used = 0
+    for line in reversed(pairs):
+        if used + len(line) + 1 > budget:
+            break
+        out.append(line)
+        used += len(line) + 1
+    if not out and pairs:
+        # One clarification longer than the whole budget: a truncated newest
+        # line still says what was asked and how it was answered, where
+        # dropping it silently loses the run's only disambiguation.
+        return pairs[-1][:budget]
+    return "\n".join(out)
+
+
+def _submission_note(state: MutableMapping[str, Any], message: str) -> str:
+    """The verdict message, plus the clarifications that led to the answer.
+
+    Capture only. These are NOT served back to agents: the clarification text is
+    the simulated user restating the task's own constraints, so serving it
+    model-wide would hand back the disambiguation the benchmark exists to
+    measure — the same leak that makes verbatim exemplars an explicit opt-in
+    (ATSCALE_MCP_FEEDBACK_SERVE_MODE=query) rather than a side effect of capture.
+    Analyse it offline out of mcp_feedback.feedback.note.
+    """
+    note = (message or "")[:_NOTE_MESSAGE_CHARS]
+    clarifications = clarification_transcript(state, _NOTE_CLARIFICATION_CHARS)
+    if clarifications:
+        note = f"{note}\n\n--- clarifications ---\n{clarifications}" if note else clarifications
+    return note
+
+
 def record_submission_verdict(
     state: MutableMapping[str, Any], sql: str, passed: bool, message: str
 ) -> None:
@@ -176,7 +240,7 @@ def record_submission_verdict(
         "verdict": "correct" if passed else "incorrect",
         "source": "end_user_explicit",
         "rater": "bird_simulator",
-        "note": (message or "")[:500],
+        "note": _submission_note(state, message),
     }
     if settings.feedback_rater_token:
         # Authorizes the privileged source above; without it the server records
