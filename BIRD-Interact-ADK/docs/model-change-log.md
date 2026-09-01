@@ -6912,3 +6912,552 @@ Wasted asks gone: zero 'Not enrolled' asks, zero tie-order asks, zero zone-vs-re
 0.7): 5.4/21 = **0.257 vs raw 0.048, +20.9 pp** (from +12.3 pp on the 820/824/825 mean of 0.171);
 taking this pass's last observation per task instead: 4.7/21 = 0.224, +17.6 pp. Full n>=3 arm plus a
 raw re-run are owed before the sheet score moves; run file `scripts/tasks_household_0828.txt`.
+
+## virtual_idol - 2026-08-28 pass
+
+**Starting point.** Arm runs 820/824/825 scored 0.074 / 0.237 / 0.289 against raw 0.158 (19 Query
+tasks; the 824 file is one run counted twice, so n=1). The 825 run measured the pre-review model
+(2e251f6); the deployed model is f9947b8 (Dave's 7-commit review), never scored - several 825
+failures re-run correctly through it already. Diagnosis at $0: `result_diff.py` on 825 + 824,
+every failing task's asks/answers and final SQL read, agent SQL re-run through the deployed model,
+gold read last and marked. Detail: `progress.txt` § virtual_idol diagnosis (2026-08-28 iteration).
+
+**Changed (generator, one commit on main).**
+1. **Engagement Detail spine pruned** (`spec._DATASET_KEYS`): the engagement row's interaction
+   pivot names ANOTHER fan's interaction on 27 of 555 rows, so the four keys derived through it
+   (interaction, idol, support, moderation) disagreed with the membership-derived fan key and let
+   attribute-only fan x idol / fan x interaction-attribute projections mint phantom pairs (60
+   pairs where a measure-bearing query finds 58; 848 session rows where the table has 821).
+   Dropped, so those pairs route through Interaction Detail, whose keys agree on all 821 rows.
+   Post-deploy check (US-011): attr-only Fan ID x Idol Genre = 58 pairs; Session Window Key x
+   Fan ID = 821 rows.
+2. **Influence routing**: the loyalty table's stored Influence Score now routes influencer
+   questions to Community Influence Index + Community Influencer; the CII description claims the
+   group noun ("this is THE influence score of the knowledge base").
+3. **Whale Fan (Peak Session)** twin flag + count (Peak Monetization Index > 20, 516 fans vs the
+   aggregate reading's 515), cross-linked both ways.
+4. **Days To Conversion (From First Interaction)** twin column + average metric (start-point slot:
+   registration vs first interaction), cross-linked; Interactions Before Conversion names the
+   funnel population (Premium, first interaction before the estimated subscription).
+5. **Cumulative Spending Since Registration** twin (running total NULL before registration) +
+   average metric + nested `Within 7/30/90 Days Of Registration` flags ('Yes'/'No', 10/33/82 of
+   821); Registration Milestone says its bands are DISJOINT while the KB cohort curve is
+   CUMULATIVE and points at the flags.
+6. **CASENOISE convention extended** on all 12 folded text attributes: output prints the
+   '... Stored' twin; the folded form is for filters and grouping logic.
+7. **Two-language steer**: Fan Language Preference and Fan Engagement Language each name the
+   other and say to ask.
+
+**Guidance (ADK `config/environment_backends.yaml`, atscale block).** Two corrections: the
+window-alias bullet was STALE (outer derived-table WHERE on a DENSE_RANK alias works on the
+2026-08-28 engine; only aggregating over a window-carrying derived table still fails planning) and
+the UNION bullet described the old silent-zero-rows behaviour (now refused outright with "UNION
+over a semantic model is not supported yet"). Two additions: role-noun groups ("influencers",
+"whales") mean the model's classification, never a raw score sharing a word - ask when two
+candidates exist; folded-text outputs project the Stored/As Recorded twin, folded form only in
+filters.
+
+**Tracker rows (filed in US-019).** New B: gold caps - churn groups double-count multi-membership
+fans (976 over 972), event score doubled / MAX spend on 9 of 68 superfan rows, LEFT JOIN
+double-count 986 over 972, interaction-anchored engagement path + PERCENT_RANK over NULLs,
+all-NULL single row from an empty-set SUM, 242-way tie with no tiebreak. New E: GROUP BY CUBE /
+ROLLUP / GROUPING SETS refused ("Invalid group by clause"); COUNT over a window-carrying derived
+table fails planning. Q-25/Q-37/Q-38 update: UNION over the model now refused outright (was
+silent). Q-09 confirmed (COUNT(*) still refused).
+
+**Reported, not changed.** All of the above tracker items; no engine, MCP, grading or runner
+change. v10 prompt gained `### What the 2026-08-28 virtual_idol pass changed` (general rules
+only).
+
+**Measured:** pending US-012 (n=1 subset `scripts/tasks_virtual_idol_0828.txt`: _1 _2 _3 _7 _9
+_12 _14 _15 _16 _19). Capped, not chased: _4 _5 _10 _11 _13 _17 _18.
+
+### Second pass - 2026-08-31
+
+**Measured, first pass** (`results/virtual_idol_0828_n1_atscale_20260831_133148`, n=1, 10 tasks,
+$2.4271): subset 3.8/10 against the 825 subset's 3.5/10. `_16` 0.7 -> 1.0 and `_7` 0 -> 0.7 on the
+US-007 spine prune and the Either-Signal twin; `_1` 0.7 -> 0 on column order. Projected arm
+5.8/19 = 0.305 vs raw 0.158, **+14.7 pp** (n=1, noisy).
+
+**Second-pass model changes.** Membership Detail gains the Conversion Funnel at MEMBERSHIP grain -
+`Membership Days To Conversion` and `Membership Interactions Before Conversion`, with the two
+`Average Membership ...` metrics - cross-linked both ways with the existing fan-grain readings,
+because 9 fans hold more than one non-Free membership and the two grains give different averages
+over the same warehouse. The new columns are computed at TIMESTAMP precision (the fan-grain
+reading truncates to a date, which shifts the mean by a third of a day while every row of the
+population is right). The `Within 7/30/90 Days Of Registration` flags now say the printed
+milestone label is the Spending Velocity Cohort Analysis entry's own wording ('7 Days'), not the
+column name. Why: `_15` had the right population and formula at the wrong grain; `_9` computed the
+exact values and printed the flag names as labels.
+
+**Guidance added** (`config/environment_backends.yaml`): the user's own column listing IS the
+column order and the grouping key does not go first (`_1`, and polar `_14`); a knowledge-base
+entry's wording is the printed label; the role-noun rule becomes a pre-submit check (`_14`, the
+bullet had not fired in two consecutive runs); never offer a basis already seen to return nothing,
+and never put a count in an ask (`_3`, and polar `_11`).
+
+**Reported, not changed.** `_1` and `_9` were exact apart from column order and label wording -
+both agent-side, both now covered by guidance. `_3` remains the B-62 simulator family: the
+simulator denied its own earlier classification answer.
+
+**Measured, second pass** (`results/virtual_idol_0828_n1b_atscale_20260831_190253`, n=1, 5 tasks,
+Sonnet, `llm_usage.total.cost_usd` **$1.8079**; collision check clean - 8 audit rows against 11
+submits, the 3 missing rows are submits that died at execution): subset **1.4/5** (was 0/5).
+`_1` 0 -> 0.7 (the user's-own-listing column-order bullet fired; asked for the N and the column list
+and projected them in the answer's order), `_3` 0 -> 0.7 (asked which rank reading and kept the
+Community Influencer classification through the later top-N answer). `_9 _14 _15` stayed 0: `_9`
+asked which whale reading and was sent to the peak-session one, `_14` asked only for the N, `_15`
+asked the grain question and was told membership grain. All three are agent-side application of
+bullets that exist, not missing objects - the membership-grain twin, the milestone labels and the
+role-noun check are all in the deployed model and instruction.
+**Projected arm 7.2/19 = 0.379 vs raw 0.158 = +22.1 pp (+140% relative), n=1, noisy.**
+Total virtual_idol spend this PRD: $4.23.
+
+## polar_equipment - 2026-08-28 pass
+
+**Starting point.** Arm runs 820/824/825 scored 0.170 / 0.290 / 0.255 against raw 0.158 (20 Query
+tasks; the 824 file is one run counted twice, so n=1). Deployed model = abee950, the one 825
+measured. Diagnosis at $0: `result_diff.py` on 825 + 824, every failing task's asks/answers and
+final SQL read, candidate readings graded with the harness's own comparator (`ex_base_external_pred`
+after `remove_round`), dispatched SQL read for the mis-ranking submission. Detail: `progress.txt`
+§ polar_equipment diagnosis (2026-08-28 iteration).
+
+**Changed (generator, one commit on main).**
+1. **Station attribution: assignment records only** (_18/_20). A unit's station is the one its
+   communication record names, falling back to the cabin record (the two agree on all 346 units
+   with both); the unit's own weather row is no longer a fallback - it names the location of a
+   READING, and carrying it gave 9 weather-only units a station no reference population includes.
+   Fact and bridge both changed: 850 units with a station (was 859), bridge 43,475 rows (was
+   43,942). Every downstream coverage count in the energy/thermal descriptions re-derived (the old
+   text claimed "all 1000 units" for columns a comm-reached thermal row can cover on at most 850;
+   heat loss 720, wind output 716, backup power 729 non-null).
+2. **Declared-type EER/OSPI** (_9). The JSON-carried type indices (performance, environmental
+   impact, safety) are read at `::real` - the declared type of their sibling `RELIAB_IDX` - and
+   summed in real before numeric literals widen the expression; OSPI inherits it. At double, EER
+   flips 12 cells at the second decimal against a float4 reference; at real, 0. Pinned: 980 units
+   clear KB 41's 0.75.
+3. **Missing-As-Zero twins, every input zero-filled, within-record** (_14, _4, _3):
+   `Long-term Operational Stability Score (Missing Inputs As Zero)` (859 units vs strict 812) with
+   Average/Maximum/Minimum and a `Median ..._instance_0.5` percentile metric (the engine refuses
+   PERCENTILE_CONT/MEDIAN in SQL but executes a published percentile metric; the description states
+   the _instance query form); `Renewable Energy Contribution (Missing Output As Zero)` + Average +
+   `Total Renewable Output W (Missing As Zero)` (850 vs strict 716; only wind is ever missing);
+   `Life Support System Reliability (Missing TIE As Zero)` + Average (953 vs strict 686). Each twin
+   cross-linked with its strict reading and its population size; zero-fill scoped to rows where the
+   anchoring record exists, so no rows are minted.
+4. **SSF grain routing in the user's phrasing** (_11). The unit-grain Structural Safety Factor and
+   the Station Weather Readings bridge now both say: a reading "linked to the unit's location or
+   station - however phrased - means the bridge" (per-reading rows, threshold populations 238 vs 5
+   at 0.7); the unit-grain value is the maintenance record's own reading.
+5. **Composite plural** (_16). PTEC and its zero-fill twin say a plural "scores" question wants the
+   coefficient AND its two components (vehicle performance composite, energy sustainability index)
+   in formula order, not the coefficient alone.
+
+**Guidance (ADK `config/environment_backends.yaml`, atscale block).** One correction: the window-
+functions bullet claimed a flat-SELECT window over the model "computes fine" - false when the
+projection splits into UNION ALL dataset branches (the engine computes the window inside each
+branch and merges; RANK over a measure mis-ranked 798/1000 rows silently). The bullet now mandates
+the derived-table shape for any window over a measure (values inside, window outside, filter one
+level further out); the rank bullet's tail no longer recommends the flat form. One addition: plural
+"scores" beside a composite = components + composite in formula order (mirrors the model
+description).
+
+**Tracker rows (filed in US-019).** New Q: flat-SELECT window over a measure evaluated per dataset
+branch (dispatch shows RANK inside both UNION ALL branches, outer MIN). New B: `execute_queries`
+MAX_ROWS=10000 caps any wider gold (_2: 17,840 rows); gold caps - LIMIT 100 over 111 with NULLs
+sorting first (_3), WRMI x100 + cabin-only population (_5), p2 LIMIT + ESI/100 inconsistency (_7),
+LIMIT 100 without ORDER BY (_8), column order against the question's (_15), ARRAY_AGG driver
+rendering + physical order (_19), 846-row station tie (_20), numeric-vs-float boundary cells (_1),
+float4 SUM accumulation (_4). Simulator: _17 "count all active units" contradicts gold's population;
+_11 phrasing sent both runs to the unit-grain reading (now routed by descriptions).
+
+**Reported, not changed.** All of the above tracker items; no engine, MCP, grading or runner
+change. v10 prompt gained `### What the 2026-08-28 polar_equipment pass changed` (general rules
+only).
+
+**Measured:** pending US-013 (n=1 subset `scripts/tasks_polar_equipment_0828.txt`: _9 _11 _13 _14
+_16 _17 _18). Capped, not chased: _1 _2 _3 _5 _7(p2) _8 _15 _19 _20; _4's remaining miss is a
+float4 SUM the engine widens.
+
+### Second pass - 2026-08-31
+
+**Measured, first pass** (`results/polar_equipment_0828_n1_atscale_20260831_135628`, n=1, 7 tasks,
+$4.0545 - the window covers a concurrent second process, see below): recorded 2.7/7,
+collision-corrected 3.4/7 against the 825 subset's 1.4/7. `_13` and `_16` 0 -> 1.0 on the
+population ask and the plural-scores/PTEC work. Projected arm 6.4/20 = 0.320 recorded, 7.1/20 =
+0.355 corrected, vs raw 0.158: **+16.2 pp recorded / +19.7 pp corrected** (n=1, noisy).
+
+**Second-pass model changes.** `External Temperature Zone` and the bridge's
+`Reading Temperature Zone` now route on the BREAKDOWN verbs, not only the count phrasings: a
+question that groups, breaks down or averages a fleet figure BY temperature zone is asking about
+conditions observed at the units' stations, which is the bridge grain. Both descriptions also say
+the model publishes two display forms of the same band and that the printed wording is an ask when
+neither the question nor the knowledge-base entry settles it. Why: `_18`'s bridge objects
+reproduce the reference exactly and the agent used the unit-grain twin with the short labels.
+
+**Guidance added.** Column order from the user's own listing (`_14` - 60 rows, values identical to
+the reference, regraded to 1 with the columns permuted); never offer a basis already seen to
+return nothing (`_11` - the agent disclosed that the unit basis matched no rows, offered it
+anyway, and the simulator chose it).
+
+**Reported, not changed.** `_9` scored 0 because a SECOND evaluation process was solving the same
+task_ids concurrently: `db_environment` keys phase state by task_id alone, so the intruder's
+phase-1 pass flipped our task to phase 2 before our agent's first submit. Our own rows grade 1
+against phase-1 gold. Harness row owed in US-019. `GRADING_AUDIT_PATH` does not reach the services
+(five consecutive runs).
+
+**Measured, second pass** (`results/polar_equipment_0828_n1b_atscale_20260831_194532`, n=1,
+4 tasks, `cost_usd` **$1.4406**; collision check clean - 9 audit rows = 9 submits, so the US-013
+contamination did not recur): subset **1.7/4** (recorded 0/4 first pass).
+`_14` 0 -> 1.0 both phases (the column-order bullet plus the Missing-Inputs-As-Zero twin, which the
+simulator chose by name), `_18` 0 -> 0.7 (the breakdown-verb routing put the agent on the reading
+grain and it asked which label form to print; the simulator chose the suffixed form, which the
+bridge publishes). `_9` 0 - the simulator rejected BOTH published efficiency readings and dictated a
+custom formula, so no model object could have matched. `_11` 0 - the agent again offered the two
+bases and the simulator again chose the one it had been told returns nothing (second instance;
+B-62 family, and the strongest argument yet that the never-offer-an-empty-basis bullet needs the
+simulator to cooperate).
+**Projected arm 8.1/20 = 0.405 vs raw 0.158 = +24.7 pp (+156% relative), n=1, noisy.** The clean
+re-run of `_9`/`_11` also retires the corrected-vs-recorded ambiguity from the first pass: both
+bases now give the same 8.1. Total polar_equipment spend this PRD: $5.49.
+
+## hulushows - 2026-08-28 pass
+
+**Starting point.** Arm runs 820/824/825 scored 0.220 / 0.170 / 0.205 against raw 0.212 (20 Query
+tasks; the 824 file is one run counted twice, so n=1); two independent 0826 n=1 runs both 0.205.
+Deployed model = f9947b8. Diagnosis at $0: `result_diff.py` on 825 + the 0826 shapeask run, every
+failing task's asks/answers and final SQL read, candidate readings graded with the harness's own
+comparator, and a ceiling test that re-grades each gold's own rows under both tie orders (id asc
+and desc). Detail: `progress.txt` § hulushows diagnosis (2026-08-28 iteration). 13 of 20 tasks are
+capped (10 by tie order alone); the reachable set is _2 _9 _15 _20.
+
+**Changed (generator, one commit on main; folds in Dave's 0e1db9a).**
+1. **Tier membership vocabulary onto the membership objects** (_2, also _11/_16 values). Dave's
+   0e1db9a added `Distinct Tiers Linked` (count distinct tier_key on Content Tier Rollup - 7 per
+   record, 7 per series) carrying the "tiers it appears in / tier groups / distinct tiers a show is
+   in" vocabulary, and re-pointed `Tiers With Media Count` (5 or 7, the media-holding reading) at
+   it - but as hand-edits to the emitted YAML, which the generator reverts on the next build. This
+   pass ports that change into the generator (spec_metrics + pins: min/max distinct links per
+   record and per series = 7), and extends it to every object that carried the old "can only mean
+   media-holding" convention: `Tier Row Count` (a rollup row IS an appearance - membership reading,
+   no longer "use Tiers With Media Count"), the Subscription Tier dimension description, the model
+   overview's tier paragraph, `Series Tiers With Media` (cross-links the metric grouped by Series),
+   `Syndicated Franchise` and `Multitier Syndicated Show` (verdict identical on either tier
+   reading).
+2. **A show IS a content record** (grain drift on _1 _13 _16 _18; 7/7 simulator grain answers).
+   The Content Record dimension, `Content Record Count` and `Distinct Title Count` said the
+   opposite ("this is NOT a count of shows ... use Distinct Title Count"), steering listing tasks
+   to the 109-row title grain. Now: core is the entity table, content_key its key, the title an
+   attribute that repeats; count shows with Content Record Count, list at Content Key, move to
+   title/series grain only when the question says series, franchise or distinct titles. Model
+   overview's "First" paragraph rewritten to match.
+3. **`Series Average Episodes (All Entries)`** (_9 p2). New attribute = Series Episode Total /
+   Series Entry Count (missing episode counts stay in the denominator, contribute nothing to the
+   numerator); 0 to 745.4, mean 109.5; cross-linked both ways with `Series Average Episodes`
+   (divides by rows that HAVE a count); pinned: the two disagree on 57 of 109 series.
+
+**Guidance (ADK `config/environment_backends.yaml`, atscale block).** Two corrections: the
+"ORDER BY may name a measure your SELECT does NOT project" bullet was wrong on this build - the
+engine REFUSES sorting by any unprojected column, measure or attribute alike (probed live; bullet
+now states the refusal and defers to the derived-table shape); the STRING_AGG note now says
+STRING_AGG(DISTINCT ...) is refused - dedupe in a derived table, plain STRING_AGG with ORDER BY is
+honoured. Three additions: ascending-id tiebreak as the final ORDER BY key whenever the sort key
+can tie (never ask about tie order); "count how many fall into <bands>" = ask one total vs
+per-band, never fabricate a zero-count row for an empty band (_15); the population ask names
+zero-valued rows explicitly ("rows with none of them: in or out?") (_20).
+
+**Tracker rows (filed in US-019).** New Q: ORDER BY on unprojected column refused (contradicted
+prior guidance); STRING_AGG(DISTINCT) refused. New B: hulushows gold caps - strict tie-order
+grading on _1 _3p2 _6 _7 _11 _12 _13 _16 _18 _19 (ceiling test fails both id directions); _1 sums
+a field KB 21 does not name; _4 day-component of AGE() + unparsed M/D/YYYY dates; _7 prints
+unasked columns; _8 p2 upper-cases unknown rating labels while folding known ones; _10 attributes
+record totals to all seven tiers (7-way tie); _17 graded against inline VALUES fake data. New B
+candidate: `shared.db_utils._is_read_only` fails closed on Postgres `~` regex, blocking offline
+re-grades of golds that use it. E note: planner "Missing column information" fault did not
+reproduce; "Unmatched physical type" intermittent shape seen once.
+
+**Reported, not changed.** All of the above tracker items; no engine, MCP, grading or runner
+change. v10 prompt gained `### What the 2026-08-28 hulushows pass changed` (general rules only).
+
+**Measured:** pending US-014 (n=1 subset `scripts/tasks_hulushows_0828.txt`: _2 _9 _15 _20).
+Capped, not chased: _1 _3 _4 _6 _7 _8 _10 _11 _12 _13 _16 _17 _18 _19.
+
+### Second pass - 2026-08-31
+
+**Measured, first pass** (`results/hulushows_0828_n1_atscale_20260831_174052`, n=1, 4 tasks,
+$1.4142): subset 1.0/4 against the 825 subset's 0.7/4. `_2` 0 -> 1.0 on the US-009 tier-count
+vocabulary, both phases first attempt; `_20` 0.7 -> 0. Projected arm 4.4/20 = 0.220 vs raw 0.212,
+**+0.8 pp** (n=1, noisy - one task moved, one regressed).
+
+**Second-pass model changes.** `Promotional Note Count` and `Total Promotional Notes` each now say
+they are the same number by construction once the query groups by the record key, and each states
+the zero-note population in listing form (736 records with at least one, 1000 with all). Why:
+`_20` burned three of five coins proving the two measures agree and never asked the population
+question its reference turned on.
+
+**Guidance added.** The tiebreak becomes unconditional for aggregate-sorted listings (`_9` was
+set-equal to the reference on every row across four submissions and failed on the missing second
+ORDER BY key); a banded question's single affordable ask goes to the SHAPE, not the boundaries
+(`_15` asked the boundaries, was answered exactly, and submitted the breakdown four times against
+a one-number reference); "for each X, how many Y" always opens the zero-row population ask before
+the first submit (`_20`).
+
+**Reported, not changed.** Dispatch was clean on all three zeros (`scripts/outbound_sql.py`) - no
+engine rewrite involved. Guidance non-compliance, not guidance absence, is the binding constraint
+on this database: two of the three bullets already existed.
+
+**Measured, second pass** (`results/hulushows_0828_n1b_atscale_20260831_195017`, n=1, 3 tasks,
+`cost_usd` **$0.8791**; collision check clean - 12 audit rows = 12 submits): subset **2.0/3**
+(was 0/3).
+`_9` 0 -> 1.0 both phases (the tiebreak bullet, restated unconditionally for grouped listings,
+fired - the rows had been set-equal to the reference all along and only the final ORDER BY key was
+missing), `_20` 0 -> 1.0 both phases (the zero-note population ask now happens before the first
+submit, and stating that the two note measures are the same number by construction stopped the
+three-coin reconciliation that burned the first pass). `_15` stayed 0 and is the interesting one:
+the shape ask DID fire this time and was answered "a single total count overall", and the agent then
+submitted the per-band breakdown twice, a fabricated zero row, and finally a count of tier values
+rather than of records. Getting the answer and applying it are separate failures.
+**Projected arm 6.4/20 = 0.320 vs raw 0.212 = +10.8 pp (+51% relative), n=1, noisy.**
+Total hulushows spend this PRD: $2.29.
+
+## insider_trading - 2026-08-28 pass
+
+**Starting point.** Post-M-62 0826 n=1 = 0.405 (8.5/21) against raw n=3 0.267; deployed model =
+ab08109 (M-62's seven fixes in and working - nothing here redoes them). Diagnosis at $0:
+`result_diff.py` on the 0826 run, every failing task's asks/answers and final SQL re-run, candidate
+readings graded with the harness's own comparator, dispatched SQL read for the plausible-looking
+failure (clauses intact - no silent rewrite in this run). Detail: `progress.txt` § insider_trading
+diagnosis (2026-08-31 iteration). Capped: _3 p2, _4, _6, _10, _20 p2. Reachable:
+_1 _2 _7 _9 _11 _13 _14 _15 _17 _M_10.
+
+**Changed (generator, one commit on main).**
+1. **`Margin-Financed Trade Amount`** (_1). New Trade Execution column = Daily Trading Volume x
+   Margin Utilisation Pct / 100, multiplied in the stored columns' native `real` and widened as a
+   product (`(a * b / 100.0)::double precision` - operand-widened doubles differ in the last
+   decimal on ~40% of rows and grade 0). Cross-linked both ways with `Average Position Size Value`
+   (a stored, DIFFERENT quantity); both descriptions direct a "which is meant / what formula" ask.
+   Pins: support 998, mean 199967.39.
+2. **`Potential Insider Trading Flag (Event Proximity Required)`** (_17). Twin of the KB 11 flag
+   with 'linked to a corporate event' read as `evt_near IS NOT NULL` (246 'Yes' vs the
+   row-existence reading's 325). The 0825 pass had deliberately chosen row-existence (documented in
+   sql_defs); golds split 2-vs-1 against that choice at task level, so the twin ships rather than a
+   reversal. Both flag descriptions and the Upcoming Corporate Event column now present the two
+   readings and direct an ask; "It is NOT the test" absolutism removed. Count metric
+   `Event-Proximity Insider Trading Flag Count` (G6 rejects the parenthesised name inside a longer
+   name, hence the rename). Pin: 246.
+3. **CMI claims the composite-suspicion vocabulary** (_M_10). The KB 31 attribute description now
+   says a request for one composite/overall suspicion score per trade usually means the KB 31
+   combination, not SAI alone, and that when the user supplies their own SAI weights the index is
+   rebuilt from the published component columns with their numbers and still averaged with the
+   Pattern Anomaly Score on the scale they choose.
+4. **Financially Impactful flag names the plain reading** (_9). KB 48's description now says
+   "financially significant/impactful" may mean plain Penalty Amount over a user-stated threshold
+   rather than the KB composite - ask which, and get the number from the user.
+
+**Guidance (ADK `config/environment_backends.yaml`, atscale block).** New: KB-flag-vs-plain-
+threshold bullet ("high/suspicious X" applies the flag, LIMIT is an additional cut; compound labels
+may mean a plain column over a user threshold - ask) (_2 _9); single-entity questions keep the
+identifier column, one row per underlying record, cohort-filter via derived DISTINCT + INNER JOIN
+(_11, + mental_health _16 _20); every graded answer - phase-2 follow-ups included - is a submitted
+query, superlatives return exactly one row (_14). Extended: the formula/constants bullet (a
+user-named quantity with no stored column is a formula ask; unstated constants are the caller's;
+apply the chosen missing-data basis to every input) (_1 _7); the stored-display bullet covers
+numbers parsed from unit-bearing text - As Recorded twin for display, numeric twin for
+filters/sorts (_13 _15).
+
+**Tracker rows (filed in US-019).** New B: insider_trading gold caps - _3 p2 ORDER BY a
+mostly-NULL ati DESC prints an arbitrary head (ceiling re-sort fails both id directions); _4
+pas<1.0 contradicts KB 49's 0.1 and the simulator withheld it across two asks; _6/_20 LOWER() a
+label column unrequested; _10's SAI-proxy term contradicts KB 3, and golds _10 vs _3 take opposite
+sides of KB 0 (computed vs recorded DTR; r = -0.008 between them). E note: "Cannot average [X]: it
+is a dimension attribute" - same family as the ORDER-BY-unprojected guardrail.
+
+**Reported, not changed.** All of the above; no engine, MCP, grading or runner change. v10 gained
+`### What the 2026-08-28 insider_trading pass changed` (general rules only).
+
+**Measured:** pending US-015 (n=1 subset `scripts/tasks_insider_trading_0828.txt`:
+_1 _2 _7 _9 _11 _13 _14 _15 _17 _M_10). Capped, not chased: _3(p2) _4 _6 _10 _20(p2).
+
+### Second pass - 2026-08-31
+
+**Measured, first pass** (`results/insider_trading_0828_n1_atscale_20260831_174920`, n=1, 10
+tasks, $2.8798): subset 4.4/10 against the 0826 subset's 1.4/10. `_17` and `_15` 0 -> 1.0, `_13`
+0.7 -> 1.0, `_9` 0 -> 0.7; nothing regressed. Projected arm 11.5/21 = 0.548 vs raw 0.267,
+**+28.1 pp** (n=1, noisy).
+
+**Second-pass model changes.** The `Combined Manipulation Indicator (CMI)` descriptions - both the
+stored-scale and the rescaled-anomaly readings - turn their weights clause from "when the user
+supplies their own weights, rebuild" into an ASK trigger, and say what the equal-weight default
+costs: it agrees with a weighted reading in the first decimal and differs after it. Why: `_M_10`
+found the composite, asked the scale question correctly, returned the reference's own ten records
+in the reference's own order, and differed from the third decimal because it never asked for the
+weights the simulator hands over when asked.
+
+**Guidance added.** A listing question that names no output columns is not ready to submit, and
+the column your own discovery surfaced is the one to project (`_1` - the reference's exact 508
+rows, wrong column set, and its ask went to what a qualifier meant); the superlative-over-a-named-
+score trigger and the reminder that the flag's population may be far smaller than the user's N
+(`_2` - reference is one row and it was the agent's own row 1); the two-group multi-input screen
+population ask, with the note that the surviving group is labelled by the stored value (`_7`); a
+follow-up resets the population to the one it names and a NULL in a printed column is a row to
+show (`_9` p2 - 372 became 156 because phase 1's IS NOT NULL rode along); the one-row superlative
+answer keeps its computed count and is never a typed literal (`_14` p2).
+
+**Reported, not changed.** Engine: a plan-shape-dependent aggregate refusal - `AVG(<measure>)`
+inside one derived table executes, the identical aggregate inside a derived table then JOINed to a
+second `ON 1=1` is refused as "it is a dimension attribute". Cost `_11` its last submit; corroborated
+on mental_health `_20` with a different error text. Gold caps: `_7`'s surviving group is labelled
+with the boolean `False`, `_1`'s phase-1 reference projects a column only the follow-up mentions.
+
+**Measured, second pass** (`results/insider_trading_0828_n1b_atscale_20260831_202851`, n=1,
+7 tasks, `cost_usd` **$1.9886**; collision check clean - 14 audit rows = 14 submits): subset
+**1.7/7** (was 1.4/7 on the same seven).
+`_14` 0.7 -> 1.0 (the one-row superlative now carries its computed count instead of a typed
+literal). `_9` held 0.7. `_1 _2 _7 _11 _M_10` stayed 0, and every one of them failed on a bullet
+that is present in `environment_backends.yaml`: the column-list ask, the KB flag beating top-N, the
+two-group screen-population ask, the identifier column on a single-entity summary, and - on
+`_M_10` - the ask-for-the-weights trigger this pass added to both composite descriptions, which the
+agent did not use before rebuilding the index with equal weights.
+**Projected arm 11.8/21 = 0.562 vs raw 0.267 = +29.5 pp (+110% relative), n=1, noisy.**
+Guidance COMPLIANCE is the binding constraint here; `scripts/guidance_compliance.py` is owed before
+any further bullet is written for this database. Total insider_trading spend this PRD: $4.87.
+
+## mental_health - 2026-08-28 pass
+
+**Starting point.** 0826 n=1 = 0.135 (base vector; the 0825 run had `grading_order_lint` ON and is
+not comparable) against raw n=3 0.113. B-61 (constant time_mark), B-62 (sim/gold contradictions),
+B-64 (fan-out) re-cited, not re-derived. Diagnosis at $0: `result_diff.py` on both n=1 runs, every
+trajectory, MCP probes graded with the harness comparator, ceiling re-sorts of gold's own rows.
+Detail: `progress.txt` § mental_health diagnosis (2026-08-31 iteration). Capped: 11 zeros
+(_1 _3 _4 _5 _6 _7 _8 _9 _11 _12 _14) + _13 p2. Reachable: _2 _10 _15 _16 _18 _20.
+
+**Changed (generator, one commit on main).**
+1. **`Systemically Stressed Facility Environment` flag + `Systemically Stressed Facility Count`**
+   (_10). KB 59 = Resource Demand Differential above the KB's gap bound AND the KB-43 attrition
+   condition. KB 59 is MASKED on the running task, so the flag ships under the standing
+   masked-term rule (cross_border 2026-08-27): the concept is NAMED with the KB's own qualitative
+   wording, the bound is applied inside the dataset SQL and stated in no published text, and the
+   description says to filter on 'Yes' and report the gap score beside the facility. This
+   supersedes the "ships as components only" note recorded in masked_allow.json on 08-20 (updated
+   in place). A10 flagged a false positive from its own YAML slicing (the PREVIOUS attribute's open
+   KB-43 thresholds glued onto the new flag's name line) - allowlisted with a reason. Pins: 1
+   'Yes', 67 judgeable.
+2. **Therapy-intensity columns fence off KB 67's bound** (_16 _18). Both hours columns
+   (assessment and patient grain) now say the 8 belongs to the intensive-care-coordination flag
+   ALONE and that the KB's therapy-standard compliance check takes the CALLER's target - ask,
+   never reuse a neighbouring flag's number. No other model change: SSE scale, alternate-basis
+   twins, assessment-grain fields and Text twins were all verified present and correct.
+
+**Guidance (ADK `config/environment_backends.yaml`, atscale block).** Extended: the quoted-literal
+bullet covers conditional/message outputs - ask the wording, submit the quoted literal verbatim
+(_15); the formula bullet - unstated constants are the caller's, never borrow an adjacent KB
+flag's number, apply the chosen missing-data basis to every input (_16 _18, insider _7); the
+population-ask bullet - correlations/statistics over per-entity rates ask whether zero-valued
+entities stay in (_2). New: single-entity audits report one row per underlying record and keep the
+identifier; cohort-filter-then-list-all via derived DISTINCT + INNER JOIN (IN-subquery refused)
+(_16 _20). Already covered, no change: grain key inside derived tables (the _18 p2 trap) by the
+existing grain bullet; IN-subquery rewrite by the dialect bullet.
+
+**Tracker rows (filed in US-019).** New/extended B: simulator steers away from gold on well-formed
+asks (_3 literal-vs-alternate, _12 five-column cap, _2 undisclosed tar>0 cut - B-62 family); gold
+tie order physical on _9/_14 (ceiling re-sort fails both id directions; the 0825 lint-on run is
+where their earlier passes came from); gold LIMIT 100 unstated (_13 p2, _4). New Q: three MCP
+guardrails with clean rewrites (AVG over CASE, IN-subquery, ORDER BY unprojected). E: two
+conformance gaps (Mean EAS x Patient Ethnicity; Clinician Confidence x Assessment Lead Clinician),
+both phases capped anyway.
+
+**Reported, not changed.** All of the above; no engine, MCP, grading or runner change. v10 gained
+`### What the 2026-08-28 mental_health pass changed` (general rules + the ceiling reasoning).
+
+**Measured:** pending US-016 (n=1 subset `scripts/tasks_mental_health_0828.txt`:
+_2 _10 _15 _16 _18 _20). Capped, not chased: _1 _3 _4 _5 _6 _7 _8 _9 _11 _12 _13(p2) _14.
+
+### Second pass - 2026-08-31
+
+**Measured, first pass** (`results/mental_health_0828_n1_atscale_20260831_180538`, n=1, 6 tasks,
+$2.5759): subset 0.0/6, the same as 0826. Projected arm unchanged at 2.7/20 = 0.135 vs raw 0.113,
+**+2.2 pp** (n=1, noisy). The US-010 model work did land - `_10` found the KB 59 flag and saw it
+select exactly the reference's single row, `_16` and `_18` got both unstated constants asked and
+answered right - and was then lost at the output-rendering step.
+
+**Second-pass model changes** (small, by design - every remaining failure is a rendering or
+query-shape defect, not a model gap). The patient-rollup and assessment-grain columns of the same
+meaning now name each other and say they DISAGREE: `Patient Primary Diagnosis` vs
+`Primary Diagnosis`, and the `Registered Site` level vs `Facility`, including that one is null
+where the other is populated. Why: `_20` spent eleven `run_query` calls discovering that
+disagreement and died at one submit.
+
+**Guidance added.** A computed pass/fail column has two renderings and flipping it is the FIRST
+resubmission when a confirmed-value answer is rejected - `_18`'s own submitted SQL with the flag
+as a bare comparison grades 1 on all 48 rows, and `_16`'s does with the grain key dropped from the
+output (probes `p_bool2.py`, `p_bool3.py`, $0). The grain key belongs inside the derived table,
+not in the answer's columns (`_16`). Cohort-then-list-all must derive each row's figure from the
+columns of the SAME record, with a `WHERE <text column> IS NOT NULL` inside the derived table to
+collapse the two-grain fan-out (`_20`). The literal-message rule (`_15`) already existed and did
+not fire - non-compliance, not absence.
+
+**Reported, not changed.** The A-60 bare-boolean default is absent from both
+`system_agent/agent.py` and the atscale config on this branch; it was pruned with the
+interaction-guidance move to `error_hints`. Corpus check run this pass: 65 reference queries emit
+`CASE ... THEN 1 ELSE 0` against ~35 bare comparisons, so the shared tip's numeric default is
+right corpus-wide and the atscale bullet is worded as a resubmission rule rather than a new
+default - the shared tip is off-limits under this PRD's non-goals. `_10` is a new and strong B-62
+instance (the agent named the flag, said it selects one facility, asked, and was overridden);
+`_2`'s reference carries an undisclosed population cut with `decimal:-1`.
+
+**Measured, second pass** (`results/mental_health_0828_n1b_atscale_20260831_203644`, n=1, 4 tasks,
+`cost_usd` **$1.5408**; collision check clean - 10 audit rows = 10 submits): subset **2.0/4**
+(was 0/4) - the first non-zero subset this database has produced in the whole PRD.
+`_18` 0 -> 1.0 and `_15` 0 -> 1.0. Both were cell-exact in the first pass and lost on rendering
+alone: `_18` on `CASE ... THEN 1 ELSE 0` where the reference prints a Postgres boolean, `_15` on an
+invented message string where the reference prints the wording the simulator had quoted. Restoring
+the bare-SQL-boolean default as an atscale bullet and making submit-the-literal a first-resubmission
+rule recovered both. `_16` and `_20` stayed 0 with the SAME 1/0 rendering the restored rule forbids
+(plus, on `_20`, the cohort built as same-row attribute filters instead of a DISTINCT cohort joined
+back) - so the rule is right and its application is uneven, which is the same compliance story as
+hulushows and insider_trading.
+**Projected arm 4.7/20 = 0.235 vs raw 0.113 = +12.2 pp (+108% relative), n=1, noisy.**
+Total mental_health spend this PRD: $4.12.
+
+## Five-database lift pass - 2026-08-31 close-out
+
+Close-out for the virtual_idol / polar_equipment / hulushows / insider_trading / mental_health pass
+recorded in the five `2026-08-28 pass` sections above. No model, code, engine, grading or runner
+change in this entry - it records where the findings went.
+
+**Result.** All five databases now show positive lift over the 2026-08-20 raw baseline, measured as
+the latest full-arm per-task vector with each re-run task's n=1 result substituted:
+
+| db | raw | arm before | projected after | lift | models-repo commits |
+|---|---|---|---|---|---|
+| virtual_idol | 0.158 | 0.289 | 0.379 | +22.1 pp | ab2f4df, 7bc92b2 |
+| polar_equipment | 0.158 | 0.255 | 0.405 | +24.7 pp | 5ee7503, 7bc92b2 |
+| hulushows | 0.212 | 0.205 | 0.320 | +10.8 pp | d1e4575, 7bc92b2 |
+| insider_trading | 0.267 | 0.405 | 0.562 | +29.5 pp | 339d0a6, 7bc92b2 |
+| mental_health | 0.113 | 0.135 | 0.235 | +12.2 pp | 339d0a6, 733bba2, 7bc92b2 |
+
+Total measured spend $21.18. **Every figure is n=1 and none is sheet-grade**: n>=3 plus a matching
+raw re-run is owed before any of it is quoted as a score. First-pass run files are committed as
+`scripts/tasks_<db>_0828.txt`. The second-pass subsets were held local: each is just the
+tasks a second-pass change touched, listed in that pass's entry above.
+
+**Model rows filed:** M-69 (virtual_idol), M-70 (polar_equipment), M-71 (hulushows),
+M-72 (insider_trading), M-73 (mental_health), each `fixed - measured` and naming its commits.
+
+**Reported, not changed** - every defect found across the five databases now has a tracker row:
+B-84 (the read-only guard fails closed on Postgres `~`, so offline re-grades of such references
+silently score 0), B-85 (concurrent evaluations share `db_environment` task state and grade against
+the wrong phase), B-86 (`GRADING_AUDIT_PATH` never reaches the services), B-87 (guidance
+non-compliance, not absence, now caps four of the five databases at 63,119 instruction characters),
+B-88..B-92 (reference caps, one row per database), B-93 (`execute_queries` MAX_ROWS = 10000 makes a
+larger reference unmatchable), E-12 (plan-shape-dependent aggregate refusal, two reproductions),
+E-13 (dialect deltas: CUBE/ROLLUP/GROUPING SETS refused, UNION refused outright, percentile metrics
+work where the bare function does not, and a window alias IS filterable in an outer WHERE),
+Q-39 (a window function over a measure in a flat SELECT is evaluated at the wrong grain - silent,
+798 of 1000 ranks wrong, proved at dispatch), Q-40 (five MCP pre-dispatch guardrails with their
+working rewrites). A-60, B-62, Q-38 and Q-09 gained notes rather than new rows.
+
+**The one cross-cutting lesson.** Four of the five databases are now limited by guidance
+*non-compliance* rather than guidance absence - bullets that are present in the instruction and are
+not applied. `scripts/guidance_compliance.py` on these runs is owed before another bullet is
+written; count "ask fired" and "answer applied" as two separate outcomes when judging one.
