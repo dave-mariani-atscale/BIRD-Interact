@@ -276,6 +276,14 @@ def submit_sql(sql: str, tool_context: ToolContext) -> str:
             feedback.record_submission_verdict(
                 tool_context.state, sql, bool(data.get("passed")), raw_msg
             )
+            # From here the agent is answering the follow-up, so memory must key
+            # on ITS question. Left unchanged, every phase-2 run_query and verdict
+            # landed on the phase-1 question: phase-2 rejections polluted the
+            # phase-1 ledger, and because phase 1 already had an accepted row the
+            # ledger went silent for phase 2 entirely. Set AFTER the verdict above,
+            # which belongs to the phase-1 question.
+            if data.get("passed") and data.get("phase_completed") == 1 and data.get("has_follow_up"):
+                tool_context.state["user_query"] = str(data.get("follow_up_query") or "")
             # Clean message for agent
             agent_msg = raw_msg.replace("[exec_err_flg] ", "")
             parts = [agent_msg]
