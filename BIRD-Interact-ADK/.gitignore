@@ -39,6 +39,8 @@ scripts/[0-9]*run.sh
 scripts/run_*.sh
 # One-off task lists for --tasks, same reason as the runner scripts above
 scripts/tasks_*.txt
+# One-off scorers written for a single run's output layout
+scripts/analyze_organ5.py
 
 # Holds a live Apps Script deployment URL + write token
 scripts/sheet.py
@@ -88,3 +90,6 @@ Thumbs.db
 
 # offline re-grade row caches (large, regenerable)
 .regrade_cache_*.pkl
+
+# local working files (handoff notes, run timestamps, one-off diagnostics)
+scratch/
