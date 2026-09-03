@@ -462,7 +462,13 @@ def canonical_cell(value) -> str:
     with int 100.
     """
     if isinstance(value, bool):
-        return str(value)  # bool is an int subclass — keep it out of the numeric branch
+        # Parity with the raw path: there Python's own equality treats True == 1
+        # and False == 0 (bool is an int subclass), so a submitted 1/0 flag
+        # matches a gold boolean. Rendering "True"/"False" here made the same
+        # flag unmatchable on the semantic-layer path only. 64 of the 600 golds
+        # project a bare aliased comparison (mental_health_16/17/18/20 among
+        # them), and the agent prompt tells both arms to write 1/0.
+        return "1" if value else "0"
     if isinstance(value, (int, float, Decimal)):
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
