@@ -41,6 +41,14 @@ class SubmitSQLResponse(BaseModel):
     phase_completed: Optional[int] = None
     has_follow_up: bool = False
     follow_up_query: Optional[str] = None
+    #: The engine's id for the grading execution of this submission, on a
+    #: semantic-layer backend. Carried so the run's own results JSON records
+    #: which engine query produced the graded answer: that file is one run by
+    #: construction, so attribution needs no timestamp matching against the
+    #: long-lived services. None on the raw backend, which never touches the
+    #: engine. Never shown to the agent - system_agent/tools.py composes the
+    #: agent-visible text from named fields, and this is not one of them.
+    query_id: Optional[str] = None
 
 
 class SchemaRequest(BaseModel):

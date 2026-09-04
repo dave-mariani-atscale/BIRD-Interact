@@ -260,6 +260,14 @@ def submit_sql(sql: str, tool_context: ToolContext) -> str:
             raw_msg = data.get("message", "")
             # Store raw message for orchestrator (has [exec_err_flg] for debug routing)
             tool_context.state["_last_submit_raw"] = raw_msg
+            # The engine id of the grading execution, stashed for
+            # after_tool_callback to record on this step's trajectory entry.
+            # Routed through state rather than the return value on purpose: the
+            # agent-visible text below is composed from named fields, so the id
+            # reaches the run's results JSON without ever reaching the agent.
+            # Written on every submit (None included) so a later submit cannot
+            # inherit an earlier one's id.
+            tool_context.state["_last_submit_query_id"] = data.get("query_id")
 
             # Feedback memory (flag-gated, telemetry only): the simulated user
             # just told the agent whether this answer was right — record that

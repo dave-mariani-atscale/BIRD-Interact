@@ -217,6 +217,15 @@ async def after_tool_callback(
         if isinstance(tool_response, (dict, list)) else str(tool_response))
     if qids:
         step["query_ids"] = qids
+    # submit_sql's own text carries no id - the grading execution happens inside
+    # the environment service - so the id comes from state, where the tool put
+    # it. This is the one that matters: grading re-executes every submission, so
+    # it exists even for SQL the agent never ran itself, and it lands in a
+    # results JSON that is one run by construction.
+    if tool_name == "submit_sql":
+        graded = tool_context.state.get("_last_submit_query_id")
+        if graded:
+            step["query_id"] = graded
     trajectory.append(step)
     tool_context.state["tool_trajectory"] = trajectory
 

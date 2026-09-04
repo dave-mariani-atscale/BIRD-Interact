@@ -423,11 +423,13 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                     else:
                         return SubmitSQLResponse(
                             passed=True, message=f"Phase 1 correct! (Reward: {reward}). Task finished.",
-                            reward=reward, phase_completed=1, has_follow_up=False)
+                            reward=reward, phase_completed=1, has_follow_up=False,
+                            query_id=graded_query_id)
                 else:
                     return SubmitSQLResponse(
                         passed=True, message=f"Phase 2 correct! (Reward: {reward}). Task finished.",
-                        reward=reward, phase_completed=2, has_follow_up=False)
+                        reward=reward, phase_completed=2, has_follow_up=False,
+                        query_id=graded_query_id)
             else:
                 # Failed: restore task DB to pre-submit state for agent exploration
                 if current_phase == 1:
@@ -439,7 +441,7 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
 
                 return SubmitSQLResponse(
                     passed=False, message=f"SQL failed Phase {current_phase}. {message}",
-                    reward=0.0)
+                    reward=0.0, query_id=graded_query_id)
         except Exception as inner_e:
             try: pool.putconn(conn)
             except: pass
