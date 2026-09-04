@@ -347,85 +347,6 @@ def process_decimals_recursive(item, decimal_places: int):
     return item
 
 
-def resolve_decimal_places(conditions) -> int:
-    """Rounding precision for a comparison, from the task's `conditions.decimal`.
-
-    The dataset uses -1 for "this task states no precision requirement", NOT
-    "round to the nearest 10" — which is what passing it through to
-    round()/Decimal.scaleb() literally does. Falls back to 2, the precision this
-    harness uses when a task is silent.
-
-    Honoring `decimal` at all is an ADK choice: upstream BIRD-Interact always
-    preprocesses at 2, so scores for tasks declaring `decimal >= 0 and != 2` are
-    not directly comparable to published numbers. Gated on
-    settings.grading_honor_decimal, which is off by default; see that field.
-    """
-    if not settings.grading_honor_decimal:
-        return 2  # upstream: preprocess_results' default, conditions ignored
-    dp = (conditions or {}).get("decimal")
-    return dp if isinstance(dp, int) and dp >= 0 else 2
-
-
-_ORDER_LINT: Optional[set] = None
-
-
-def _order_lint_phases() -> set:
-    """The (task_id, phase) pairs whose gold does not determine its own row
-    order, loaded once from settings.grading_order_lint_path."""
-    global _ORDER_LINT
-    if _ORDER_LINT is None:
-        path = settings.grading_order_lint_path
-        if not os.path.isabs(path):
-            # Resolved against the repo root, not the working directory: the
-            # services are started from there but a script or a test need not
-            # be, and a missing list degrades silently to upstream behaviour.
-            path = os.path.join(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))), path)
-        try:
-            with open(path) as f:
-                doc = json.load(f)
-            _ORDER_LINT = {(t, int(p)) for t, p in doc.get("phases", [])}
-        except Exception:
-            logger.warning("order lint list unreadable at %s — order graded as "
-                           "upstream does", settings.grading_order_lint_path,
-                           exc_info=True)
-            _ORDER_LINT = set()
-    return _ORDER_LINT
-
-
-def apply_order_lint(conditions, task_id: str, phase: int):
-    """Drop `order` from a phase whose gold does not determine an order.
-
-    `order: true` makes the grader compare row by row, which is only answerable
-    if gold's own ORDER BY totally orders its result. Measured over all 22
-    databases by replanning gold (scripts/bird_order_lint.py): on 68 of 438
-    order-sensitive phases — 57 tasks — it does not, and the "expected" order
-    is whichever one Postgres's chosen plan happened to emit. Nothing
-    reproduces that except by luck, and an engine that is not Postgres never
-    gets the luck.
-
-    So on those phases the order is not graded at all. That is coarser than
-    _ordered_match_tolerating_ties, which still grades the part of the order
-    gold DOES fix — but it needs no heuristic, it is decided by gold alone, and
-    it covers the 20 phases where the sort key cannot be inferred at all. The
-    two are complementary and both are on: this one where gold is provably
-    arbitrary, the tie tolerance everywhere else.
-
-    Returns `conditions` unchanged unless the flag is on AND the phase is
-    listed, so a run with the flag off is bit-identical to upstream here.
-    """
-    if not settings.grading_order_lint or not conditions:
-        return conditions
-    if not conditions.get("order"):
-        return conditions
-    if (task_id, int(phase)) not in _order_lint_phases():
-        return conditions
-    lifted = dict(conditions)
-    lifted["order"] = False
-    lifted["_order_lint"] = True     # recorded in the grading audit
-    return lifted
-
-
 def canonical_cell(value) -> str:
     """Render a cell for cross-source string comparison.
 
@@ -433,7 +354,7 @@ def canonical_cell(value) -> str:
     vs 186709472.0, Decimal('6.90') vs 6.9 — so str() alone reports equal values
     as unequal. Numerics collapse to one fixed-point form.
 
-    String values are case-folded when settings.grading_casefold is on. Gold SQL
+    String values are returned as-is, as upstream compares them. Gold SQL
     frequently wraps a text column in LOWER(...) (e.g. `LOWER(pm.pnlkind)`) that
     the agent has no way to see or replicate — a semantic layer's dimension
     attribute returns its own stored display casing (e.g. "Bifacial"), not gold's
@@ -477,253 +398,7 @@ def canonical_cell(value) -> str:
         stamp = _TIMESTAMP_STR_RE.match(text.strip())
         if stamp:
             return stamp.group(1)
-    return text.lower() if settings.grading_casefold else text
-
-
-def _cell_cmp(a, b) -> Optional[int]:
-    """Three-way compare of two cells, numerically when both look numeric and
-    as case-folded strings otherwise. None means "not orderable" (a NULL, or a
-    pair that can't be compared), which disqualifies a column from being
-    treated as a sort key."""
-    if a is None or b is None:
-        return None
-    an, bn = _try_parse_number(a), _try_parse_number(b)
-    if an is not None and bn is not None:
-        return (an > bn) - (an < bn)
-    try:
-        sa, sb = str(a).lower(), str(b).lower()
-    except Exception:
-        return None
-    return (sa > sb) - (sa < sb)
-
-
-def _sort_key_indices(gt_res) -> Optional[List[int]]:
-    """Infer which columns the gold result is ORDERed BY, as column indices.
-    None means "no column qualifies" — see the fallback note at the end.
-
-    The tie-tolerant comparisons need to know which columns rows may be
-    permuted within. This used to assume the sort column was the LAST one,
-    which holds for the "label, value ORDER BY value" shape but silently breaks
-    whenever the sorted measure is not last: with a 3-column
-    (id, measure, category) result sorted on the measure, grouping by the
-    category collapses the run structure and an entirely correct answer fails.
-    Confirmed live on a task where 375 of 1000 rows tied on the sort column and
-    the two engines broke those ties differently.
-
-    A column qualifies if gold's values are monotonic across the whole result
-    AND it has at least two distinct values. The constant-column exclusion
-    matters: a single-valued column is trivially monotonic, and grouping on it
-    would collapse every row into one group, silently turning an ordered
-    comparison into an unordered one.
-
-    Among qualifying columns, pick the one with the FEWEST distinct values.
-    Several columns can be monotonic at once — an id or label column is often
-    incidentally sorted too — and including those would make the key finer than
-    the true sort expression, giving every row its own group and destroying the
-    very tie tolerance this exists to provide. The sort measure is the coarsest
-    of the monotonic columns; an identifier is the finest. Ties in distinct-count
-    prefer the rightmost column, which reproduces the historical behaviour on
-    the "label, value ORDER BY value" shape.
-
-    When NOTHING qualifies this returns None and the callers forgive nothing.
-    It used to fall back to the last column, which is the B-22 over-reach: if
-    that column is constant, every row lands in ONE tie group and the ordered
-    comparison silently becomes an unordered one. Measured over all 22
-    databases (365 multi-row order-sensitive phases): the fallback fired on 33
-    and collapsed to a single group on 10, `exchange_traded_funds_6` among
-    them. A tie tolerance that cannot identify the sort key must not forgive a
-    permutation. Cost, measured by replanning gold across the 68 phases whose
-    order gold does not itself determine: rescues drop from 57 to 48. The other
-    20 are covered by settings.grading_order_lint, which uses measured evidence
-    rather than this heuristic.
-    """
-    if not gt_res:
-        return None
-    width = len(gt_res[0])
-    best, best_distinct = None, None
-    for c in range(width):
-        col = [row[c] for row in gt_res]
-        cmps = [_cell_cmp(col[i], col[i + 1]) for i in range(len(col) - 1)]
-        if any(x is None for x in cmps):
-            continue
-        if not (all(x <= 0 for x in cmps) or all(x >= 0 for x in cmps)):
-            continue
-        if all(x == 0 for x in cmps):
-            continue  # constant column — would collapse the whole result into one group
-        # count distinct by adjacent change, since the column is monotonic
-        distinct = 1 + sum(1 for x in cmps if x != 0)
-        if best_distinct is None or distinct <= best_distinct:
-            best, best_distinct = c, distinct
-    return [best] if best is not None else None
-
-
-def _ordered_match_tolerating_ties(pred_res, gt_res) -> bool:
-    """True when pred differs from gold only by reordering rows that TIE on the
-    (assumed) sort column.
-
-    Gold SQL and a semantic layer are two different execution engines with no
-    shared tie-breaking convention — SQL never guarantees a stable order among
-    rows equal on the ORDER BY expression, and rounding to the task's decimal
-    precision makes ties far more likely than the underlying raw data would
-    suggest. Confirmed live: gold's own 336-row result for one task had 8 tied
-    pairs after rounding, with neither gold's nor the agent's query supplying a
-    secondary tiebreaker — an exact-order comparison fails on these even when
-    every value is correct.
-
-    The sort key is inferred by _sort_key_indices (every column gold is
-    monotonic in, excluding constants) rather than assumed to be the last
-    column, which was wrong whenever the sorted measure was not last. Group
-    GOLD rows into consecutive runs sharing that key, then verify the PREDICTED
-    rows occupying that same index range form the identical set (order within
-    the tied group doesn't matter), and that groups appear in the same overall
-    sequence. Falls back to an exact match on any structural mismatch (row
-    count, or a tie-group heuristic that doesn't hold for this shape) rather
-    than silently passing.
-
-    Counter, not set(): a tie group holding the same row twice would compare
-    equal to one holding it once alongside a different row.
-
-    Called on canonical_cell output on the cross-source path, so 4.68 and
-    Decimal('4.68') group together. Only equality is used, never `<` — nothing
-    here breaks on strings the way an ordering comparison would.
-    """
-    if len(pred_res) != len(gt_res):
-        return False
-    if not gt_res:
-        return True
-    key_idxs = _sort_key_indices(gt_res)
-    if key_idxs is None:
-        return False        # no inferable sort key — forgive nothing (B-22)
-    groups = []
-    for row in gt_res:
-        key = tuple(row[i] for i in key_idxs)
-        if groups and groups[-1][0] == key:
-            groups[-1][1].append(row)
-        else:
-            groups.append((key, [row]))
-    idx = 0
-    for _key, group_rows in groups:
-        n = len(group_rows)
-        if Counter(pred_res[idx:idx + n]) != Counter(group_rows):
-            return False
-        idx += n
-    return True
-
-
-def _try_parse_number(value) -> Optional[float]:
-    """Best-effort float parse; None (not 0) for anything non-numeric, so
-    callers can tell "not a number" apart from "the number zero"."""
-    if isinstance(value, bool):
-        return None  # bool is an int subclass — don't let True/False parse as 1.0/0.0
-    if isinstance(value, (int, float, Decimal)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return None
-    return None
-
-
-def _values_close(a, b, rel_tol: Optional[float] = None, abs_tol: float = 1e-9) -> bool:
-    """Numeric values within a tight relative tolerance count as equal;
-    everything else falls back to case-folded string equality (same rule
-    canonical_cell applies to non-numerics).
-
-    rel_tol defaults to settings.grading_rel_tolerance_value rather than to a
-    literal, so the declared knob actually reaches the comparison. It used to
-    default to 1e-6 here while the setting was read nowhere, which made the
-    config field inert and silently un-tunable (tracker B-20). Callers may
-    still pass a tolerance explicitly to pin one independent of the setting.
-    """
-    if rel_tol is None:
-        rel_tol = settings.grading_rel_tolerance_value
-    a_num, b_num = _try_parse_number(a), _try_parse_number(b)
-    if a_num is not None and b_num is not None:
-        return math.isclose(a_num, b_num, rel_tol=rel_tol, abs_tol=abs_tol)
-    return str(a).lower() == str(b).lower()
-
-
-def _rows_close(row_a, row_b) -> bool:
-    return len(row_a) == len(row_b) and all(_values_close(x, y) for x, y in zip(row_a, row_b))
-
-
-def _multiset_match_tolerant(pred_res, gt_res) -> bool:
-    """Unordered row-set equality, but a row "matches" another if every cell
-    is _values_close rather than ==. O(n^2); fine at the row counts this
-    benchmark's queries return."""
-    if len(pred_res) != len(gt_res):
-        return False
-    remaining = list(gt_res)
-    for p in pred_res:
-        for i, g in enumerate(remaining):
-            if _rows_close(p, g):
-                remaining.pop(i)
-                break
-        else:
-            return False
-    return True
-
-
-def _ordered_match_tolerating_ties_numeric(pred_res, gt_res) -> bool:
-    """_ordered_match_tolerating_ties, but both the tie-grouping key
-    comparison and the within-group set comparison use _values_close instead
-    of ==, so a numeric-precision-noise mismatch can't itself break the tie
-    grouping it's meant to look past."""
-    if len(pred_res) != len(gt_res):
-        return False
-    if not gt_res:
-        return True
-    key_idxs = _sort_key_indices(gt_res)
-    if key_idxs is None:
-        return False        # no inferable sort key — forgive nothing (B-22)
-    groups = []
-    for row in gt_res:
-        key = tuple(row[i] for i in key_idxs)
-        if groups and len(groups[-1][0]) == len(key) and all(
-                _values_close(a, b) for a, b in zip(groups[-1][0], key)):
-            groups[-1][1].append(row)
-        else:
-            groups.append((key, [row]))
-    idx = 0
-    for _key, group_rows in groups:
-        n = len(group_rows)
-        if not _multiset_match_tolerant(list(pred_res[idx:idx + n]), group_rows):
-            return False
-        idx += n
-    return True
-
-
-def _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) -> bool:
-    """Fallback comparison for the cross-source path: True if pred_res and
-    gt_res match once numeric cells are compared with a tight relative
-    tolerance instead of exact string equality.
-
-    Exists to absorb float32-vs-float64 precision noise a semantic layer and
-    Postgres can each introduce independently of the query being right or
-    wrong — e.g. a warehouse casting one operand to `::real` mid-formula.
-    Confirmed live: a semantic-layer answer matching gold to 9 significant
-    figures still failed the exact comparison by about 1 part in 760 million,
-    solely from gold's own float32 cast, with no error in either query.
-
-    Deliberately only ever called AFTER the exact/tie-tolerant comparison in
-    _compare_rows has already failed — it must never be the reason a
-    genuinely wrong answer passes, only the reason a right-to-many-more-sig-
-    figs-than-the-task-asks-for answer isn't marked wrong. Operates on the
-    PRE-rounding row values (not the decimal-place-rounded ones _compare_rows
-    sees), since rounding two nearby-but-not-identical floats can itself
-    round them to different displayed values before this tolerance ever gets
-    a chance to see how close they really were.
-    """
-    if conditions and conditions.get("order", False):
-        if _rows_close_ordered(pred_res, gt_res):
-            return True
-        return _ordered_match_tolerating_ties_numeric(pred_res, gt_res)
-    return _multiset_match_tolerant(pred_res, gt_res)
-
-
-def _rows_close_ordered(pred_res, gt_res) -> bool:
-    return len(pred_res) == len(gt_res) and all(_rows_close(p, g) for p, g in zip(pred_res, gt_res))
+    return text
 
 
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
@@ -739,14 +414,7 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
         pred_cells = [tuple(cell(v) for v in row) for row in pred_res]
         gt_cells = [tuple(cell(v) for v in row) for row in gt_res]
     if conditions and conditions.get("order", False):
-        if pred_cells == gt_cells:
-            return 1
-        # Same rows in a different order: only a tie permutation is forgiven,
-        # and only when settings.grading_tie_tolerance is on. Upstream stops at
-        # the strict compare above.
-        if not settings.grading_tie_tolerance:
-            return 0
-        return 1 if _ordered_match_tolerating_ties(pred_cells, gt_cells) else 0
+        return 1 if pred_cells == gt_cells else 0
     return 1 if set(pred_cells) == set(gt_cells) else 0
 
 
@@ -935,20 +603,11 @@ def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if any([pred_err, pred_to, gt_err, gt_to]):
         return 0
-    decimal_places = resolve_decimal_places(conditions)
-    pred_raw, gt_raw = pred_res, gt_res
-    pred_res = preprocess_results(pred_res, decimal_places)
-    gt_res = preprocess_results(gt_res, decimal_places)
+    pred_res = preprocess_results(pred_res)
+    gt_res = preprocess_results(gt_res)
     if not pred_res or not gt_res:
         return 0
-    score = _compare_rows(pred_res, gt_res, conditions)
-    # Same tolerant fallback as the semantic-layer path (ex_base_external_pred),
-    # deliberately the same function: grading must not differ by arm, or the
-    # lift number measures the grader instead of the semantic layer. The gap it
-    # tolerates comes from grading_rel_tolerance_value on both arms (B-20).
-    if score == 0 and settings.grading_rel_tolerance:
-        score = 1 if _compare_rows_numeric_tolerant(pred_raw, gt_raw, conditions) else 0
-    return score
+    return _compare_rows(pred_res, gt_res, conditions)
 
 
 def _json_safe(value):
@@ -1139,24 +798,12 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
-    decimal_places = resolve_decimal_places(conditions)
-    pred_rounded = preprocess_results(pred_res, decimal_places)
-    gt_rounded = preprocess_results(gt_res, decimal_places)
+    pred_rounded = preprocess_results(pred_res)
+    gt_rounded = preprocess_results(gt_res)
     if not gt_rounded:
         return 0
-    if _compare_rows(pred_rounded, gt_rounded, conditions, cell=canonical_cell):
-        return 1
-    # Merge 2026-08-11: the tolerant fallback arrived from
-    # feature/atscale-mcp-semantic-layer ungated, i.e. on for every run. Kept
-    # behind grading_rel_tolerance (default false, as it already was here)
-    # because it can only turn a 0 into a 1, so leaving it always-on silently
-    # raises scores on BOTH arms and makes a totals number non-comparable to
-    # every earlier run and to published BIRD-Interact numbers. The flag is
-    # recorded in the results deviations block; flip it to adopt the branch's
-    # behaviour deliberately rather than as a side effect of a merge.
-    if not settings.grading_rel_tolerance:
-        return 0
-    return 1 if _compare_rows_numeric_tolerant(pred_res, gt_res, conditions) else 0
+    return 1 if _compare_rows(pred_rounded, gt_rounded, conditions,
+                              cell=canonical_cell) else 0
 
 
 def grade_raw_submission(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
@@ -1168,8 +815,7 @@ def grade_raw_submission(pred_sqls, sol_sqls, db_name, conn, conditions=None) ->
     test cases call it with their own preparation — so calling it directly is a
     trap: gold keeps its ROUND() while the prediction loses its own, and the two
     are then compared at different precisions. That trap has now been walked
-    into twice in offline tools (scripts/regrade_flags.py, then
-    scripts/score_dual.py on the same day), and both times it was invisible
+    into twice in offline tools, on the same day, and both times it was invisible
     until a re-grade failed to reproduce the run it was replaying. An oracle
     smoke test cannot catch it, because there the prediction IS gold and both
     sides agree however they are cleaned.

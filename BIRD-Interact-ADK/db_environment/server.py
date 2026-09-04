@@ -17,8 +17,8 @@ from shared.db_utils import (
     extract_query_id,
     remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
-    canonical_cell, preprocess_results, resolve_decimal_places,
-    record_graded_submission, apply_order_lint,
+    canonical_cell, preprocess_results,
+    record_graded_submission,
 )
 from shared.environment_backends import get_domain_config, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
@@ -234,13 +234,6 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
 
             if isinstance(sol_sqls, str): sol_sqls = [sol_sqls]
             pred_sqls = [req_sql] if isinstance(req_sql, str) else req_sql
-
-            # Both arms, one call site: a phase whose gold does not determine a
-            # row order is not graded on order. No-op unless
-            # settings.grading_order_lint is on. The lifted conditions are what
-            # gets recorded in the grading audit, so a re-grade sees the same
-            # decision this run made.
-            conditions = apply_order_lint(conditions, req_task_id, current_phase)
 
             passed = False
             message = "Test case execution failed."
@@ -530,14 +523,7 @@ async def set_backend(req: SetBackendRequest):
 # off in the runner's recorded `deviations`), which cost a mental_health
 # comparison. Exposed on /health so the runner can record what actually graded.
 GRADING_REGIME_KEYS = (
-    "grading_tie_tolerance",
-    "grading_honor_decimal",
-    "grading_casefold",
     "grading_timestamp_date",
-    "grading_rel_tolerance",
-    "grading_rel_tolerance_value",
-    "grading_order_lint",
-    "grading_order_lint_path",
 )
 
 

@@ -74,8 +74,8 @@ Strategy:
 #
 # The ORDER BY bullet used to be two: one saying "don't invent a sort" and a
 # second one carving grouped results back out of it (tracker B-42). Both are now
-# one narrowed bullet. Measured 2026-08-18 with scripts/counterfactual.py and
-# scripts/rule_exposure.py over 122 stored runs: on the 264 submissions where the
+# one narrowed bullet. Measured 2026-08-18 over 122 stored runs: on the 264
+# submissions where the
 # carve-out applied, 259 already sorted their grouped result with nothing telling
 # them to, and the single live conversion it could claim (crypto_exchange_6 phase
 # 2) was a regression the un-narrowed first bullet had itself caused. A second

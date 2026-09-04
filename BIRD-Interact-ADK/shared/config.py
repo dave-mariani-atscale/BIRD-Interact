@@ -100,53 +100,18 @@ class Settings(BaseSettings):
     semantic_layer_mcp_url: str = ""
     semantic_layer_mcp_token: str = ""
 
-    # ── Deviations from upstream BIRD-Interact's protocol ──
-    # Each defaults to upstream behaviour, so a clean checkout reproduces
-    # published numbers. Turning any of them on makes a run non-comparable, so
-    # each is recorded in the results JSON so scores stay self-describing.
+    # ── Deviation from upstream BIRD-Interact's protocol ──
+    # One remains, and it defaults ON. It is recorded in the results JSON so a
+    # score stays self-describing. The opt-in grading tolerances that used to
+    # live here (tie permutations, case folding, per-task decimal places, a
+    # relative numeric tolerance, an order lint) were removed on 2026-09-04:
+    # every one stayed off for every scored run, so the code behind them had
+    # never graded anything, and upstream's behaviour is what off already did.
     # Verified against the reference implementation checked out beside this repo
     # (bird_interact_agent/, evaluation/) on 2026-08-04 — see the tracker's
     # B-06, B-09 and B-10.
 
-    # GRADING. Upstream compares ordered results with a bare
-    # `predicted_res == ground_res` (test_case_utils/test_utils.py). When gold's
-    # ORDER BY key has duplicate values, the order within a tied block is
-    # arbitrary and the two sources legitimately disagree. True forgives a
-    # permutation confined to ties; False keeps upstream's strict compare.
-    #
-    # Only meaningful where the sort key can be inferred from gold's result.
-    # Where it cannot, db_utils._sort_key_indices returns None and nothing is
-    # forgiven (B-22) — grading_order_lint covers those phases instead.
-    grading_tie_tolerance: bool = False
-
-    # GRADING. Grade row order only where gold determines one. Measured over all
-    # 22 databases by replanning gold (scripts/bird_order_lint.py): 68 of 438
-    # order-sensitive phases carry `order: true` over a gold whose own ORDER BY
-    # leaves the order to the plan. True compares those as multisets; False
-    # keeps upstream's row-by-row compare. See db_utils.apply_order_lint.
-    grading_order_lint: bool = False
-    # The list the flag above consumes. Regenerate with
-    #   python scripts/bird_order_lint.py --write config/order_undetermined.json <all 22 dbs>
-    # An unreadable file degrades to upstream behaviour with a warning, never
-    # to silently forgiving more.
-    grading_order_lint_path: str = "config/order_undetermined.json"
-
-    # GRADING. Upstream never reads conditions["decimal"] — it always rounds to
-    # 2 (preprocess_results' default). True honours each task's declared
-    # precision, which differs from upstream on the 125 of 600 tasks that
-    # declare `decimal >= 0 and != 2`. Note -1 means "unspecified" and resolves
-    # to 2 either way, so 377 tasks are unaffected by this flag.
-    grading_honor_decimal: bool = False
-
-    # GRADING (semantic-layer path only). Gold SQL often wraps a text column in
-    # LOWER(...) the agent cannot see, while a semantic layer returns its stored
-    # display casing ("Bifacial" vs gold's "bifacial") — a numerically-correct
-    # submission can fail on casing alone. True case-folds string cells in
-    # canonical_cell; False compares them as-is. No effect on the raw path,
-    # which never passes a `cell` hook to _compare_rows.
-    grading_casefold: bool = False
-
-    # GRADING (semantic-layer path only, same `cell` hook as casefold above).
+    # GRADING (semantic-layer path only, via canonical_cell).
     # True truncates a timestamp STRING to its date. Unlike the other flags here
     # this defaults to ON, because it removes an asymmetry rather than adding a
     # tolerance: preprocess_results already truncates a TYPED date/datetime to
@@ -160,42 +125,9 @@ class Settings(BaseSettings):
     # The cost of ON, stated because it is a real one: gold text that merely
     # LOOKS like a timestamp is truncated on both sides, so '... 08:00:00' and
     # '... 23:59:59' compare equal. No shipped gold projects a timestamp as text
-    # today; re-check with scripts/regrade_flags.py if one does.
+    # today; re-check the golds if one ever does.
     grading_timestamp_date: bool = True
 
-    # GRADING. Upstream compares numerics only after rounding to a fixed
-    # precision, with no tolerance. True adds a relative-tolerance retry on the
-    # RAW pre-rounding rows, applied only after the exact comparison has already
-    # failed — so it can turn a 0 into a 1 and never the reverse. It exists for
-    # gold SQL that casts an operand to ::real (float32), which shifts an
-    # otherwise-correct answer by ~1 part in 7.6e8; rounding cannot fix that,
-    # because two values either side of a decimal boundary round apart. See
-    # db_utils._rows_close. False keeps upstream's exact compare.
-    grading_rel_tolerance: bool = False
-    # The relative gap tolerated when the flag above is on. Read by
-    # db_utils._values_close; until 2026-08-11 that function hardcoded 1e-6 and
-    # this field was declared but never read, so the knob was inert (B-20).
-    #
-    # 1e-6 is ~700x looser than the float32 artefact it was chosen for, but it
-    # is NOT loose enough for every real artefact: archeology_scan_7 asks for a
-    # composite index summed over per-site groups, where float64 accumulation
-    # order alone puts the two engines up to 1.13e-5 apart on the worst of 3298
-    # cells (median 2.8e-8, p99 1.6e-6). That task needs >=1.5e-5. Raising this
-    # to 2e-5 rescues it and nothing else — swept over the whole 0811 audit,
-    # every value from 1e-6 to 1e-2 rescues exactly the same one submission —
-    # but it is a real loosening, so it stays a deliberate choice rather than
-    # the default.
-    #
-    # Re-measured 2026-08-14 over all 930 audited submissions, and the answer is
-    # now a firm no: 2e-5 adds exactly one phase over 1e-6 — crypto_exchange_4
-    # phase 2, on the RAW arm — and it works by absorbing gold's own
-    # float4->numeric truncation to 6 significant digits (defect C2), not
-    # cross-engine noise. At 2e-5 the forgiven gap on a 7-digit value is larger
-    # than one unit at the precision the task is graded to, which is the line
-    # that makes a tolerance defensible at all: it must stay below the graded
-    # precision, or it stops distinguishing a representation artefact from a
-    # different answer.
-    grading_rel_tolerance_value: float = 1e-6
 
     # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
     # JSONL file recording one row per LLM call (role, model, tokens, cache
@@ -219,9 +151,8 @@ class Settings(BaseSettings):
     # Defaulted ON 2026-08-14. It was opt-in, and the runs that most needed
     # re-grading are exactly the ones nobody thought to enable it for. Every
     # grading flag below is a deviation, so every recorded score needs to stay
-    # convertible back to upstream's regime (scripts/score_dual.py) — which is
-    # only possible if the rows were kept. Costs a few MB per run and changes
-    # no verdict.
+    # re-gradable offline — which is only possible if the rows were kept.
+    # Costs a few MB per run and changes no verdict.
     grading_audit_path: str = "results/grading_audit.jsonl"
 
     # FEEDBACK MEMORY (semantic-layer path only; telemetry capture, P1 of the

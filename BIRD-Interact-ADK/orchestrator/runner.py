@@ -59,21 +59,14 @@ async def run_parallel_evaluation(
             **(meta or {}),
             # This run's wall-clock window. llm_usage rows were already
             # attributed by time; grading-audit rows now are too, which is what
-            # lets scripts/score_dual.py re-score a finished run under a
-            # different grading regime without spending a re-run.
+            # lets a finished run be re-scored offline without a re-run.
             "run_started": run_started,
             "run_finished": time.time(),
             "grading_audit_path": settings.grading_audit_path,
             # Deviations from upstream's protocol, all off by default. Recorded
             # so a totals number always carries the regime that produced it.
             "deviations": {
-                "grading_tie_tolerance": settings.grading_tie_tolerance,
-                "grading_honor_decimal": settings.grading_honor_decimal,
-                "grading_casefold": settings.grading_casefold,
                 "grading_timestamp_date": settings.grading_timestamp_date,
-                "grading_rel_tolerance": settings.grading_rel_tolerance,
-                "grading_rel_tolerance_value": settings.grading_rel_tolerance_value,
-                "grading_order_lint": settings.grading_order_lint,
                 "feedback_memory": settings.feedback_memory,
             },
             # API spend for this run, split by role and model. Sits next to the
@@ -335,7 +328,7 @@ def _fetch_graded_regime() -> dict:
     Grading happens in that process, so its settings are the authoritative
     ones; the `deviations` block this runner writes reads THIS process's env.
     The two are separate processes with separate environments, and on
-    2026-08-25/26 they disagreed — the service had grading_order_lint on, the
+    2026-08-25/26 they disagreed — the service had an order lint on, the
     recorded deviations said off, and two mental_health runs whose numbers
     differed by exactly that flag were compared as if they were comparable.
     Recorded alongside `deviations` as `deviations_as_graded`, and any

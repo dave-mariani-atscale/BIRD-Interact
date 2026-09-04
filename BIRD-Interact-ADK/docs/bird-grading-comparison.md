@@ -715,3 +715,40 @@ close the class:
 
 Defect F is not an excuse to soften either gate: all 28 of its phases were
 measured stable across ordinary reruns (§6b).
+
+---
+
+## Addendum 2026-09-04: the tolerance flags are gone
+
+Five opt-in grading tolerances were removed from the harness ahead of upstream
+PRs, along with the nine offline scripts that toggled them. They were
+`grading_tie_tolerance`, `grading_casefold`, `grading_honor_decimal`,
+`grading_rel_tolerance` (with `grading_rel_tolerance_value`) and
+`grading_order_lint` (with `grading_order_lint_path` and
+`config/order_undetermined.json`).
+
+**Nothing about how a run is scored changed.** Every one of them defaulted off
+and stayed off for every scored run, and each guarded branch sat behind
+`if settings.<flag>:` with upstream's behaviour as the else. Removing them
+restored upstream's code path rather than altering ours. Verified by replaying
+2000 graded submissions from `results/grading_audit.jsonl` before and after: the
+verdict fingerprint was byte-identical (`0a0cca39...`).
+
+What was lost is the ability to re-ask the question offline. That is deliberate:
+the question is settled, and the answer is in this document. The regime is now
+simply upstream's, which is what makes our numbers comparable to published ones.
+The sections above still describe what each tolerance would have done and what
+the measurements showed, so re-introducing one is a matter of reading §3 and §4
+rather than rediscovering it.
+
+**One deviation remains, and it defaults ON:** `grading_timestamp_date`. It
+truncates a timestamp-looking *string* to its date on both sides. It is kept as
+a flag precisely because it does move verdicts, so it stays visible in
+`config.py` and in every run's `deviations` block rather than being hidden in
+the comparator. See §3 for why the semantic-layer arm cannot pass those six
+phases without it.
+
+Also removed at the same time, for the same reason: `submit_feedback_level`
+(anything but `none` tells the agent how its rows differ) and
+`free_wasted_actions` (would have refunded a duplicate submit and a bundled
+question; upstream charges for both).
