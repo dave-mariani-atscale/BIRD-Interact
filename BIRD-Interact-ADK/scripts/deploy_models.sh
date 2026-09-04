@@ -91,6 +91,21 @@ done
 # Management-category tasks never reach a read-only semantic layer.
 echo
 echo "=== A10 masked-threshold gate, per model ==="
+# TASK_CENSUS lets a masked term be reported census-exempt rather than fatal when
+# every task masking it is tiered unsolvable, matching what <db>/generator/build.sh
+# passes. Without this passthrough the exemption is unusable end to end: a term that
+# builds green is rejected here, so the model can never be deployed. The gate still
+# fails CLOSED on a masking task that is absent from the census or tiered achievable.
+CENSUS_ARG=()
+if [ -n "${TASK_CENSUS:-}" ]; then
+  if [ ! -f "$TASK_CENSUS" ]; then
+    echo "FAIL: TASK_CENSUS=$TASK_CENSUS not found." >&2
+    exit 1
+  fi
+  CENSUS_ARG=(--census "$TASK_CENSUS")
+  echo "  census: $TASK_CENSUS"
+fi
+
 A10_FAILED=0
 for m in */; do
   brief="${m}brief/task_brief.json"
@@ -102,10 +117,10 @@ for m in */; do
   if [ ! -f "$kb" ]; then
     echo "  ${m%/}: no KB at $kb - running with the NUMBER detector OFF"
     out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" \
-            --brief "$brief" 2>&1)" && rc=0 || rc=$?
+            --brief "$brief" ${CENSUS_ARG+"${CENSUS_ARG[@]}"} 2>&1)" && rc=0 || rc=$?
   else
     out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" \
-            --brief "$brief" --kb "$kb" 2>&1)" && rc=0 || rc=$?
+            --brief "$brief" --kb "$kb" ${CENSUS_ARG+"${CENSUS_ARG[@]}"} 2>&1)" && rc=0 || rc=$?
   fi
   printf '%s\n' "$out" | grep -vE "^\s*\[ok\]" | grep -vE "^\s*$" || true
   [ "$rc" -eq 0 ] || A10_FAILED=1
