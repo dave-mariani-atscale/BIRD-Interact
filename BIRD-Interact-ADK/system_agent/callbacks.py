@@ -59,6 +59,13 @@ def _normalize_sql(sql: str) -> str:
     return re.sub(r"\s+", " ", s).strip().rstrip(";").lower()
 
 
+#: The engine's id for an executed query, appended by the MCP server as a
+#: trailing `queryId: <uuid>` block. Matched against the untruncated response.
+_QUERY_ID_RE = re.compile(
+    r"queryId:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+    r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
+
+
 def _preview(value: Any, limit: int = 2000) -> Any:
     if isinstance(value, (dict, list)):
         text = json.dumps(value, ensure_ascii=False)
@@ -188,7 +195,15 @@ async def after_tool_callback(
     initial = tool_context.state.get("initial_budget", 0)
 
     trajectory = tool_context.state.get("tool_trajectory", [])
-    trajectory.append({
+    # Engine query ids, read from the FULL response before _preview truncates it.
+    # The MCP server appends `queryId: <uuid>` after the result rows, so a query
+    # returning more than ~2000 characters of rows lost its id entirely - about a
+    # quarter of run_query calls, and a third of final passing queries, which are
+    # the ones worth joining to the engine's aggregate and cache tables. The
+    # grading audit records the id of the graded execution (see
+    # shared.db_utils.extract_query_id); this keeps the agent's own exploratory
+    # queries linkable too.
+    step = {
         "type": "tool",
         "tool": tool_name,
         "args": args,
@@ -196,7 +211,13 @@ async def after_tool_callback(
         "cost": cost,
         "budget_before": budget_before,
         "budget_after": budget_after,
-    })
+    }
+    qids = _QUERY_ID_RE.findall(
+        json.dumps(tool_response, ensure_ascii=False)
+        if isinstance(tool_response, (dict, list)) else str(tool_response))
+    if qids:
+        step["query_ids"] = qids
+    trajectory.append(step)
     tool_context.state["tool_trajectory"] = trajectory
 
     task_id = tool_context.state.get("task_id", "?")

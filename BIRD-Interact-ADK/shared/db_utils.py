@@ -1012,6 +1012,37 @@ def parse_semantic_layer_rows(result_text: str) -> List[tuple]:
     return []
 
 
+#: The engine's own id for an executed query, which the MCP server appends to a
+#: run_query response as a trailing `queryId: <uuid>` block.
+_QUERY_ID_RE = re.compile(
+    r"queryId:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+    r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
+
+
+def extract_query_id(result_text: str):
+    """The engine query_id from a semantic-layer run_query response, or None.
+
+    Why this is worth capturing at grading time. The engine's query repository
+    (engine.queries, engine.query_details, engine.query_aggregate_usage) is
+    keyed by this id, so it is the only exact join between a graded submission
+    and whether that query hit an aggregate or the local cache. Without it the
+    join has to be guessed from query text plus a time window, which cannot
+    separate two runs of the same text and silently mis-attributes the rest.
+
+    Grading re-executes every semantic-layer submission through run_query, so
+    an id exists for every graded query by construction - including one the
+    agent never ran itself. Reading it from the agent's own trajectory instead
+    covers only about 64% of final passing queries, because the trajectory
+    recording truncates a tool response at 2000 characters and the queryId
+    block sits at the end.
+
+    Returns the LAST id in the text: a response carrying more than one has the
+    executed query's id last.
+    """
+    ids = _QUERY_ID_RE.findall(result_text or "")
+    return ids[-1] if ids else None
+
+
 def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) -> int:
     """Like ex_base, but `pred_res` is already-computed rows (e.g. from a
     semantic layer's query tool via parse_semantic_layer_rows) rather than SQL

@@ -14,6 +14,7 @@ from shared.db_utils import (
     _get_or_init_pool, close_pool, execute_queries,
     reset_and_restore_database, test_case_default,
     ex_base, ex_base_external_pred, parse_semantic_layer_rows,
+    extract_query_id,
     remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
     diagnose_rows, canonical_cell, preprocess_results, resolve_decimal_places,
@@ -300,6 +301,10 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                         message = f"[exec_err_flg] Error executing submitted query via semantic layer: {result_text}"
                     else:
                         pred_res = parse_semantic_layer_rows(result_text)
+                        # The engine's id for THIS execution. Recorded because it
+                        # is the only exact key into the engine query repository,
+                        # which is where aggregate and cache behaviour lives.
+                        graded_query_id = extract_query_id(result_text)
                         try:
                             result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
                             if result == 1:
@@ -319,7 +324,8 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                             attempt=_submit_attempts[req_task_id][current_phase],
                             backend=settings.environment_backend, passed=passed,
                             conditions=conditions, sol_sql=sol_sqls,
-                            pred_sql=pred_sql_text, pred_rows=pred_res)
+                            pred_sql=pred_sql_text, pred_rows=pred_res,
+                            query_id=graded_query_id)
             elif sol_sqls:
                 # Execute pred SQL (also serves as executability check)
                 pred_query_result, pred_err, pred_to, _ = execute_queries(pred_sqls, task_db, conn)
