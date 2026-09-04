@@ -418,50 +418,6 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     return 1 if set(pred_cells) == set(gt_cells) else 0
 
 
-def diagnose_rows(pred_res, gt_res, conditions, cell=None) -> str:
-    """One sentence describing HOW a failed submission's rows differ from gold.
-
-    Shape only — counts, and whether the rows match but their order doesn't.
-    Never a value, a column name or a row, so it narrows the search without
-    handing over the answer. Not used by the harness: telling the agent how its
-    rows differ makes scores non-comparable to published BIRD-Interact numbers,
-    so the live rejection is upstream's bare "Your SQL is not correct." Kept for
-    offline failure analysis. Returns "" when it has nothing useful to add.
-    """
-    if not pred_res:
-        return "Your query returned no rows."
-    p_rows, g_rows = len(pred_res), len(gt_res)
-    p_cols, g_cols = len(pred_res[0]), len(gt_res[0]) if gt_res else 0
-    if p_cols != g_cols:
-        return (f"Wrong number of columns: you returned {p_cols}, the expected answer has "
-                f"{g_cols}. Row count {'matches' if p_rows == g_rows else f'is {p_rows} vs {g_rows}'}.")
-    if p_rows != g_rows:
-        return (f"Wrong number of rows: you returned {p_rows}, the expected answer has {g_rows}. "
-                f"Column count matches ({p_cols}).")
-    if cell is not None:
-        pred_res = [tuple(cell(v) for v in row) for row in pred_res]
-        gt_res = [tuple(cell(v) for v in row) for row in gt_res]
-    if sorted(pred_res) == sorted(gt_res):
-        return (f"Right {p_rows} rows and right {p_cols} columns, but in the wrong ORDER — "
-                "add or correct the ORDER BY.")
-    # Same columns, permuted. Compared as whole column VECTORS, so this only
-    # fires when every column of gold is present exactly once and the rows line
-    # up — a permutation is then the only difference left. Worth its own message
-    # because the generic one below sends the agent back to the filter and the
-    # grain, when all it has to do is reorder the SELECT list. Nothing here
-    # names a column or a value, same as every other branch.
-    # Counter, not sorted(): on the raw path these are typed values, so two
-    # columns of different types (str ticker, float score) would raise TypeError
-    # under comparison. Multiset equality needs no ordering.
-    pred_cols = Counter(tuple(r[j] for r in pred_res) for j in range(p_cols))
-    gt_cols = Counter(tuple(r[j] for r in gt_res) for j in range(g_cols))
-    if pred_cols == gt_cols:
-        return (f"Right {p_rows} rows with the right values, but your {p_cols} COLUMNS are in the "
-                "wrong order — reorder the SELECT list.")
-    return (f"Right shape ({p_rows} rows x {p_cols} columns) but the values differ — "
-            "check the filter, the aggregation grain, and which columns you projected.")
-
-
 def preprocess_results(results, decimal_places: int = 2):
     if results is None:
         return []

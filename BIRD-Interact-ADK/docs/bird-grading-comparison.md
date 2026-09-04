@@ -748,6 +748,10 @@ a flag precisely because it does move verdicts, so it stays visible in
 the comparator. See §3 for why the semantic-layer arm cannot pass those six
 phases without it.
 
+`diagnose_rows` went with them. It described how a failed submission's rows
+differed, and its only callers were `submit_feedback_level`'s diagnosis path and
+two of the deleted scripts.
+
 Also removed at the same time, for the same reason: `submit_feedback_level`
 (anything but `none` tells the agent how its rows differ) and
 `free_wasted_actions` (would have refunded a duplicate submit and a bundled
