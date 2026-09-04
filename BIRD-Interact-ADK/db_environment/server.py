@@ -237,6 +237,10 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
 
             passed = False
             message = "Test case execution failed."
+            # Only the semantic-layer path yields an engine query_id; every other
+            # branch (raw backend, wrong-model rejection, execution error) must
+            # still be able to return it as None.
+            graded_query_id = None
 
             if sol_sqls and settings.environment_backend != "raw":
                 # Semantic-layer submission: the submitted query is in that
