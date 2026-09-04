@@ -387,7 +387,8 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                         return SubmitSQLResponse(
                             passed=True, message=f"Phase 1 correct! (Reward: {reward}). Moving to Phase 2.",
                             reward=reward, phase_completed=1, has_follow_up=True,
-                            follow_up_query=follow_up_query)
+                            follow_up_query=follow_up_query,
+                            query_id=graded_query_id)
                     else:
                         return SubmitSQLResponse(
                             passed=True, message=f"Phase 1 correct! (Reward: {reward}). Task finished.",
