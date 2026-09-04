@@ -17,7 +17,7 @@ from shared.db_utils import (
     extract_query_id,
     remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
-    diagnose_rows, canonical_cell, preprocess_results, resolve_decimal_places,
+    canonical_cell, preprocess_results, resolve_decimal_places,
     record_graded_submission, apply_order_lint,
 )
 from shared.environment_backends import get_domain_config, query_domain_violation
@@ -193,33 +193,6 @@ def _run_query_via_semantic_layer(query: str) -> str:
         return f"Error: {type(e).__name__}: {e}"
 
 
-_INCORRECT = "Your SQL is not correct."
-
-
-def _incorrect_message(pred_res, sol_sqls, db_name, conn, conditions, cell=None) -> str:
-    """The rejection an agent sees for a wrong-but-executable submission.
-
-    Plain `_INCORRECT` unless settings.submit_feedback_level asks for more —
-    see that field: anything above "none" makes scores non-comparable to
-    published BIRD-Interact numbers, so it is off by default. Gold is executed
-    only on this failure path, never on the happy path. Any problem producing
-    the diagnosis degrades to the plain message rather than failing the submit.
-    """
-    if settings.submit_feedback_level == "none":
-        return _INCORRECT
-    try:
-        gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
-        if gt_err or gt_to:
-            return _INCORRECT
-        dp = resolve_decimal_places(conditions)
-        detail = diagnose_rows(preprocess_results(pred_res, dp),
-                               preprocess_results(gt_res, dp), conditions, cell=cell)
-        return f"{_INCORRECT} {detail}" if detail else _INCORRECT
-    except Exception:
-        logger.warning("submit diagnosis failed", exc_info=True)
-        return _INCORRECT
-
-
 def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_phase1_sql) -> SubmitSQLResponse:
     """Blocking submit logic — runs in thread pool."""
     base_db = td["selected_database"]
@@ -311,8 +284,7 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                                 passed = True
                                 message = "SQL passed test case."
                             else:
-                                message = _incorrect_message(
-                                    pred_res, sol_sqls, task_db, conn, conditions, cell=canonical_cell)
+                                message = "Your SQL is not correct."
                         except Exception:
                             message = "Your SQL is not correct."
                         # These rows exist nowhere else — the MCP response is not
@@ -341,8 +313,7 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                     except AssertionError:
                         # pred_query_result is the same rows ex_base compared, so
                         # the raw path needs no re-execution of the submitted SQL.
-                        message = _incorrect_message(
-                            pred_query_result, sol_sqls, task_db, conn, conditions)
+                        message = "Your SQL is not correct."
                     except Exception:
                         message = "Your SQL is not correct."
                     # Recorded on the raw path too, so both arms can be brought
@@ -567,7 +538,6 @@ GRADING_REGIME_KEYS = (
     "grading_rel_tolerance_value",
     "grading_order_lint",
     "grading_order_lint_path",
-    "free_wasted_actions",
 )
 
 

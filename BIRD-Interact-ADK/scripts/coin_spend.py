@@ -52,7 +52,7 @@ from scripts.summarize_runs import load_runs, run_health
 
 QUERY_TOOLS = {"execute_sql", "run_query"}
 # The external-knowledge glossary. Split out of discovery because the two arms
-# do not have the same tools here: semantic_layer_knowledge_tools defaults False,
+# do not have the same tools here: the semantic-layer arm has no glossary tools,
 # so the raw arm gets three and the semantic-layer arm gets none (tracker B-12,
 # and the rationale in shared/config.py). Comparing whole-discovery shares
 # across arms without this split compares two different purchases.
@@ -221,7 +221,7 @@ def report_arm(label: str, arm: str, accounts: list, nruns: int, show_tools=Fals
     print(f"  scored submits:  {calls['submit_scored']:>5} "
           f"({coins['submit_scored']:.0f} coins)")
     # A submission costs 3 -- three times a query -- and with
-    # submit_feedback_level=none it returns "your SQL is not correct" and
+    # the harness returns upstream's bare "your SQL is not correct" and
     # nothing else. So repeated failed submits are the most expensive way to
     # learn the least, and the count per task says how much of that is guessing.
     hist = Counter(a["calls"]["submit_failed"] for a in accounts)

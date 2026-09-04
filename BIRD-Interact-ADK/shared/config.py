@@ -100,22 +100,10 @@ class Settings(BaseSettings):
     semantic_layer_mcp_url: str = ""
     semantic_layer_mcp_token: str = ""
 
-    # What a failed submit_sql tells the agent.
-    #   "none"  - "Your SQL is not correct." and nothing else. Upstream
-    #             BIRD-Interact's protocol: the 3-coin charge IS the penalty for
-    #             guessing, so this is the default and the only setting whose
-    #             scores are comparable to published BIRD-Interact numbers.
-    #   "shape" - adds row/column counts and whether the rows match but the
-    #             order doesn't. Never reveals a value, a column name or a row.
-    # Applies to BOTH backends (raw and semantic-layer) — they share
-    # _compare_rows — so a run's level is recorded in the results JSON to keep
-    # scores self-describing.
-    submit_feedback_level: str = "none"
-
     # ── Deviations from upstream BIRD-Interact's protocol ──
     # Each defaults to upstream behaviour, so a clean checkout reproduces
     # published numbers. Turning any of them on makes a run non-comparable, so
-    # all four are recorded in the results JSON next to submit_feedback_level.
+    # each is recorded in the results JSON so scores stay self-describing.
     # Verified against the reference implementation checked out beside this repo
     # (bird_interact_agent/, evaluation/) on 2026-08-04 — see the tracker's
     # B-06, B-09 and B-10.
@@ -235,33 +223,6 @@ class Settings(BaseSettings):
     # only possible if the rows were kept. Costs a few MB per run and changes
     # no verdict.
     grading_audit_path: str = "results/grading_audit.jsonl"
-
-    # BUDGET (a-interact only). Upstream's update_budget deducts a cost by
-    # action TYPE and never inspects the outcome, so a duplicate submit and a
-    # bundled question both cost full price. True refuses those two at no charge
-    # instead; False charges for them as upstream does.
-    free_wasted_actions: bool = False
-
-    # CAPABILITY (semantic-layer backends only). The raw backend gets three
-    # tools over the task's external_knowledge — the benchmark's glossary of
-    # domain terms — while the semantic-layer backends get none:
-    # system_agent/tools_atscale.py maps get_all_knowledge_definitions to
-    # get_sml_skills, which returns query-construction guidance, not
-    # definitions. Measured on the 19-task 0806/0810 ETF pair, the raw arm
-    # spent 80.5 coins there (4.24 per task of an 18-coin budget) and the
-    # semantic-layer arm 0, because it had no route to the same content. True
-    # gives the semantic-layer backends the same three tools at the same
-    # prices; False keeps them raw-only. Masked entries are unaffected either
-    # way — db_environment/server.py's _filter_knowledge strips every id named
-    # in knowledge_ambiguity.deleted_knowledge before the endpoints answer, so
-    # the entries the agent is meant to ask the user about stay hidden.
-    #
-    # Whether this SHOULD be on is a scope question, not a bug: if a semantic
-    # model is meant to replace the glossary, off is right and the handicap is
-    # the point. If the comparison is meant to hold knowledge constant while
-    # varying the schema layer, off understates the model. Recorded per run in
-    # the results JSON either way. See tracker B-12.
-    semantic_layer_knowledge_tools: bool = False
 
     # FEEDBACK MEMORY (semantic-layer path only; telemetry capture, P1 of the
     # certified-answer-memory PRD). True makes the harness (1) pass the task's

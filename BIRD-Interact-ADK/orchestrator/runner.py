@@ -57,9 +57,6 @@ async def run_parallel_evaluation(
             # Run provenance so a summary tool can group runs without parsing
             # filenames -- which arm and which repetition this file is.
             **(meta or {}),
-            # Anything but "none" makes these scores non-comparable to published
-            # BIRD-Interact numbers, so the run records which regime produced it.
-            "submit_feedback_level": settings.submit_feedback_level,
             # This run's wall-clock window. llm_usage rows were already
             # attributed by time; grading-audit rows now are too, which is what
             # lets scripts/score_dual.py re-score a finished run under a
@@ -77,10 +74,6 @@ async def run_parallel_evaluation(
                 "grading_rel_tolerance": settings.grading_rel_tolerance,
                 "grading_rel_tolerance_value": settings.grading_rel_tolerance_value,
                 "grading_order_lint": settings.grading_order_lint,
-                "free_wasted_actions": settings.free_wasted_actions,
-                # Not a grading change: it changes what the semantic-layer arm
-                # can DO, so two runs differing only here are not comparable.
-                "semantic_layer_knowledge_tools": settings.semantic_layer_knowledge_tools,
                 "feedback_memory": settings.feedback_memory,
             },
             # API spend for this run, split by role and model. Sits next to the

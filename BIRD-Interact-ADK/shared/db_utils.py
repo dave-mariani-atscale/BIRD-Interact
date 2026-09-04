@@ -755,9 +755,10 @@ def diagnose_rows(pred_res, gt_res, conditions, cell=None) -> str:
 
     Shape only — counts, and whether the rows match but their order doesn't.
     Never a value, a column name or a row, so it narrows the search without
-    handing over the answer. Callers must gate this on
-    settings.submit_feedback_level; see that field for the comparability
-    caveat. Returns "" when it has nothing useful to add.
+    handing over the answer. Not used by the harness: telling the agent how its
+    rows differ makes scores non-comparable to published BIRD-Interact numbers,
+    so the live rejection is upstream's bare "Your SQL is not correct." Kept for
+    offline failure analysis. Returns "" when it has nothing useful to add.
     """
     if not pred_res:
         return "Your query returned no rows."

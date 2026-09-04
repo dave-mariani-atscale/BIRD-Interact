@@ -112,20 +112,6 @@ ASK_USER_TIP = (
     "- A FOLLOW-UP inherits the bindings phase 1 settled. When the user has already told you which column a word means ('occupation' = the standard SOC title, not the employer's job title; 'customer' = the account holder) and the follow-up re-describes the SAME result set with a near-synonym ('for the top 5 job titles you found', 'for these occupations', 'those same entities'), it means the entities phase 1 returned - keep the phase-1 column, do not switch to a column that happens to carry the new word. Switch only when the follow-up names a different column outright or introduces a genuinely new entity (measured: a phase-2 breakdown 'for the top 5 job titles with the most certified applications' re-ran phase 1's top-5 over the free-text Job Title column, where phase 1 had used the standard title the user chose, and returned six rows against the reference's eight).\n"
 )
 
-# Appended to a semantic-layer backend's instruction ONLY when
-# settings.semantic_layer_knowledge_tools is on, because that is the same flag
-# that puts the three tools in the tool list (system_agent/tools_atscale.py).
-# Advertising them unconditionally would have the agent spend turns calling
-# tools it does not have. Not needed for the raw backend, whose static
-# AINTERACT_INSTRUCTION has always listed them.
-KNOWLEDGE_TOOLS_TIP = (
-    "- get_all_external_knowledge_names (0.5) lists the task's glossary of defined domain terms; get_knowledge_definition (0.5) returns one entry's formula and thresholds; get_all_knowledge_definitions (1) returns every entry at once and can be long.\n"
-    "- Search the semantic model FIRST. It is built from this same glossary and already encodes it: a named term usually exists as its own column whose description quotes the glossary entry it came from, so explore_columns/focus_columns normally answer the definitional question and the query-construction question in one call. Paying for a glossary entry you then have to go and find in the model anyway is the most common way to waste budget here.\n"
-    "- Reach for the glossary when the model does NOT settle it: the term is nowhere in the model, or the description names a condition without its threshold, or the description says it resolved an ambiguity (a unit, a scale, which of two readings) and you need the original wording to check that reading against the question. When you want more than one entry, call get_all_knowledge_definitions once (1) rather than get_knowledge_definition repeatedly (0.5 each) — past runs have spent 15 coins one entry at a time.\n"
-    "- Where a column description and a glossary entry genuinely disagree, the glossary is what the answer is graded against; prefer it, and compute from the underlying columns rather than the precomputed flag that encodes the other reading.\n"
-    "- A term in neither the model nor that list has no official definition: that is when to ask_user. Do not ask the user to define a term either source already defines."
-)
-
 # ── a-interact instruction ──
 AINTERACT_INSTRUCTION = """You are a helpful PostgreSQL agent that interacts with a user and a database to solve the user's question.
 
@@ -185,8 +171,6 @@ def build_agent(mode: str = "c-interact") -> Agent:
             tools = get_backend_tools_factory(settings.environment_backend)()
             instruction = (get_backend_instruction(settings.environment_backend)
                            + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP)
-            if settings.semantic_layer_knowledge_tools:
-                instruction += "\n" + KNOWLEDGE_TOOLS_TIP
         return Agent(
             model=model,
             name="bird_interact_agent",
