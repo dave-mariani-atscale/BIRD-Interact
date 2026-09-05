@@ -128,6 +128,22 @@ class Settings(BaseSettings):
     # today; re-check the golds if one ever does.
     grading_timestamp_date: bool = True
 
+    # DEVIATION (both arms, symmetric). The dataset marks 218 of 410 phase-1 golds
+    # order=true, and upstream then compares ordered lists - but in most of those
+    # tasks the question never asks for an order ("On each platform, what's the
+    # typical score?"), so the agent must guess the gold's ORDER BY to pass. With
+    # this on, order=true is honoured only when the phase's question contains an
+    # ordering cue (sort, order, rank, top, bottom, highest, lowest, ascending,
+    # descending, largest, smallest, first, last, best, worst, most, least);
+    # otherwise the rows are compared as sets, exactly as upstream does for
+    # order=false. Measured on the 2026-09-04 sweep before adopting: 53 AtScale
+    # and 46 raw phase-1 task-runs flip (of 1230 each), 10 and 5 at phase 2 -
+    # the two arms move together, so this is a protocol correction, not a lift
+    # for either side. It applies to both grading paths (ex_base and
+    # ex_base_external_pred) through db_environment/server.py, and the grading
+    # audit records the effective conditions it graded with.
+    grading_order_requires_cue: bool = True
+
 
     # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
     # JSONL file recording one row per LLM call (role, model, tokens, cache

@@ -401,6 +401,34 @@ def canonical_cell(value) -> str:
     return text
 
 
+ORDER_CUE_RE = re.compile(
+    r"\b(sort|order|rank|top|bottom|highest|lowest|descend|ascend|largest|smallest"
+    r"|first|last|best|worst|most|least)",
+    re.IGNORECASE,
+)
+
+
+def question_requests_order(question_text) -> bool:
+    """True when the phase's question carries an ordering cue (see
+    settings.grading_order_requires_cue). Deliberately literal and symmetric:
+    the same words decide for both arms, and "most"/"least" count as cues so a
+    ranking-flavoured ask keeps its gold order."""
+    return bool(ORDER_CUE_RE.search(question_text or ""))
+
+
+def effective_conditions(conditions, question_text):
+    """The conditions a submission is graded with. With
+    settings.grading_order_requires_cue on, order=true is kept only when the
+    question asks for an order; otherwise the rows are compared as a set. Returns
+    a new dict; the task data is never mutated."""
+    conditions = dict(conditions or {})
+    if (settings.grading_order_requires_cue and conditions.get("order")
+            and not question_requests_order(question_text)):
+        conditions["order"] = False
+        conditions["order_relaxed_no_cue"] = True
+    return conditions
+
+
 def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     """Score two already-preprocessed row sets — 1 if they match, else 0.
 

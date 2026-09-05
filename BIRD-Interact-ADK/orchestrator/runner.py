@@ -67,6 +67,7 @@ async def run_parallel_evaluation(
             # so a totals number always carries the regime that produced it.
             "deviations": {
                 "grading_timestamp_date": settings.grading_timestamp_date,
+                "grading_order_requires_cue": settings.grading_order_requires_cue,
                 "feedback_memory": settings.feedback_memory,
             },
             # API spend for this run, split by role and model. Sits next to the

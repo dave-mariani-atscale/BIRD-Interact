@@ -13,7 +13,7 @@ from shared.config import settings
 from shared.db_utils import (
     _get_or_init_pool, close_pool, execute_queries,
     reset_and_restore_database, test_case_default,
-    ex_base, ex_base_external_pred, parse_semantic_layer_rows,
+    ex_base, ex_base_external_pred, parse_semantic_layer_rows, effective_conditions,
     extract_query_id,
     remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
@@ -226,11 +226,16 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                 test_cases = fu.get("test_cases", [])
                 conditions = fu.get("conditions", {})
                 category = fu.get("category", "Query")
+                question_text = fu.get("query", "")
             else:
                 sol_sqls = td.get("sol_sql", [])
                 test_cases = td.get("test_cases", [])
                 conditions = td.get("conditions", {})
                 category = td.get("category", "Query")
+                question_text = td.get("amb_user_query") or td.get("query", "")
+            # order=true is honoured only when the question asks for an order
+            # (settings.grading_order_requires_cue); same rule for both arms.
+            conditions = effective_conditions(conditions, question_text)
 
             if isinstance(sol_sqls, str): sol_sqls = [sol_sqls]
             pred_sqls = [req_sql] if isinstance(req_sql, str) else req_sql
@@ -529,6 +534,7 @@ async def set_backend(req: SetBackendRequest):
 # comparison. Exposed on /health so the runner can record what actually graded.
 GRADING_REGIME_KEYS = (
     "grading_timestamp_date",
+    "grading_order_requires_cue",
 )
 
 

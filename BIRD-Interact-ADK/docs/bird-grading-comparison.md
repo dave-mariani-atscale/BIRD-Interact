@@ -171,6 +171,21 @@ float-rendering defect — before the ordering was measured.
 
 ---
 
+### Local decision 2026-09-05 (both arms)
+
+Adopted as `GRADING_ORDER_REQUIRES_CUE` (default on): `order: true` is honoured only when the
+phase's question contains an ordering cue (sort, order, rank, top, bottom, highest, lowest,
+ascending, descending, largest, smallest, first, last, best, worst, most, least); otherwise the
+rows are compared as a set, as upstream already does for `order: false`. The rule is literal and
+identical for both arms, applied in `db_environment/server.py` before either grading path runs, and
+the grading audit records the effective conditions (`order_relaxed_no_cue: true`).
+
+Measured before adopting, by replaying every failed submission of the 2026-09-04 sweep and of the
+frozen raw baseline files against gold as sets: AtScale 53 phase-1 and 10 phase-2 task-runs flip
+(of 1230), raw 46 and 5. The two arms move together (+4.3 vs +3.7 points at phase 1), so this is a
+protocol correction, not a lift for one side. Most flips are tasks the census tiers as
+plan-dependent, so the achievable ceiling rises for both arms as well.
+
 ## 3. Defect B — gold computes in float32, everything else in float64
 
 **11 of 410 Query tasks (2.7%).**
