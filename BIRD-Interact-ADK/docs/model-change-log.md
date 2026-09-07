@@ -7461,3 +7461,27 @@ working rewrites). A-60, B-62, Q-38 and Q-09 gained notes rather than new rows.
 *non-compliance* rather than guidance absence - bullets that are present in the instruction and are
 not applied. `scripts/guidance_compliance.py` on these runs is owed before another bullet is
 written; count "ask fired" and "answer applied" as two separate outcomes when judging one.
+
+## 2026-09-07 — hulushows pass (US-003): tier-media record-attributed twin; crypto_exchange Whale Order cut-off withdrawn
+
+**hulushows** (models repo `cd33891`, deployed 2026-09-07). hulushows_10 was never-pass in the
+09-06 run because the model carried only the per-tier stored volume reading (`Total Tier Media`,
+differs by tier) while the reference attributes each linked record's own catalogue-wide video
+total to every tier it joins — 323044 on all seven tiers, share 1/7 each, since every tier links
+all 1000 records. Added the record-attributed twin: dataset column `held_content_media`
+(content_info joined 1:1 on content_key), measure `Total Tier Held Media`, calculation `Tier Held
+Media Share`; both existing objects now name their twins with an ask. Justified from the question
+wording ("how much media it holds", "share in the full catalog") and the schema (7x1000 complete
+link table; record-level Videos Total); values quoted are dry-run-pinned warehouse measurements,
+no gold alias or expression copied. Probed post-deploy: the plausible four-column tier listing
+returns the reference rows exactly; 3/3-passing neighbours hulushows_2 / hulushows_8 unchanged.
+Other four tasks: no model change — hulushows_19 gold-bound (projects an unrequested record key;
+63904de's steering was live in the run and did not convert), hulushows_6 / _15 / _18
+agent-variance (each passed at least once in-run on existing objects; B-87 compliance pattern).
+
+**crypto_exchange** (models repo `5e1b60b`, same deploy). Withdrew the Whale Order 10% cut-off
+published by 73cc8f1 under the census exemption (masking task crypto_exchange_10 then T3).
+Census revision 4 re-tiered the task achievable, so deploy gate A10 turned fatal and blocked the
+whole-catalog deploy — the trigger 73cc8f1's own comment named for exactly this revert.
+`WHALE_ORDER_DEF` returns to the `ASK_WHALE` ask-the-user wording; inputs still ship.
+Description-only at YAML level; no dataset, measure or calculation changed.
