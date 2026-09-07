@@ -798,3 +798,79 @@ Also removed at the same time, for the same reason: `submit_feedback_level`
 (anything but `none` tells the agent how its rows differ) and
 `free_wasted_actions` (would have refunded a duplicate submit and a bundled
 question; upstream charges for both).
+
+---
+
+## Addendum 2026-09-07: grader defect sweep over the 09-06 run — nothing left to adopt
+
+Every failed submission of both arms was replayed under the current grader and
+classified into near-miss classes: the AtScale arm from the 09-06 full run's
+audit (`results/bird_full_run_2026-09-06_atscale_n3/results/grading_audit_this_run.jsonl`,
+2736 rows), the raw arm from its recorded replay of 2026-09-04 in
+`results/grading_audit.jsonl` (1245 Query-task rows) — the same rows behind
+`scoring/raw_arm_regraded_all22.json`. Tool: `scripts/regrade_sweep.py`
+(mirrors `ex_base_external_pred` / `grade_raw_submission` with a gold cache;
+gated on 124 rows agreeing with the real entry points, and on reproducing every
+recorded verdict — see the wall-clock note below for the three exceptions).
+`regrade_flags.py` and `score_dual.py` were deleted with the tolerance flags at
+`ead2857`; this script is the standing offline regrade entry point now.
+
+Still-failing submissions by class (rows, not tasks):
+
+| class | atscale p1 | atscale p2 | raw p1 | raw p2 |
+| --- | --- | --- | --- | --- |
+| width-gold-wider (gold projects more columns) | 124 | 35 | 0 | 266 |
+| value-diff (1..all columns wrong) | 315 | 176 | 0 | 147 |
+| disjoint/missing/extra/mismatched rows | 279 | 51 | 0 | 2 |
+| width-pred-wider (no column subset matches) | 119 | 16 | 0 | 0 |
+| same rows, other order, cue word present | 34 | 43 | 0 | 0 |
+| gold-extra-columns (pred matches a gold subset) | 51 | 14 | 0 | 0 |
+| extra columns only (a pred subset matches gold) | 26 | 11 | 0 | 0 |
+| rounding only (≤ 1 ulp at 2 dp) | 10 | 15 | 0 | 0 |
+| letter case / whitespace only | **0** | **0** | 0 | 0 |
+| empty prediction | 12 | 2 | 0 | 0 |
+
+The raw arm's failed *phase-1* submissions were never recorded (only its
+passing p1 rows and its p2 attempts exist on disk), so the raw column of any
+phase-1 class is structurally empty; the raw arm's measurable failed
+population is its 415 phase-2 fails, and the classifier found **zero** rows of
+any candidate class there.
+
+### Candidates, and why none was adopted
+
+* **Letter case / TRIM ("letter case only", 6 task-runs in the 09-06 fix
+  plan).** Class count under the current grader: **0**. The unconditional
+  casefold correction already absorbed it; the fix-plan count predated
+  adoption. Nothing to do.
+* **Tie order under a genuine ordering cue ("same rows, other order, cue word
+  present").** Would flip AtScale 19 P1 / 26 P2 task-runs; raw **0**.
+  One-arm, so it is a tolerance, not a bug fix — and §"B-22 was not optional"
+  already showed the tie heuristic silently converts ordered comparisons to
+  unordered ones. Rejected, again.
+* **Rounding tolerance ("rounding only", ≤ 1 unit in the last graded digit).**
+  Would flip AtScale 5 P1 / 7 P2 task-runs (archeology_scan_6, cross_border_14,
+  exchange_traded_funds_14/_19, mental_health_2, organ_transplant_2,
+  polar_equipment_1); raw **0**. One-arm; and the 09-06 fix plan already
+  routes this class model-side (compute in numeric, not double — the
+  fake_account_3 pattern). Rejected.
+* **Extra columns only.** Would flip AtScale 8 P1 / 6 P2 task-runs; raw **0**.
+  Reaffirms the 2026-09-04 decision: output shape is model/agent behaviour,
+  both arms get it wrong at comparable rates, and forgiving it grades a
+  different question. Rejected.
+
+### Replay fidelity note: golds that read the wall clock
+
+The replay reproduced every recorded verdict except `virtual_idol_15` (3 rows,
+passed live 09-06, fail on replay): its gold computes
+`NOW() - INTERVAL '1 day' * memb_days`, so the gold's own answer changes by
+the day. Not a grader defect and not fixable here — it is the E-06 wall-clock
+family. Consequence: offline regrades of that task are only valid same-day,
+and any future correction measured by replay must exclude golds containing
+`NOW()`/`CURRENT_DATE`.
+
+### Re-scored 09-06 numbers
+
+No correction adopted ⇒ the regrade confirms the as-run scores: AtScale
+phase 1 67.1%, phase 2 47.2%, reward 0.6112; raw 34.6% / 20.2% / 0.3029
+(reward = 0.7·P1 + 0.3·P2 in a-interact, verified per run). These are regraded
+trajectories of the 2026-09-06 run, not a new run.
