@@ -173,7 +173,8 @@ float-rendering defect — before the ordering was measured.
 
 ### Local decision 2026-09-05 (both arms)
 
-Adopted as `GRADING_ORDER_REQUIRES_CUE` (default on): `order: true` is honoured only when the
+Adopted as a correction (`GRADING_ORDER_REQUIRES_CUE` until 2026-09-07, unconditional since):
+`order: true` is honoured only when the
 phase's question contains an ordering cue (sort, order, rank, top, bottom, highest, lowest,
 ascending, descending, largest, smallest, first, last, best, worst, most, least); otherwise the
 rows are compared as a set, as upstream already does for `order: false`. The rule is literal and
@@ -190,10 +191,10 @@ plan-dependent, so the achievable ceiling rises for both arms as well.
 
 Two further symmetric rules, adopted after the same replay measurement as the order rule:
 
-- `GRADING_CASEFOLD_TEXT` (default on): text cells compare case-insensitively. Golds wrap labels in
+- Case-insensitive text (`GRADING_CASEFOLD_TEXT` until 2026-09-07, unconditional since): text cells compare case-insensitively. Golds wrap labels in
   `LOWER()` / `TRIM()` the question never mentions; a plain SQL reader and a semantic layer both return
   stored casing unless they guess. Flips: AtScale 25 phase-1 / 4 phase-2 task-runs, raw 20 / 3.
-- `GRADING_COLUMN_ORDER_FREE` (default on): a submission whose columns are the gold's columns in another
+- Column-order-free matching (`GRADING_COLUMN_ORDER_FREE` until 2026-09-07, unconditional since): a submission whose columns are the gold's columns in another
   order matches (projections up to 7 columns). Upstream compares tuples positionally, so a cell-exact
   answer fails when the gold's column order contradicts the order the question lists. Flips: AtScale 10 / 17,
   raw 10 / 10. Both rules together: AtScale 35 / 21, raw 30 / 13.
@@ -772,12 +773,22 @@ The sections above still describe what each tolerance would have done and what
 the measurements showed, so re-introducing one is a matter of reading §3 and §4
 rather than rediscovering it.
 
-**One deviation remains, and it defaults ON:** `grading_timestamp_date`. It
-truncates a timestamp-looking *string* to its date on both sides. It is kept as
-a flag precisely because it does move verdicts, so it stays visible in
-`config.py` and in every run's `deviations` block rather than being hidden in
-the comparator. See §3 for why the semantic-layer arm cannot pass those six
-phases without it.
+**What remains is four corrections, and they are unconditional.**
+`timestamp_date` truncates a timestamp-looking *string* to its date on both
+sides; `order_requires_cue`, `casefold_text` and `column_order_free` are the
+three below. Each removes an asymmetry that scored a correct answer wrong, and
+each was measured on both arms before adoption and adopted only because the arms
+moved together — so they are bug fixes, not tolerances, and on 2026-09-07 their
+env flags were deleted rather than left as something a run could be scored
+without. See §3 for why the semantic-layer arm cannot pass those six timestamp
+phases without the first.
+
+The corrections are named on `db_environment`'s `/health` and recorded in each
+run's `deviations.grading_corrections`, so a score still states what produced
+it, and the runner refuses to trust a service whose build predates the change
+(an older service answers with the old boolean flag keys). Removing them changed
+no verdict: the 2500-submission grading-audit replay fingerprints identically
+before and after (`544ce258…`).
 
 `diagnose_rows` went with them. It described how a failed submission's rows
 differed, and its only callers were `submit_feedback_level`'s diagnosis path and

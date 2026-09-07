@@ -63,13 +63,14 @@ async def run_parallel_evaluation(
             "run_started": run_started,
             "run_finished": time.time(),
             "grading_audit_path": settings.grading_audit_path,
-            # Deviations from upstream's protocol, all off by default. Recorded
-            # so a totals number always carries the regime that produced it.
+            # What produced this totals number. `grading_corrections` are the
+            # four unconditional comparison fixes (shared/config.py) — listed,
+            # not flagged, so every run carries the same set and a score stays
+            # self-describing; `feedback_memory` is a real switch that changes a
+            # run. `deviations_as_graded` in meta is the grading process's own
+            # view of the corrections, which is the authoritative one.
             "deviations": {
-                "grading_timestamp_date": settings.grading_timestamp_date,
-                "grading_order_requires_cue": settings.grading_order_requires_cue,
-                "grading_casefold_text": settings.grading_casefold_text,
-                "grading_column_order_free": settings.grading_column_order_free,
+                "grading_corrections": list(GRADING_CORRECTIONS),
                 "feedback_memory": settings.feedback_memory,
             },
             # API spend for this run, split by role and model. Sits next to the
@@ -325,17 +326,29 @@ def _set_service_backend(backend: str) -> None:
         logger.info("%s: environment_backend set to %r", name, confirmed)
 
 
-def _fetch_graded_regime() -> dict:
-    """The grading flags the db_environment service will actually apply.
+#: The comparison corrections this build applies unconditionally. Mirrors
+#: db_environment.server.GRADING_CORRECTIONS, which is the authoritative copy
+#: because grading runs in that process; _fetch_graded_regime checks the two
+#: agree, so a service left running from an older build is caught rather than
+#: silently scoring the run under a different set.
+GRADING_CORRECTIONS = ("timestamp_date", "order_requires_cue",
+                       "casefold_text", "column_order_free")
 
-    Grading happens in that process, so its settings are the authoritative
-    ones; the `deviations` block this runner writes reads THIS process's env.
-    The two are separate processes with separate environments, and on
-    2026-08-25/26 they disagreed — the service had an order lint on, the
-    recorded deviations said off, and two mental_health runs whose numbers
-    differed by exactly that flag were compared as if they were comparable.
-    Recorded alongside `deviations` as `deviations_as_graded`, and any
-    disagreement is logged loudly rather than left for a later post-mortem.
+
+def _fetch_graded_regime() -> dict:
+    """The grading corrections the db_environment service will actually apply.
+
+    Grading happens in that process, so what it reports is authoritative. Since
+    2026-09-07 the corrections are unconditional in both processes, so they can
+    only differ when the service is running an OLDER build than this runner —
+    which is exactly the failure this check exists for: a code change that never
+    restarted the services. An old build answers with boolean flag keys
+    (grading_casefold_text: true) instead of a `corrections` list, and either
+    shape mismatching is logged loudly rather than left for a post-mortem.
+    Before the flags were removed the two could also disagree by env, and on
+    2026-08-25/26 they did — the service had an order lint on, the recorded
+    deviations said off, and two mental_health runs whose numbers differed by
+    exactly that were compared as if they were comparable.
     """
     url = f"http://localhost:{settings.db_env_port}/health"
     try:
@@ -350,16 +363,23 @@ def _fetch_graded_regime() -> dict:
         logger.warning("db_environment /health carries no grading block — restart the services "
                        "(scripts/start_services.sh) so the run records what actually graded it.")
         return {}
-    logger.info("Grading regime AS GRADED (db_environment): %s",
-                ", ".join(f"{k.replace('grading_', '')}={v}" for k, v in regime.items()))
-    mismatched = {k: (getattr(settings, k, None), v) for k, v in regime.items()
-                  if getattr(settings, k, None) != v}
-    if mismatched:
-        logger.warning("GRADING REGIME MISMATCH — the service grades with different flags than "
-                       "this runner has: %s. The service's values are what score this run; "
-                       "restart it to pick up this env, or expect scores that are not comparable "
-                       "to runs made with the runner's values.",
-                       "; ".join(f"{k}: runner={r!r} service={s_!r}" for k, (r, s_) in mismatched.items()))
+    served = regime.get("corrections")
+    if served is None:
+        logger.warning("GRADING REGIME MISMATCH — db_environment reports grading FLAGS (%s), not "
+                       "the unconditional corrections this build applies. That service predates "
+                       "2026-09-07 and is what scores this run: restart it "
+                       "(scripts/start_services.sh) before trusting these numbers.",
+                       ", ".join(f"{k}={v}" for k, v in sorted(regime.items())))
+        return regime
+    logger.info("Grading corrections AS GRADED (db_environment): %s", ", ".join(served))
+    missing = [c for c in GRADING_CORRECTIONS if c not in served]
+    extra = [c for c in served if c not in GRADING_CORRECTIONS]
+    if missing or extra:
+        logger.warning("GRADING REGIME MISMATCH — the service applies a different set of "
+                       "corrections than this runner expects (missing here: %s; extra there: %s). "
+                       "The service's set is what scores this run; restart the services so the "
+                       "two agree, or expect scores that are not comparable.",
+                       missing or "none", extra or "none")
     return regime
 
 

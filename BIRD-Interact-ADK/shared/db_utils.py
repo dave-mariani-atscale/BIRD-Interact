@@ -363,8 +363,7 @@ def canonical_cell(value) -> str:
     alone. Case-folding only matters for genuinely case-varying gold conventions
     the agent can't predict; it doesn't paper over an actually-wrong answer.
 
-    A timestamp string is truncated to its date when
-    settings.grading_timestamp_date is on (the default), which is what
+    A timestamp string is always truncated to its date, which is what
     preprocess_results already does to a TYPED date/datetime
     (strftime("%Y-%m-%d"), time component discarded). Gold's timestamp column
     therefore reaches the comparison as '2025-02-19' while a semantic layer
@@ -374,8 +373,12 @@ def canonical_cell(value) -> str:
     this is small but total where it lands. Applied to both sides — which is
     what makes it symmetric, and also its one cost: gold text that merely LOOKS
     like a timestamp is truncated too, so '2025-02-19 08:00:00' and
-    '2025-02-19 23:59:59' compare equal. That is why it is behind a flag and in
-    the results deviations block.
+    '2025-02-19 23:59:59' compare equal. No shipped gold projects a timestamp as
+    text, so nothing pays that cost today; re-check the golds if one ever does.
+    Unconditional since 2026-09-07 (it was GRADING_TIMESTAMP_DATE, on by
+    default): it removes an asymmetry rather than adding a tolerance, and the
+    corrections this module applies are named on db_environment's /health so a
+    run still records what scored it.
 
     Only reached via _compare_rows' `cell` hook, and only from the cross-source
     path: on the raw path Python's own numeric equality already ignores
@@ -394,10 +397,9 @@ def canonical_cell(value) -> str:
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
     text = str(value)
-    if settings.grading_timestamp_date:
-        stamp = _TIMESTAMP_STR_RE.match(text.strip())
-        if stamp:
-            return stamp.group(1)
+    stamp = _TIMESTAMP_STR_RE.match(text.strip())
+    if stamp:
+        return stamp.group(1)
     return text
 
 
@@ -410,20 +412,27 @@ ORDER_CUE_RE = re.compile(
 
 def question_requests_order(question_text) -> bool:
     """True when the phase's question carries an ordering cue (see
-    settings.grading_order_requires_cue). Deliberately literal and symmetric:
+    effective_conditions). Deliberately literal and symmetric:
     the same words decide for both arms, and "most"/"least" count as cues so a
     ranking-flavoured ask keeps its gold order."""
     return bool(ORDER_CUE_RE.search(question_text or ""))
 
 
 def effective_conditions(conditions, question_text):
-    """The conditions a submission is graded with. With
-    settings.grading_order_requires_cue on, order=true is kept only when the
-    question asks for an order; otherwise the rows are compared as a set. Returns
-    a new dict; the task data is never mutated."""
+    """The conditions a submission is graded with: order=true is kept only when
+    the question asks for an order, otherwise the rows compare as a set, exactly
+    as upstream does for order=false. Returns a new dict; the task data is never
+    mutated.
+
+    Unconditional since 2026-09-07 (it was GRADING_ORDER_REQUIRES_CUE, on by
+    default). The dataset marks 218 of 410 phase-1 golds order=true while most
+    of those questions never ask for an order, so the agent had to guess gold's
+    ORDER BY; measured on the 2026-09-04 sweep before adopting, 53 AtScale and
+    46 raw phase-1 task-runs flipped, which is what makes it a protocol
+    correction rather than a lift for either arm. `order_relaxed_no_cue` marks
+    the rows the grading audit recorded under the relaxed condition."""
     conditions = dict(conditions or {})
-    if (settings.grading_order_requires_cue and conditions.get("order")
-            and not question_requests_order(question_text)):
+    if conditions.get("order") and not question_requests_order(question_text):
         conditions["order"] = False
         conditions["order_relaxed_no_cue"] = True
     return conditions
@@ -444,15 +453,19 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     ordered = bool(conditions and conditions.get("order", False))
     if _rows_equal(pred_cells, gt_cells, ordered):
         return 1
-    # Symmetric relaxations, both arms (settings.grading_casefold_text /
-    # grading_column_order_free): text case, then column permutation, then both.
-    if settings.grading_casefold_text:
-        pf, gf = _casefold_rows(pred_cells), _casefold_rows(gt_cells)
-        if _rows_equal(pf, gf, ordered):
-            return 1
-    else:
-        pf, gf = pred_cells, gt_cells
-    if settings.grading_column_order_free and _permuted_match(pf, gf, ordered):
+    # Two symmetric corrections, both arms, unconditional since 2026-09-07
+    # (they were GRADING_CASEFOLD_TEXT and GRADING_COLUMN_ORDER_FREE, both on by
+    # default): text case, then a column permutation, then both together. Golds
+    # wrap labels in LOWER()/TRIM() the question never mentions, and upstream
+    # compares tuples positionally, so a cell-exact answer failed when gold's
+    # column order contradicted the order the question lists. Measured by
+    # replaying every failed submission before adopting: 35 AtScale and 30 raw
+    # phase-1 task-runs flip, 21 and 13 at phase 2. Neither touches numbers, so
+    # neither can turn a wrong value into a right one.
+    pf, gf = _casefold_rows(pred_cells), _casefold_rows(gt_cells)
+    if _rows_equal(pf, gf, ordered):
+        return 1
+    if _permuted_match(pf, gf, ordered):
         return 1
     return 0
 

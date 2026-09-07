@@ -234,7 +234,7 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                 category = td.get("category", "Query")
                 question_text = td.get("amb_user_query") or td.get("query", "")
             # order=true is honoured only when the question asks for an order
-            # (settings.grading_order_requires_cue); same rule for both arms.
+            # (effective_conditions); same rule for both arms.
             conditions = effective_conditions(conditions, question_text)
 
             if isinstance(sol_sqls, str): sol_sqls = [sol_sqls]
@@ -527,16 +527,21 @@ async def set_backend(req: SetBackendRequest):
     return SetBackendResponse(status="ok", environment_backend=settings.environment_backend)
 
 
-# The grading flags THIS process applies. Grading runs here, not in the runner,
-# so these are the only authoritative values — the runner reads its own env, and
-# the two silently disagreed on 2026-08-25/26 (order lint on in the service,
-# off in the runner's recorded `deviations`), which cost a mental_health
-# comparison. Exposed on /health so the runner can record what actually graded.
-GRADING_REGIME_KEYS = (
-    "grading_timestamp_date",
-    "grading_order_requires_cue",
-    "grading_casefold_text",
-    "grading_column_order_free",
+# The grading corrections THIS build applies. Unconditional since 2026-09-07 —
+# they are bug fixes, not tolerances, so there is no env to disagree about (see
+# shared/config.py). Still reported on /health, for two reasons that survive the
+# flags: grading runs in THIS process, not in the runner, so this list is what
+# actually scored a run and belongs in its results file; and a service left
+# running from an older build answers with the old boolean flag keys instead of
+# this list, which is how the runner catches a deploy that never restarted the
+# services. The two used to disagree silently — on 2026-08-25/26 the service had
+# an order lint on while the runner's recorded deviations said off, and two
+# mental_health runs differing by exactly that were compared as comparable.
+GRADING_CORRECTIONS = (
+    "timestamp_date",        # a timestamp STRING truncates to its date
+    "order_requires_cue",    # order=true only when the question asks for one
+    "casefold_text",         # text cells compare case-insensitively
+    "column_order_free",     # a column permutation of the gold matches
 )
 
 
@@ -544,7 +549,7 @@ GRADING_REGIME_KEYS = (
 async def health():
     return {"status": "healthy", "service": "db_environment",
             "environment_backend": settings.environment_backend,
-            "grading": {k: getattr(settings, k, None) for k in GRADING_REGIME_KEYS}}
+            "grading": {"corrections": list(GRADING_CORRECTIONS)}}
 
 
 if __name__ == "__main__":

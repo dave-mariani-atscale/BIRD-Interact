@@ -100,66 +100,36 @@ class Settings(BaseSettings):
     semantic_layer_mcp_url: str = ""
     semantic_layer_mcp_token: str = ""
 
-    # ── Deviation from upstream BIRD-Interact's protocol ──
-    # One remains, and it defaults ON. It is recorded in the results JSON so a
-    # score stays self-describing. The opt-in grading tolerances that used to
-    # live here (tie permutations, case folding, per-task decimal places, a
-    # relative numeric tolerance, an order lint) were removed on 2026-09-04:
-    # every one stayed off for every scored run, so the code behind them had
-    # never graded anything, and upstream's behaviour is what off already did.
-    # Verified against the reference implementation checked out beside this repo
-    # (bird_interact_agent/, evaluation/) on 2026-08-04 — see the tracker's
-    # B-06, B-09 and B-10.
-
-    # GRADING (semantic-layer path only, via canonical_cell).
-    # True truncates a timestamp STRING to its date. Unlike the other flags here
-    # this defaults to ON, because it removes an asymmetry rather than adding a
-    # tolerance: preprocess_results already truncates a TYPED date/datetime to
-    # "%Y-%m-%d", so gold reaches the comparison as '2025-02-19' while the
-    # semantic layer returns the JSON string '2025-02-19 16:29:00' and can never
-    # match it, whatever the answer. Six phases across five databases project a
-    # date at all. Set False for a sensitivity check — but note that it makes
-    # those phases unwinnable for the atscale arm rather than upstream-faithful,
-    # since upstream has no cross-source path for this code to be faithful to.
+    # ── Grading corrections (unconditional, both arms) ──
+    # Four corrections to upstream BIRD-Interact's comparison are applied on
+    # every run and are deliberately NOT configurable: each removes an asymmetry
+    # that scored a correct answer wrong, so they are bug fixes, not tolerances.
+    #   1. timestamp_date      — a timestamp STRING is truncated to its date,
+    #                            as preprocess_results already does to a TYPED
+    #                            date/datetime.
+    #   2. order_requires_cue  — order=true is honoured only when the phase's
+    #                            question asks for an order (ORDER_CUE_RE).
+    #   3. casefold_text       — text cells compare case-insensitively.
+    #   4. column_order_free   — a column permutation of the gold matches.
+    # They were env flags (GRADING_TIMESTAMP_DATE, GRADING_ORDER_REQUIRES_CUE,
+    # GRADING_CASEFOLD_TEXT, GRADING_COLUMN_ORDER_FREE), all defaulted on, until
+    # 2026-09-07. Every scored run of 2026-09-06/07 applied all four; the flags
+    # are gone so no later run can quietly score without them, and a totals
+    # number no longer needs a flag block to be comparable. Each one's rationale,
+    # its measured effect on BOTH arms (they were adopted only because the arms
+    # moved together) and the one cost of #1 — gold text that merely LOOKS like a
+    # timestamp is truncated too — sit beside the code in shared/db_utils.py and
+    # in docs/bird-grading-comparison.md. The grading process still names the
+    # corrections it applies on /health, so a results file records what scored it
+    # and the runner can refuse a service whose build predates this change.
     #
-    # The cost of ON, stated because it is a real one: gold text that merely
-    # LOOKS like a timestamp is truncated on both sides, so '... 08:00:00' and
-    # '... 23:59:59' compare equal. No shipped gold projects a timestamp as text
-    # today; re-check the golds if one ever does.
-    grading_timestamp_date: bool = True
-
-    # DEVIATION (both arms, symmetric). The dataset marks 218 of 410 phase-1 golds
-    # order=true, and upstream then compares ordered lists - but in most of those
-    # tasks the question never asks for an order ("On each platform, what's the
-    # typical score?"), so the agent must guess the gold's ORDER BY to pass. With
-    # this on, order=true is honoured only when the phase's question contains an
-    # ordering cue (sort, order, rank, top, bottom, highest, lowest, ascending,
-    # descending, largest, smallest, first, last, best, worst, most, least);
-    # otherwise the rows are compared as sets, exactly as upstream does for
-    # order=false. Measured on the 2026-09-04 sweep before adopting: 53 AtScale
-    # and 46 raw phase-1 task-runs flip (of 1230 each), 10 and 5 at phase 2 -
-    # the two arms move together, so this is a protocol correction, not a lift
-    # for either side. It applies to both grading paths (ex_base and
-    # ex_base_external_pred) through db_environment/server.py, and the grading
-    # audit records the effective conditions it graded with.
-    grading_order_requires_cue: bool = True
-
-    # DEVIATION (both arms, symmetric). Text cells compare case-insensitively.
-    # Golds wrap labels in LOWER()/TRIM() the question never mentions ('h-1b'
-    # for a stored 'H-1B'; a lower-cased model series on 194 rows); a plain SQL
-    # reader and a semantic layer both return stored casing unless they guess.
-    # Measured 2026-09-06 by replaying every failed submission: AtScale 25 P1 /
-    # 4 P2 task-runs flip, raw 20 / 3. Numbers are untouched.
-    grading_casefold_text: bool = True
-
-    # DEVIATION (both arms, symmetric). A submission whose columns are the gold's
-    # columns in another order matches. Upstream compares tuples positionally, so
-    # a cell-exact answer fails when the gold's column order contradicts the order
-    # the question lists (organ_transplant_7, planets_data_8, reverse_logistics_7).
-    # Tried for projections of up to 7 columns. Measured 2026-09-06: AtScale 10 P1
-    # / 17 P2 task-runs flip, raw 10 / 10. Both rules together: AtScale 35 / 21,
-    # raw 30 / 13.
-    grading_column_order_free: bool = True
+    # The opt-in grading tolerances that used to live here (tie permutations,
+    # per-task decimal places, a relative numeric tolerance, an order lint) were
+    # removed on 2026-09-04: every one stayed off for every scored run, so the
+    # code behind them had never graded anything, and upstream's behaviour is
+    # what off already did. Verified against the reference implementation checked
+    # out beside this repo (bird_interact_agent/, evaluation/) on 2026-08-04 —
+    # see the tracker's B-06, B-09 and B-10.
 
 
     # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
