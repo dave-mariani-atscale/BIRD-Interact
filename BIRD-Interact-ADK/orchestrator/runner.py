@@ -68,6 +68,8 @@ async def run_parallel_evaluation(
             "deviations": {
                 "grading_timestamp_date": settings.grading_timestamp_date,
                 "grading_order_requires_cue": settings.grading_order_requires_cue,
+                "grading_casefold_text": settings.grading_casefold_text,
+                "grading_column_order_free": settings.grading_column_order_free,
                 "feedback_memory": settings.feedback_memory,
             },
             # API spend for this run, split by role and model. Sits next to the

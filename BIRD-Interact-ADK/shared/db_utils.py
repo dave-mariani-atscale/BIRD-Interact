@@ -441,9 +441,55 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     if cell is not None:
         pred_cells = [tuple(cell(v) for v in row) for row in pred_res]
         gt_cells = [tuple(cell(v) for v in row) for row in gt_res]
-    if conditions and conditions.get("order", False):
-        return 1 if pred_cells == gt_cells else 0
-    return 1 if set(pred_cells) == set(gt_cells) else 0
+    ordered = bool(conditions and conditions.get("order", False))
+    if _rows_equal(pred_cells, gt_cells, ordered):
+        return 1
+    # Symmetric relaxations, both arms (settings.grading_casefold_text /
+    # grading_column_order_free): text case, then column permutation, then both.
+    if settings.grading_casefold_text:
+        pf, gf = _casefold_rows(pred_cells), _casefold_rows(gt_cells)
+        if _rows_equal(pf, gf, ordered):
+            return 1
+    else:
+        pf, gf = pred_cells, gt_cells
+    if settings.grading_column_order_free and _permuted_match(pf, gf, ordered):
+        return 1
+    return 0
+
+
+def _rows_equal(a, b, ordered: bool) -> bool:
+    if ordered:
+        return a == b
+    try:
+        return set(a) == set(b)
+    except TypeError:  # unhashable cell (e.g. a list from a JSON column)
+        return sorted(map(repr, a)) == sorted(map(repr, b))
+
+
+def _casefold_rows(rows):
+    return [tuple(v.casefold() if isinstance(v, str) else v for v in row) for row in rows]
+
+
+_MAX_PERMUTED_COLUMNS = 7
+
+
+def _permuted_match(pred_rows, gt_rows, ordered: bool) -> bool:
+    """True when some column permutation of pred equals gold."""
+    if not pred_rows or not gt_rows:
+        return False
+    n = len(pred_rows[0])
+    if n != len(gt_rows[0]) or n < 2 or n > _MAX_PERMUTED_COLUMNS:
+        return False
+    if len(pred_rows) != len(gt_rows):
+        return False
+    import itertools
+    for order in itertools.permutations(range(n)):
+        if order == tuple(range(n)):
+            continue
+        permuted = [tuple(r[i] for i in order) for r in pred_rows]
+        if _rows_equal(permuted, gt_rows, ordered):
+            return True
+    return False
 
 
 def preprocess_results(results, decimal_places: int = 2):

@@ -144,6 +144,23 @@ class Settings(BaseSettings):
     # audit records the effective conditions it graded with.
     grading_order_requires_cue: bool = True
 
+    # DEVIATION (both arms, symmetric). Text cells compare case-insensitively.
+    # Golds wrap labels in LOWER()/TRIM() the question never mentions ('h-1b'
+    # for a stored 'H-1B'; a lower-cased model series on 194 rows); a plain SQL
+    # reader and a semantic layer both return stored casing unless they guess.
+    # Measured 2026-09-06 by replaying every failed submission: AtScale 25 P1 /
+    # 4 P2 task-runs flip, raw 20 / 3. Numbers are untouched.
+    grading_casefold_text: bool = True
+
+    # DEVIATION (both arms, symmetric). A submission whose columns are the gold's
+    # columns in another order matches. Upstream compares tuples positionally, so
+    # a cell-exact answer fails when the gold's column order contradicts the order
+    # the question lists (organ_transplant_7, planets_data_8, reverse_logistics_7).
+    # Tried for projections of up to 7 columns. Measured 2026-09-06: AtScale 10 P1
+    # / 17 P2 task-runs flip, raw 10 / 10. Both rules together: AtScale 35 / 21,
+    # raw 30 / 13.
+    grading_column_order_free: bool = True
+
 
     # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
     # JSONL file recording one row per LLM call (role, model, tokens, cache

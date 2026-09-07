@@ -535,6 +535,8 @@ async def set_backend(req: SetBackendRequest):
 GRADING_REGIME_KEYS = (
     "grading_timestamp_date",
     "grading_order_requires_cue",
+    "grading_casefold_text",
+    "grading_column_order_free",
 )
 
 

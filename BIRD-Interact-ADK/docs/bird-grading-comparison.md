@@ -186,6 +186,22 @@ frozen raw baseline files against gold as sets: AtScale 53 phase-1 and 10 phase-
 protocol correction, not a lift for one side. Most flips are tasks the census tiers as
 plan-dependent, so the achievable ceiling rises for both arms as well.
 
+### Local decision 2026-09-06 (both arms): case-insensitive text and column-order-free comparison
+
+Two further symmetric rules, adopted after the same replay measurement as the order rule:
+
+- `GRADING_CASEFOLD_TEXT` (default on): text cells compare case-insensitively. Golds wrap labels in
+  `LOWER()` / `TRIM()` the question never mentions; a plain SQL reader and a semantic layer both return
+  stored casing unless they guess. Flips: AtScale 25 phase-1 / 4 phase-2 task-runs, raw 20 / 3.
+- `GRADING_COLUMN_ORDER_FREE` (default on): a submission whose columns are the gold's columns in another
+  order matches (projections up to 7 columns). Upstream compares tuples positionally, so a cell-exact
+  answer fails when the gold's column order contradicts the order the question lists. Flips: AtScale 10 / 17,
+  raw 10 / 10. Both rules together: AtScale 35 / 21, raw 30 / 13.
+
+Applied in `_compare_rows`, the tail shared by both grading paths, after the exact comparison fails; the
+health endpoint and each run's deviations block record all three flags. Nine tier-1 (gold defect) tasks
+become achievable under these rules and move to tier 4 in census revision 4.
+
 ## 3. Defect B — gold computes in float32, everything else in float64
 
 **11 of 410 Query tasks (2.7%).**
