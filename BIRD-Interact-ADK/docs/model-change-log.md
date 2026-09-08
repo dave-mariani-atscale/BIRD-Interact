@@ -7646,3 +7646,28 @@ the population fact already on Orbital Velocity's description — cold-store ser
 (US-001). Regression guard: no 3/3-passing planets_data submission touches an edited object
 (audit grep: Mean Planet Distance / Distance Upper Limit / Magnitude Blended in no passing
 SQL; Photometric Band only in _14 itself, re-probed identical).
+
+**fake_account** (models `d03ae3b`, built and deployed, all gates pass). Reviewed the 09-06
+never-pass tasks first, then the flaky one, against the audit, the fix-plan/census verdicts,
+and live re-runs (run query_ids 404 as usual; every re-run reproduces the audit rows, no
+silent rewrite). One model change. fake_account_13 fixed-model (description-only): the
+question screens for accounts that are "super-botty and tightly coordinated"; run 2 reached
+the exact gold population (zero-fill per-membership CBR above the KB 40 cutoff, 1332 pairs)
+and lost only on shape — a bare DISTINCT account list. Measured live: the engine silently
+drops SELECT DISTINCT (1332 rows, 665 distinct, from `SELECT DISTINCT "Account"`), and the
+grader strips ROUND() from gold, so the two-column (Account, CBR-mz) query grades 1 under
+`ex_base_external_pred` pre- and post-deploy. Both per-membership CBR twins now state the
+screening answer shape: Account beside the value that qualified each membership, plus the
+DISTINCT-does-not-collapse warning. Justified from the question wording and observed engine
+behaviour; no gold literal or threshold added. Runs 1/3 misrouted (NMI; strict twin without
+the ask) — the ask steers already exist on those descriptions, B-87 compliance class.
+fake_account_15 tie-bound: the best attempt is set-identical to gold (grades 1 with order
+relaxed, 0 with the recorded order:true); gold's ORDER BY member_count DESC leaves the
+46-cluster rundown's tie blocks plan-determined and non-alphabetical (first diff at
+position 4, the 10-member block). The 62-account "value diff" first seen against gold-as-
+written evaporates under the grader's own remove_round comparison. fake_account_3
+agent-variance: runs 2–3 passed P1+P2 on the bare-TEI listing over all 670 accounts (nulls
+kept), the shape the TEI description already teaches; run 1 filtered to 564 then zero-filled
+— population variance against existing text, cold-store serving class (US-001). Regression
+guard: no 3/3-passing fake_account submission touches any Coordinated Bot Risk object
+(audit grep); the edit is description-only, dataset SQL unchanged.
