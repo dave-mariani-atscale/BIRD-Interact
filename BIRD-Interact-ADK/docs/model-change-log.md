@@ -7886,3 +7886,49 @@ US-015 ADK commit); 22 models in the catalog, no E-14 recurrence.
 
 The stale B-81 note "_9 simulator declined the thresholds" (2026-08-28) no longer
 holds: the 09-06 run's simulator disclosed all three thresholds when asked.
+
+## 2026-09-08 — archeology_scan: a per-site category listing's POPULATION joins the reading ask
+
+Models `3384fe5`. Description text only on all three `Risk Zone Category` twins; no
+structural YAML key changed (verified against the emitted `site.yml` diff).
+
+Why the model and not the instruction. `archeology_scan_2` never passed, and every
+failing submission across two runs was a strict SUBSET of the reference (122-181 rows,
+zero rows present that the reference lacks) because the agent put the category in the
+WHERE clause. The model side was already complete: the unfiltered projection returns
+the reference's distinct row set exactly and grades 1 under `ex_base_external_pred`,
+pre- and post-deploy. "LIKE THE PLAIN RISK ZONE CATEGORY THIS IS A TWO-WAY LABEL, NOT A
+FILTER" was ALREADY on one twin and did not stop the filter. Two instruction bullets
+aimed at the same behaviour were then written and measured n=3: one half-fired (1 of 5
+submissions moved onto the published flag and relabelled it anyway) and the other did
+not fire at all in 7 submissions. Both were reverted — see B-87, and the ADK
+`progress.txt` iteration 21. What the dialogues showed is that the agent spends its
+whole ask budget (19.0-20.0 of 20) on the two asks these descriptions already generate:
+which of the three risk-zone readings, and which of the three "status" columns.
+
+The change: fold the population choice into the sentence that already fires. All three
+twins now say that a listing question naming this category among the columns to show
+"for each site", while also naming the category it is interested in, leaves the
+POPULATION unsettled as well as the reading — every site with its category shown, or
+only the sites in the named one — and that both belong in one closed question. Same
+mechanism as `exchange_traded_funds_9` and `labor_certification_applications_12`.
+Firewall: no gold literal, expression, threshold or row count; justified from the
+question's own two halves and from the model's own published twins.
+
+Measured, n=3 post-deploy: THE POPULATION HALF IS SOLVED AND THE TASK STILL FAILS. The
+ask fired and the simulator answered it explicitly ("please show all sites with their
+risk category displayed alongside (not just the ones flagged as risk zones)"), and the
+first submission dropped the filter and returned the reference's exact row count and
+grain for the first time in any run. It graded 0 on a different choice: it labelled
+with the plain `Risk Zone Category` (122 sites) where the reference's stability
+predicate excludes nothing and so agrees with the exact-code twin (174) — and the
+simulator had called the 122-site reading "the strict definition" and recommended it in
+the same reply. The task needs three coordinated choices (population, reading,
+condition column) and an ask settles one each; the reading half is now a
+simulator-endorsement cap of the sports_events_14 / B-72 family, inconsistent across
+repeats (run 2's simulator endorsed the correct reading).
+
+Kept rather than reverted: it converts the half it targeted, measurably, and carries no
+regression surface — no 3/3-passing archeology task's SQL touches these objects, and
+`archeology_scan_3` (3/3 both phases) held at 3/3 both phases post-deploy. Deploy gates
+1-3 green, 22 models, engine alive after deploy (checked on port 15432, not on gate 2).
