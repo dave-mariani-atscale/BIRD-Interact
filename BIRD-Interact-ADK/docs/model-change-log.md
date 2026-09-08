@@ -7758,3 +7758,31 @@ claim that the label is G-UNREACHABLE — agents produce it unaided 2 of 3 runs.
 Regression guard: four passing neighbour submissions touching every edited object (_10 p1 Organ,
 _16 p1 Patient Urgency Score, _19 p1 locus flags, _3 p2 ALS flag + Organ) re-run after deploy and
 reproduce their audit rows verbatim. No guidance bullet added (guidance_compliance.py not owed).
+
+## 2026-09-08 — robot_fault_prediction HDR grain divergence + keyless-subquery collapse note
+
+`aeefaf3` (2026-09-07 pass, from the 09-06 full-run failure review). Description-only,
+no dataset SQL, measure definition or grain changed:
+
+- **Health Degradation Rate (operation grain), Robot Health Degradation Rate, Degrading
+  Robot, Operations/Robots With A Condition Index:** the KB formula reads the condition
+  index off the performance record, and 15 robots carry two records with their own
+  indexes, so a count of "degrading robots" differs between the record grain (479) and
+  the distinct-robot grain (464). All five descriptions now publish the divergence and
+  a closed ask on which grain the user wants. robot_fault_prediction_6 failed 0/3 with
+  all six submissions at robot grain; gold counts and averages at the record grain.
+- **Health Degradation Rate:** notes the engine's keyless-FROM-subquery value collapse —
+  projecting the rate without Robot Operation dedupes records with identical rates
+  (measured: one ABB pair collapses, 94 vs 95) — and tells the reader to project the
+  row key beside it.
+
+Live probes after deploy: the record-grain count+avg query with the row key projected
+returns the template-db reference rows exactly (counts equal; averages equal at the
+grader's 2 dp and to double precision). No 3/3-passing robot_fault submission touches
+the edited objects (audit grepped), and no dataset SQL changed, so the regression
+guard is satisfied by construction.
+
+robot_fault_prediction_10 stays gold-bound (B-68, re-measured live 2026-09-08): gold's
+operation-to-performance join fans out (119 pairs over 111 operations), putting its
+rate at 1.35% where every operation-grain reading is 1.47%; reproducing the fan-out
+cannot be justified from the question, KB or schema.
