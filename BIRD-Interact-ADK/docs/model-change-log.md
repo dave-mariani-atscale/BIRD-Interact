@@ -7582,3 +7582,34 @@ limit at 07:03 per TASK_CENSUS §13 — the model's DLRS column returns the pass
 _5 agent-variance (passed run 1 on the existing objects; run 2 misread the question as a
 scalar count, run 3 dropped the Non-compliant filter — the dedicated Non-Compliant Shipment
 Count measure exists and was used in run 2; certified-answer serving class, US-001).
+
+## 2026-09-07 — archeology_scan pass (US-008): whole-estate conservation view + declared-type averages
+
+**archeology_scan** (models `6bb3c76` + `f9f6f1c` + `958b22a`, built and deployed, all gates
+pass). Reviewed the three 09-06 never-pass tasks against the audit, the fix-plan/census
+verdicts, and live dispatch re-runs (run query_ids 404 as usual; verbatim re-runs of the
+failing SQL reproduced the audit rows exactly, clauses preserved — no silent rewrite).
+Two model changes. (1) archeology_scan_2 fixed-model: gold lists EVERY site with its
+structural condition and risk label (sites LEFT JOIN conservation, 926 rows / 913 distinct);
+projecting the assessment-record Structural Condition routes through conservation_fact and
+silently drops the 471 never-assessed sites (measured live: 442 vs 913 tuples), and all nine
+run attempts additionally filtered to risk rows. Added the site_conservation_profile dataset
+(sites LEFT JOIN conservation, 926 rows), a degenerate dim with Structural Condition (All
+Sites), a technical row-count anchor measure (a measureless dataset is not a bridging fact —
+the engine cross-joined the dimensions, 3,600 rows, measured live), and cross-references from
+the plain column and the exact-code risk label. The prior fix-plan Tier-1 verdict ("no model
+listing can emit gold's 13 duplicate rows") no longer binds: the current grader compares
+unordered rows as sets. Live probe: the plausible five-column listing grades 1 under
+ex_base_external_pred. (2) archeology_scan_7 fixed-model (partial): the 61ee65b All-Sites
+quartile twin was live in the run and never chosen (B-87 class); the one remaining model
+defect was the humidity average — ::numeric exact-decimal averaging moves the mean's second
+decimal on one site vs the corpus's ::real arithmetic. The three ambient Average measures now
+aggregate declared-type columns (::real temp/humidity, ::bigint lux; justified by the declared
+types used consistently across the corpus, not by any gold cell). Live probe: the gold-shaped
+900-row query with the All-Sites quartile and a user-supplied no-data label grades 1. Residual
+risk: twin selection compliance. archeology_scan_9 gold-bound: gold joins pointcloud/spatial
+on arcref alone, which is non-unique (1,085 rows from 1,000 scans, verified live; 38 dup
+arcrefs), so its per-site PCDR/FEE differ from any correct-key computation (fix plan: 87 of
+900 sites); reproducing the fan-out would encode the defect. Regression guard: no 3/3-passing
+archeology submission touches the edited measures (audit grep); passing neighbour
+archeology_scan_3's recorded SQL re-graded 1 live.
