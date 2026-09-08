@@ -7013,7 +7013,22 @@ role-noun check are all in the deployed model and instruction.
 **Projected arm 7.2/19 = 0.379 vs raw 0.158 = +22.1 pp (+140% relative), n=1, noisy.**
 Total virtual_idol spend this PRD: $4.23.
 
-## polar_equipment - 2026-08-28 pass
+**2026-09-08 - US-016 never-pass pass (`virtual_idol_4`): no change, gold-bound confirmed under
+the current grader.** All seven 09-06 failing attempts produced the correct per-fan breakdown
+(counts 4/18/33/917 over 972 fans); four of them used the KB's exact labels. Replayed offline
+through `_compare_rows`: the recorded rows score 0 and the same rows with the one disputed cell
+set to gold's count score 1 - so the unconditional casefold and column-permutation tolerances
+absorb every label/order theory, and the single-cell count is the only blocker. Gold's extra 4
+memberships come from its LEFT JOIN chain (fans -> membership -> engagement -> retention): each of
+the 4 fans has one 'High' retention row plus unassessed engagement rows, so gold counts them in
+BOTH churn groups (976 group memberships over 972 fans, re-measured live on the template db
+2026-09-08). KB 25 defines At-Risk per fan ("their churn flag"), and the warehouse holds at most
+one retention row per fan (52 rows, 52 distinct fans) - per KB and schema every fan belongs to
+exactly one group, so no honest model object reproduces the double-count (B-64 acceptance rule:
+a twin at the fanned grain fits the defect, not the data). Dispatch re-run of the closest failing
+attempt reproduces its rows with every clause preserved - no silent rewrite. The rev4 census T4
+re-tier reasoned from the raw arm's query shape and missed that the dedup total itself is the
+artifact; withdrawn for the atscale arm. Verdict: gold-bound (B-88 stands). Zero LLM calls.
 
 **Starting point.** Arm runs 820/824/825 scored 0.170 / 0.290 / 0.255 against raw 0.158 (20 Query
 tasks; the 824 file is one run counted twice, so n=1). Deployed model = abee950, the one 825
