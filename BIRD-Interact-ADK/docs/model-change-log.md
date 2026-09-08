@@ -7786,3 +7786,33 @@ robot_fault_prediction_10 stays gold-bound (B-68, re-measured live 2026-09-08): 
 operation-to-performance join fans out (119 pairs over 111 operations), putting its
 rate at 1.35% where every operation-grain reading is 1.47%; reproducing the fan-out
 cannot be justified from the question, KB or schema.
+
+## 2026-09-08 — labor_certification_applications shortage-screening twin choice folded into the threshold ask
+
+`cb4a2c6` (2026-09-07 pass, from the 09-06 full-run failure review). Description-only,
+no dataset SQL, measure definition or grain changed:
+
+- **Average Wage Differential Rate (bare):** the shortage sentence now says the
+  qualifying thresholds are not published, tells the agent to settle them with the
+  user, and folds the mixed-units in-or-out choice into that same closed question —
+  both mixed-unit applications are Software Developers filings (warehouse-measured),
+  so the choice moves one occupation's count and average together — and names the
+  count-average pairing each answer implies. The prior in-or-out trigger was a tail
+  sentence keyed to top-N wording and fired 0 of 6 attempts on the 09-06 run
+  (labor_certification_applications_12 never-pass), while the threshold ask fired in
+  every completed repeat.
+- **Average Wage Differential Rate (Matching Units Only):** states the occupation-grain
+  placement of the two excluded rows and the pairing rule (a count shown beside this
+  average is Applications With Matching Wage Units, same 979-application population).
+
+Live probes after deploy: the matching-units screening (count >= threshold, average
+above cutoff, top-5 by average) grades 1 under ex_base_external_pred against the task's
+gold; recorded passing SQL of labor_certification_applications_11 (both phases, bare
+average 3/3) and _18 p1 (matching twin 3/3) re-run and reproduce their audit rows.
+
+labor_certification_applications_7 p2 is gold-bound: gold groups attorneys by RAW
+counselmail (370 rows) where the model's deliberate email normalization (a1ede76)
+merges case variants (364); phase 1 of the same corpus LOWERs the email — the phases
+contradict, and the normalization is load-bearing elsewhere. _7 p1 run-3 fail is
+agent-variance (counted listing rows at model grain, 16, instead of the Applications
+measure, 11; the 2/3 passing attempts used the measure).
