@@ -438,13 +438,27 @@ def effective_conditions(conditions, question_text):
     return conditions
 
 
-def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
+def _compare_rows(pred_res, gt_res, conditions, cell=None, raw=None) -> int:
     """Score two already-preprocessed row sets — 1 if they match, else 0.
 
     `cell` renders each value before comparing; None keeps the typed values.
     That argument is the only difference between the raw and semantic-layer
     comparisons, so it stays one visible knob rather than two copies of this
     tail that drift.
+
+    `raw` is (pred_raw, gt_raw, key_idxs): the PRE-rounding rows of both sides
+    and gold's sort-key columns (gold_sort_key_indices). It enables the two
+    corrections adopted 2026-09-08, both reached only after every exact
+    comparison above has failed, so neither can un-pass anything:
+      * ties_as_ties — an ordered gold whose ORDER BY leaves ties (57 of 410
+        tasks, defect A in docs/bird-grading-comparison.md) is compared group
+        by group, multiset within a tie group. Ties are read off gold's own
+        full-precision key values, never inferred and never at the graded
+        rounding.
+      * numeric_rel_tolerance — the pre-rounding rows compare within 1e-6
+        relative. Gold computes in numeric or float4, another engine in float8;
+        at a half-up boundary the two round to different last digits of one
+        value (12.0649999 vs 12.065). Measured on both arms: see the doc.
     """
     pred_cells, gt_cells = pred_res, gt_res
     if cell is not None:
@@ -466,6 +480,20 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None) -> int:
     if _rows_equal(pf, gf, ordered):
         return 1
     if _permuted_match(pf, gf, ordered):
+        return 1
+    if raw is None:
+        return 0
+    pred_raw, gt_raw, key_idxs = raw
+    if ordered and key_idxs and _tie_confined_match(pf, gf, gt_raw, key_idxs):
+        return 1  # ties_as_ties
+    if not pred_raw or not gt_raw or len(pred_raw) != len(gt_raw):
+        return 0
+    # numeric_rel_tolerance, on the pre-rounding rows
+    if not ordered:
+        return 1 if _multiset_match_close(pred_raw, gt_raw) else 0
+    if all(_rows_close(p, g) for p, g in zip(pred_raw, gt_raw)):
+        return 1
+    if key_idxs and _tie_confined_match(pred_raw, gt_raw, gt_raw, key_idxs, close=True):
         return 1
     return 0
 
@@ -503,6 +531,135 @@ def _permuted_match(pred_rows, gt_rows, ordered: bool) -> bool:
         if _rows_equal(permuted, gt_rows, ordered):
             return True
     return False
+
+
+#: Relative tolerance for the pre-rounding numeric comparison (correction
+#: `numeric_rel_tolerance`). Far below the two decimals every task is graded
+#: to, so it can only reconcile two renderings of one value, never two values.
+NUMERIC_REL_TOLERANCE = 1e-6
+
+
+def _as_number(v):
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float, Decimal)):
+        f = float(v)
+        return None if f != f else f
+    if isinstance(v, str):
+        try:
+            return float(Decimal(v.strip()))
+        except (InvalidOperation, ValueError):
+            return None
+    return None
+
+
+def _values_close(a, b) -> bool:
+    """Two numerics within NUMERIC_REL_TOLERANCE, or two non-numerics equal
+    under canonical_cell + casefold. A numeric never matches a non-numeric."""
+    an, bn = _as_number(a), _as_number(b)
+    if an is not None and bn is not None:
+        return math.isclose(an, bn, rel_tol=NUMERIC_REL_TOLERANCE, abs_tol=1e-9)
+    if an is None and bn is None:
+        return canonical_cell(a).casefold() == canonical_cell(b).casefold()
+    return False
+
+
+def _rows_close(p, g) -> bool:
+    return len(p) == len(g) and all(_values_close(a, b) for a, b in zip(p, g))
+
+
+def _multiset_match_close(pred_rows, gt_rows) -> bool:
+    """Unordered multiset equality under _values_close. O(n^2), only reached
+    after the exact comparison has already failed."""
+    if len(pred_rows) != len(gt_rows):
+        return False
+    remaining = list(gt_rows)
+    for p in pred_rows:
+        for i, g in enumerate(remaining):
+            if _rows_close(p, g):
+                remaining.pop(i)
+                break
+        else:
+            return False
+    return True
+
+
+def gold_sort_key_indices(sol_sql: str, column_names) -> Optional[List[int]]:
+    """Output-column indices of gold's outermost ORDER BY, or None.
+
+    Correction `ties_as_ties` needs to know which columns gold sorted by. The
+    dataset does not record it, and inferring it from the result (the old
+    `_sort_key_indices`) was the B-22 over-reach: a coincidentally monotonic
+    column collapsed whole results into one tie group. So the key is READ from
+    gold's SQL instead — the same SQL the grader already executes and rewrites
+    — and mapped onto the output columns by name, by select-list expression, or
+    by ordinal. Any ORDER BY item that cannot be mapped to an output column
+    (an expression that is not projected) makes the whole key None, and the
+    caller then forgives nothing, exactly as today.
+    """
+    if not sol_sql or not column_names:
+        return None
+    try:
+        import sqlglot
+        from sqlglot import exp
+        tree = sqlglot.parse_one(sol_sql, read="postgres")
+    except Exception:
+        return None
+    order = tree.args.get("order")
+    if order is None:
+        return None
+    names = [str(n).lower() for n in column_names]
+    sel = tree.expressions if isinstance(tree, exp.Select) else []
+    idxs: List[int] = []
+    for item in order.expressions:
+        e = item.this
+        idx = None
+        if isinstance(e, exp.Literal) and e.is_int:
+            idx = int(e.this) - 1
+        elif isinstance(e, exp.Column) and e.name.lower() in names:
+            idx = names.index(e.name.lower())
+        if idx is None:
+            txt = e.sql(dialect="postgres")
+            for i, s in enumerate(sel):
+                inner = s.this if isinstance(s, exp.Alias) else s
+                if inner.sql(dialect="postgres") == txt:
+                    idx = i
+                    break
+        if idx is None or not (0 <= idx < len(names)):
+            return None
+        idxs.append(idx)
+    return idxs or None
+
+
+def _tie_groups(gt_raw, key_idxs):
+    """Consecutive runs of gold rows equal on the sort key, measured on gold's
+    FULL-PRECISION values (never the graded rounding — two values that round
+    alike at 2 dp are not a tie, and gold did order them)."""
+    groups, i = [], 0
+    while i < len(gt_raw):
+        key = tuple(str(gt_raw[i][k]) for k in key_idxs)
+        j = i
+        while j < len(gt_raw) and tuple(str(gt_raw[j][k]) for k in key_idxs) == key:
+            j += 1
+        groups.append((i, j))
+        i = j
+    return groups
+
+
+def _tie_confined_match(pred_rows, gt_rows, gt_raw, key_idxs, close=False) -> bool:
+    """Ordered comparison that treats gold's ties as ties: rows must match
+    group by group in gold's order, as a multiset within each tie group. With
+    `close`, cells compare under _values_close instead of equality."""
+    if len(pred_rows) != len(gt_rows) or len(gt_raw) != len(gt_rows):
+        return False
+    for s, e in _tie_groups(gt_raw, key_idxs):
+        if close:
+            if not _multiset_match_close(list(pred_rows[s:e]), list(gt_rows[s:e])):
+                return False
+        elif Counter(pred_rows[s:e]) != Counter(gt_rows[s:e]):
+            return False
+    return True
+
 
 
 def preprocess_results(results, decimal_places: int = 2):
@@ -642,15 +799,24 @@ def remove_round(sql_list: List[str]) -> List[str]:
 def ex_base(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:
     if not pred_sqls or not sol_sqls:
         return 0
-    pred_res, pred_err, pred_to, _ = execute_queries(pred_sqls, db_name, conn)
-    gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
+    pred_raw, pred_err, pred_to, _ = execute_queries(pred_sqls, db_name, conn)
+    gt_raw, gt_err, gt_to, gt_desc = execute_queries(sol_sqls, db_name, conn)
     if any([pred_err, pred_to, gt_err, gt_to]):
         return 0
-    pred_res = preprocess_results(pred_res)
-    gt_res = preprocess_results(gt_res)
+    pred_res = preprocess_results(pred_raw)
+    gt_res = preprocess_results(gt_raw)
     if not pred_res or not gt_res:
         return 0
-    return _compare_rows(pred_res, gt_res, conditions)
+    return _compare_rows(pred_res, gt_res, conditions,
+                         raw=(pred_raw, gt_raw, _gold_key(sol_sqls, gt_desc, conditions)))
+
+
+def _gold_key(sol_sqls, gt_desc, conditions):
+    """Sort-key indices for ties_as_ties, or None when the phase is not graded
+    ordered or the key cannot be read from gold's SQL."""
+    if not (conditions and conditions.get("order")) or not gt_desc or not sol_sqls:
+        return None
+    return gold_sort_key_indices(sol_sqls[-1], [d[0] for d in gt_desc])
 
 
 def _json_safe(value):
@@ -838,15 +1004,15 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     # correct answer unpassable, and outside those 43 golds the code path here
     # is byte-identical, so nothing else can move.
     sol_sqls = remove_round(remove_comments(sol_sqls))
-    gt_res, gt_err, gt_to, _ = execute_queries(sol_sqls, db_name, conn)
+    gt_res, gt_err, gt_to, gt_desc = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0
     pred_rounded = preprocess_results(pred_res)
     gt_rounded = preprocess_results(gt_res)
     if not gt_rounded:
         return 0
-    return 1 if _compare_rows(pred_rounded, gt_rounded, conditions,
-                              cell=canonical_cell) else 0
+    return 1 if _compare_rows(pred_rounded, gt_rounded, conditions, cell=canonical_cell,
+                              raw=(pred_res, gt_res, _gold_key(sol_sqls, gt_desc, conditions))) else 0
 
 
 def grade_raw_submission(pred_sqls, sol_sqls, db_name, conn, conditions=None) -> int:

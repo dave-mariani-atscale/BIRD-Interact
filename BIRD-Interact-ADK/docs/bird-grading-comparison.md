@@ -874,3 +874,69 @@ No correction adopted ⇒ the regrade confirms the as-run scores: AtScale
 phase 1 67.1%, phase 2 47.2%, reward 0.6112; raw 34.6% / 20.2% / 0.3029
 (reward = 0.7·P1 + 0.3·P2 in a-interact, verified per run). These are regraded
 trajectories of the 2026-09-06 run, not a new run.
+
+## Addendum 2026-09-08: two more corrections — `ties_as_ties` and `numeric_rel_tolerance`
+
+**Why the 09-07 addendum's raw columns were not evidence.** The raw arm's failed
+phase-1 submissions were never recorded, and **all 414 failed phase-2 rows in the
+09-04 replay window are `[[999999]]`** — `orchestrator/test_harness.py`'s
+deliberately-wrong submit, not agent output. So "raw 0" in every candidate class
+was structural, and the "one-arm, therefore tolerance" rejections of the tie and
+rounding candidates rested on nothing. The raw *score* is unaffected (a sentinel
+fails under any grading), but that corpus can never show a raw arm moving. The
+only real failed raw submissions on disk are the 272 rows on four databases in
+`results/grading_audit_0811.jsonl`. Any future sweep must count and exclude the
+sentinel before printing a raw column.
+
+**What was adopted**, both unconditional, both reached only after every exact
+comparison has failed (so neither can un-pass anything), both in
+`_compare_rows` via the `raw=(pred_raw, gt_raw, key_idxs)` hook:
+
+* `ties_as_ties` — defect A, proposal A3. An `order:true` gold whose ORDER BY
+  leaves ties is compared group by group in gold's order, as a multiset within a
+  tie group. The sort key is **read from gold's SQL** (`gold_sort_key_indices`:
+  sqlglot, outermost ORDER BY → output column by name / select-list expression /
+  ordinal), never inferred from the result — the B-22 heuristic is gone for
+  good. Any unresolvable ORDER BY item ⇒ no key ⇒ strict compare, as before.
+  Ties are detected on gold's **full-precision** values, not the graded 2 dp:
+  detecting them at 2 dp forgave `mental_health_9`, whose order gold did
+  determine, and that version was rejected (−3 P1 flips).
+* `numeric_rel_tolerance` — defect B, proposal B2. The pre-rounding rows compare
+  within 1e-6 relative (`NUMERIC_REL_TOLERANCE`), ordered, unordered, or
+  tie-grouped. 1e-6 is two orders below the graded precision, so it reconciles
+  two renderings of one value (12.0649999 vs 12.065) and cannot reconcile two
+  values (12.06 vs 12.065 stays failed — unit-tested). Gold reaches it
+  unrounded because `remove_round` already strips gold's ROUND() on both paths.
+
+**Measured by replaying every recorded submission through the real entry points**
+(`ex_base_external_pred`, `grade_raw_submission`; no mirror):
+
+| corpus | rows | recorded-pass now fail | recorded-fail now pass |
+| --- | --- | --- | --- |
+| AtScale 09-06, 22 dbs × 3 | 2717 | **0 real** (22 replay artefacts: 4 wall-clock golds, 18 golds the template read-only guard refuses on a `~` operator, B-84 — all fail under the old code too) | 69 rows / 21 task-phases |
+| raw 08-11..14, 4 dbs | 400 | 0 | archeology_scan_6 p1 (×2), exchange_traded_funds_20 p1 (×2) need the new corrections; 6 more rows pass under the four 09-07 corrections alone |
+
+AtScale task-run flips: **P1 19, P2 22 → reward +0.0162**; the 09-06 run
+re-scores from 0.6112 to ≈0.627, and the 09-08 projection (0.6236) to
+**≈0.640**. 19 tasks: tie — cross_border_18, disaster_relief_12, disaster_relief_3,
+fake_account_15, hulushows_13, labor_cert_1/_10/_2/_4, organ_transplant_14,
+polar_equipment_11, reverse_logistics_16, robot_fault_prediction_8,
+sports_events_3, sports_events_7; rounding — archeology_scan_6, cross_border_14,
+crypto_exchange_5, exchange_traded_funds_19, polar_equipment_1. Correctly still
+failing: the six "wrong-sort" tasks (archeology_3, crypto_6, etf_7,
+mental_health_3, reverse_logistics_1, robot_3) and the rounding rows that are
+real value differences (etf_14, mental_health_2, organ_transplant_2).
+
+**What this is and is not.** The *defect* is arm-independent: duplicate key
+values sit in gold's own output, and 7 of the 15 tie tasks were already
+census-T2 "order undetermined" by replanning. The *benefit* is structurally
+larger for the semantic-layer arm (the engine always aggregates in float8;
+raw hits the rounding class only where gold casts `::real`) and is measured
+on it; the raw gain outside the four 08-11 databases is **unmeasured**, not
+zero. Quote it that way. This re-opens the 09-04 decision to align with
+upstream exactly — the regime is now upstream plus six named corrections, all
+listed on `db_environment`'s `/health` and in each run's
+`deviations.grading_corrections`.
+
+Tests: `scripts/test_grading_corrections.py`. Working notes and per-arm
+mechanism: `results/grader_asymmetry_0908.md` (local).

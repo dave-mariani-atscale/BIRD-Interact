@@ -542,6 +542,8 @@ GRADING_CORRECTIONS = (
     "order_requires_cue",    # order=true only when the question asks for one
     "casefold_text",         # text cells compare case-insensitively
     "column_order_free",     # a column permutation of the gold matches
+    "ties_as_ties",          # ordered gold with ties: multiset within a tie group (key read from gold SQL)
+    "numeric_rel_tolerance", # pre-rounding numerics compare within 1e-6 relative
 )
 
 

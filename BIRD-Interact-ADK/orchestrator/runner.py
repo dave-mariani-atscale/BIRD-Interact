@@ -332,7 +332,8 @@ def _set_service_backend(backend: str) -> None:
 #: agree, so a service left running from an older build is caught rather than
 #: silently scoring the run under a different set.
 GRADING_CORRECTIONS = ("timestamp_date", "order_requires_cue",
-                       "casefold_text", "column_order_free")
+                       "casefold_text", "column_order_free",
+                       "ties_as_ties", "numeric_rel_tolerance")
 
 
 def _fetch_graded_regime() -> dict:
