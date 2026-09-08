@@ -7714,3 +7714,47 @@ solar_panel pass (engine restarted by Dianne then). The commit is pushed to main
 `scripts/deploy_models.sh` run after the engine restart deploys it, and the only outstanding
 verification is a post-deploy re-probe of the Medium-twin query (values cannot change — the
 edit is description-only).
+
+## 2026-09-08 — organ_transplant pass (US-012): complement wording, grouping-key projection, named-loci constraints
+
+Models repo `2f6c0d2` (spec + emitted YAML) and `64b50eb` (CHANGED-MODELS), deployed 2026-09-08
+after Dianne's manual engine restart cleared E-14 (the 09-08 deploy also carried the museum
+`776978c`/`476d715` debt; its Medium-twin re-probe returned the three reference rows at 2 dp).
+Description-only in the organ_transplant generator spec — no dataset SQL, measure or grain change:
+
+organ_transplant_7 (0/3) fixed-model. Gold compares ECMO/VAD Pending patients against the
+per-organ average urgency score of the complement (non-advanced-life-support patients). Runs 1-2
+computed a leave-one-out average over ALL Pending patients including the other flagged ones;
+run 3 got every value right (Heart complement average equal at 4 dp) and failed only by dropping
+the Organ column against "Group the list by organ". Two rules: (a) on Recipient On Advanced Life
+Support and Patient Urgency Score — "all the other patients" is the flag's No members, "other"
+excludes the cohort, and a wording that could carry either reading is a closed ask naming the two
+populations (justified by the question's own "the ones on advanced life support … average score
+for all the other patients" wording); (b) on Organ — a list the caller asks to group by organ
+projects the grouping key, it is part of the answer shape (justified by "Group the list by
+organ"). B-82's ELSE-2 urgency-weight cap did NOT bind in the 09-06 run: every attempt used the
+weights the simulator supplies when asked (the ask-steer works). Live probe: the gold-shaped
+five-column query returns 60 rows equal to gold at 4 dp on the template DB.
+
+organ_transplant_19 P2 (0/1) fixed-model. "Exactly two HLA mismatches … on both the A-locus and
+the B-locus specifically": the agent filtered score=2 + A=Yes + B=Yes and never constrained DR,
+returning 20; gold also requires DR equal and returns 0 live (the stored mismatch score
+contradicts the raw HLA values on every qualifying row — an inconsistency whose agreement figure
+the descriptions already publish). Rule on all three locus flags: a question naming WHICH loci a
+score's mismatches fall on constrains every flag — named loci Yes AND the unnamed locus No
+(justified by "specifically" wording plus the published score/flag disagreement). Live probe: the
+agent-shaped count with the DR constraint returns 0, equal to gold on the template DB.
+
+organ_transplant_10 agent-variance. Run-1-only P1 failure; failing SQL's MAX subquery covered the
+wider clinical-record population and missed Heart's top row, while the Recipient Wait Time Days
+description already names that exact bite (POPULATION PAIRING); runs 2/3 complied and passed.
+Cold-store class (US-001 exemplar serving). No edit.
+
+organ_transplant_19 P1 agent-variance. Run 2 submitted bare 'A'/'B'/'DR' labels where runs 1/3
+used the full locus-mismatch wording; all counts gold-exact every run, and the descriptions
+already command asking for exact row wording (B-87 compliance class). Kills the 09-04 census
+claim that the label is G-UNREACHABLE — agents produce it unaided 2 of 3 runs. No edit.
+
+Regression guard: four passing neighbour submissions touching every edited object (_10 p1 Organ,
+_16 p1 Patient Urgency Score, _19 p1 locus flags, _3 p2 ALS flag + Organ) re-run after deploy and
+reproduce their audit rows verbatim. No guidance bullet added (guidance_compliance.py not owed).
