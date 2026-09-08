@@ -7559,3 +7559,26 @@ translated two quoted income-bracket literals to `Income Bracket Lower Bound` >=
 losing the middle bracket, against the WHY convention ("never swap in the nearest band").
 No new text added (B-87: compliance, not absence, binds); the conversion lever for repeat-1
 variance is certified-answer serving (US-001), not more description.
+
+## 2026-09-07 — cold_chain_pharma_compliance pass (US-007): zone-label wording fix
+
+**cold_chain_pharma_compliance** (models `a994f21`, built and deployed, all gates pass).
+Reviewed the four 09-06 failing tasks against the audit, the fix-plan/census verdicts, and
+live dispatch re-runs. One model edit: the ef90f10 breakdown steer on TED/TIRP said KB 27
+"names its zones in the order Green, Yellow, Red" — written to convey ordering, it became a
+label source: 4 of 8 failing _9 attempts submitted the one-word shorthand as the group label
+where the KB's own reveal (quoted verbatim by the run-1 agent) uses the full zone name. Both
+descriptions now add that a breakdown labels each group with the KB's full zone name verbatim
+as the user's reply quotes it, and that a shorthand is a different label. Justified from the
+observed run dialogues and the KB-worded-labels convention (virtual_idol/households
+precedent); no gold literal, threshold, or expression added — A8/A10 gates pass. Live probes:
+the plausible gold-shaped query (TIRP-measured scope, verbatim labels, share of zoned
+shipments, KB zone order) returns the reference's three rows exactly (142/20.91, 359/52.87,
+178/26.22); 3/3-passing neighbour cold_chain_pharma_compliance_6's recorded SQL returns its
+recorded rows unchanged. Other verdicts: _18 tie-bound (gold LIMIT 3 over a 265-way tie at
+count=1, rows 2-3 plan-dependent — census-verified; attempts matched row 1 exactly); _17
+agent-variance (passed both phases runs 1-2; run-3 task-run died on the Anthropic monthly API
+limit at 07:03 per TASK_CENSUS §13 — the model's DLRS column returns the passing scalar);
+_5 agent-variance (passed run 1 on the existing objects; run 2 misread the question as a
+scalar count, run 3 dropped the Non-compliant filter — the dedicated Non-Compliant Shipment
+Count measure exists and was used in run 2; certified-answer serving class, US-001).
