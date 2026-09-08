@@ -7533,3 +7533,29 @@ seven failing attempts either took the `Patient Mean` rollup twins (whose text n
 assessment-grain columns and the 68-patients-disagree fact) or added the `Assessment` key
 column against the "settle the column list with a closed question" sentence (B-87
 compliance pattern; 534f90e's steers were in the run's deploy).
+
+## 2026-09-07 — households pass (US-006): no change, database at ceiling for model-side edits
+
+**households** (model unchanged from the 09-06 whole-catalog deploy; no build, no deploy).
+Reviewed all five 09-06 failing tasks against the audit, the fix-plan/census verdicts, live
+dispatch re-runs, and the run dialogues. households_10 **ask-bound** — the 27e047e steer (in
+the run's deploy) fired as designed: two of three repeats asked both halves of KB 23 in one
+question AND asked the prescribed shape question ("every House Number, one row per household,
+or a summary figure?"); the simulator answered "a list showing every matching household's
+house number — one row per household — not a single aggregated count", while gold aggregates
+that same population to the single top region (`GROUP BY locregion ORDER BY COUNT(*) DESC
+LIMIT 1` — its own follow-up says "In that top region"). Run-3 attempts matched gold's exact
+134-household population on all four filters; live re-run of the failing SELECT reproduced the
+audit rows with every clause preserved (no silent rewrite). The simulator confirming the
+roster reading against its own gold is the sports_events_14 cap extended to shape asks.
+households_2, _4, _18, _5 **agent-variance** — each passed 2 of 3, every failure in the
+cold-store repeat 1, and each failing attempt violated convention text already live on the
+object it misused: _2 projected the canonical Region label (whitespace-merged) or an extra
+rate column where `Region Code (As Recorded)`'s description carries the exact ask-trigger;
+_4 filtered canonical `Dwelling Class` = 'Apartment' (folds 'apt', 105 rows, reproduced
+live) against a quoted literal whose Recorded-Lower reading is 86; _18 dropped the 'avail'
+token from the disclosed three-token list or used the canonical/KB-token twins; _5
+translated two quoted income-bracket literals to `Income Bracket Lower Bound` >= 4400,
+losing the middle bracket, against the WHY convention ("never swap in the nearest band").
+No new text added (B-87: compliance, not absence, binds); the conversion lever for repeat-1
+variance is certified-answer serving (US-001), not more description.
