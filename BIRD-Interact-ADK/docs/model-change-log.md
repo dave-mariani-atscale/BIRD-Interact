@@ -7671,3 +7671,46 @@ kept), the shape the TEI description already teaches; run 1 filtered to 564 then
 — population variance against existing text, cold-store serving class (US-001). Regression
 guard: no 3/3-passing fake_account submission touches any Coordinated Bot Risk object
 (audit grep); the edit is description-only, dataset SQL unchanged.
+
+## 2026-09-08 — museum_artifact pass (US-011): ERF ask enumerates the Unrated As Medium policy
+
+**museum_artifact** (models `776978c`, built clean, all build gates pass; **deploy pending**, see
+the engine note). Reviewed the 09-06 never-pass task first, then the two flaky ones, against the
+audit, the fix-plan/census verdicts and live re-runs (run query_ids 404 as usual; the failing
+Zero-twin re-run reproduces the audit rows exactly, every clause preserved — no silent rewrite).
+One model change, description-only. museum_artifact_16 fixed-model: gold groups the three
+profiled artifacts by material and organic-material vulnerability and averages a ten-factor ERF
+that weighs an unrated factor at KB 1's Medium value 5; all attempts with the right population
+used the (All Ten Factors, Unrated As Zero) twin (4.8/4.1/4.5 vs 5.8/5.6/4.5). The
+(All Ten Factors, Unrated As Medium) column and measure had shipped in `2e38654` and were IN the
+run deploy — the defect was the ask text: the bare ERF column's ask and the bare Average ERF
+measure's ask enumerated only strict and Unrated As Zero, and neither all-ten twin
+cross-referenced Medium, so the closed question the agent poses never offered the option
+(planets_data_14 class: the ask must enumerate every published option). The ask now names all
+three policies with values, and the Medium objects publish their warehouse values (5.6/4.5/5.8,
+mean 5.3) exactly as the Zero siblings always have. Justification: weight 5 is KB 1's published
+Medium mapping; the policy family and value-publishing pattern are the model's existing
+convention; no gold literal, alias or expression copied. Live probe pre-crash: the grouped
+material/vulnerability query over the Medium column returns gold's three rows at 2 dp
+(Jade 5.8 / Stone 5.6 / Textile 4.5, count 1 each). Regression guard: the edit is
+description-only (YAML diff carries only description scalars plus re-wrapping), so no query
+result can change; the run's 3/3-passing museum tasks are untouched by construction.
+museum_artifact_8 p1 agent-variance: passed run 1 on the model as-is (5-column artifact listing);
+all six later fails are projection width — extra columns (the RH reading in run 2;
+Dynasty/Age/Conservation Status in run 3) against gold's ID/title/material/sensitivity/status.
+The fix-plan #15 leak fix (Secondary Threshold description quoting "deeper check") was already
+in the run deploy (`48d5901`, 09-06 11:08) and no attempt misrouted to it. museum_artifact_8 p2
+gold-bound (B-73, already filed): gold's follow-up ignores its own 'Over Exposure' filter and
+returns all three humidity-sensitive artifacts; a correct filter returns zero rows.
+museum_artifact_20 agent-variance: passed 2/3 P1 and recovered within run 3 (attempt 2 chose
+the (Rated Showcases Only) count, 59); the fails picked the bare 67 twin or listed IDs where
+the intent-ambiguous "Show me" resolves to a count — both steers live in the run deploy;
+fix-plan classifies it user-sim variance.
+
+**Engine (E-14).** `sml-cli atscale-deploy` of `776978c` compiled and validated clean, then
+returned `500 No response from the service / socket hang up`, and the local dev engine JVM was
+gone afterwards (port 15432 refuses connections). Identical failure to the 2026-08-27
+solar_panel pass (engine restarted by Dianne then). The commit is pushed to main; the next
+`scripts/deploy_models.sh` run after the engine restart deploys it, and the only outstanding
+verification is a post-deploy re-probe of the Medium-twin query (values cannot change — the
+edit is description-only).
