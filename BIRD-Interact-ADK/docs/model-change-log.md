@@ -7845,3 +7845,44 @@ merges case variants (364); phase 1 of the same corpus LOWERs the email — the 
 contradict, and the normalization is load-bearing elsewhere. _7 p1 run-3 fail is
 agent-variance (counted listing rows at model grain, 16, instead of the Applications
 measure, 11; the 2/3 passing attempts used the measure).
+
+## 2026-09-08 — exchange_traded_funds pass (US-017): row-cap/sort ask folded into the Contrarian Value Play gap sentence
+
+Never-pass target `exchange_traded_funds_9` (0/3 on the 09-06 run, 13 failed phase-1
+submissions). Models commit `d5f134c`, description-only (one attribute in
+`dimensions/fund.yml`; YAML diff verified description-only).
+
+What the failures showed. Runs 1-2 filtered the published `Contrarian Value Play` flag
+(53 funds — the ratio turnover reading the flag documents). Run 3 asked, was given every
+threshold, filtered the underlying columns exactly as the flag's description says to
+(position < 25, turnover < 30 percent-scale, relative expense < 0) and produced the
+correct 145-fund population with values matching the reference to 13 decimals — then
+failed only because it returned all 145 rows where the reference lists 100. The
+result-count question ("show me *some* info" names no count) was never asked in any of
+the three runs, while the threshold asks fired in every completed repeat — the same
+asymmetry US-014 recorded: agents budget asks around what the model says is missing,
+not around query shape.
+
+Why it is convertible, not bound: ranked by the screen's own ascending position sort,
+the qualifying population is tie-free either side of the cut (15.909 vs 16.420 at
+rows 100/101, measured live on the template db), so an agent that settles the cap and
+the sort reproduces the reference set exactly. Probed with the real grader: the capped
+query grades 1 under `ex_base_external_pred` pre- and post-deploy.
+
+The change: the flag's description already carried the gap-naming sentence for its two
+unsettled input readings ("neither is settled by the KB text ... filter the underlying
+columns instead"). Extended that same sentence complex: neither the KB nor the model
+settles how many rows a listing over this screen returns or in what order — settle the
+row cap and the sort key in the same closed question as the reading choices. No count
+is named (firewall: justified from the question's own wording, "some" funds). No
+guidance bullet; no other object touched.
+
+Dispatch check: re-ran run 3's failing SELECT live — every clause preserved in the
+outbound SQL, rows reproduce the audit (no silent rewrite; old query-ids 404 after the
+engine restart, as expected). Regression guard: `exchange_traded_funds_18` (3/3, its
+passing SQL counts the flag: 53) re-run post-deploy returns 53 — the flag's condition
+is unchanged. Deploy gates 1-3 green after a services restart (they predated the
+US-015 ADK commit); 22 models in the catalog, no E-14 recurrence.
+
+The stale B-81 note "_9 simulator declined the thresholds" (2026-08-28) no longer
+holds: the 09-06 run's simulator disclosed all three thresholds when asked.
