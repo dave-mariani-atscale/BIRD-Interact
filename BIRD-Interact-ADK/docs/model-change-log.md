@@ -7485,3 +7485,22 @@ Census revision 4 re-tiered the task achievable, so deploy gate A10 turned fatal
 whole-catalog deploy — the trigger 73cc8f1's own comment named for exactly this revert.
 `WHALE_ORDER_DEF` returns to the `ASK_WHALE` ask-the-user wording; inputs still ship.
 Description-only at YAML level; no dataset, measure or calculation changed.
+
+## 2026-09-07 — sports_events pass (US-004): no change, model at ceiling
+
+**sports_events** (no models-repo change; deployed model unchanged from `8287e7b` lineage).
+All five 09-06 targets read at dispatch/audit level; every fix-plan steer for this database
+(82d5955's spread-not-score ask, driver-identity and specialist-basis asks, the SPI 345/79-null-
+event/no-Race-collapse facts, 8287e7b's stop-figure drops) was already live in the 09-06 deploy.
+Verdicts: sports_events_14 **ask-bound** — the score is deleted KB 32 rescaled (a formula the KB
+tool withholds); in all three repeats the agent asked which spread to use, said none is a score,
+and the simulator answered "use the sample standard deviation as the stability score" then
+confirmed "single best (lowest)", endorsing the un-rescaled spread against gold; live re-run of
+the failing SELECT reproduced the audit rows with every clause preserved (no silent rewrite).
+sports_events_7 **tie-bound** — best attempt's 68-row set is identical to gold at 2 dp (verified
+live against the template db) with the non-NULL prefix in gold's exact order; only the 26-row
+NULL-consistency tail permutes, and gold's ORDER BY leaves it plan-determined. sports_events_9,
+_10, _11 **agent-variance** — each passed 2/3 on existing objects; the failing repeats filtered
+out the 79 null-event sprint rows, took the bare specialist rate over its named Last Part Basis
+twin, and submitted the probability as a fraction where the pass multiplied by 100 (B-87
+compliance pattern; no new text added, the bullets exist and did not fire).
