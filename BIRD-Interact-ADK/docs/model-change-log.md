@@ -7504,3 +7504,32 @@ _10, _11 **agent-variance** — each passed 2/3 on existing objects; the failing
 out the 79 null-event sprint rows, took the bare specialist rate over its named Last Part Basis
 twin, and submitted the probability as a fraction where the pass multiplied by 100 (B-87
 compliance pattern; no new text added, the bullets exist and did not fire).
+
+## 2026-09-07 — mental_health pass (US-005): one signpost, three tasks bound
+
+**mental_health** (models repo `16cfac8`, deployed with the whole-catalog gates passing).
+Appended the set-membership signpost (the `MEMBER` join-to-derived-table recipe, on
+Primary Diagnosis / Diagnosis Duration Months / Chronic Bipolar Cohort since 82b0da8) to
+the `Facility` level description, with the coverage fact that only 342 of 921 assessments
+record a facility. Why: mental_health_20's gold screens PATIENTS by a qualifying facility
+encounter and then lists all of those patients' assessment rows; in all three repeats the
+agent filtered the detail rows by the facility directly (1 row instead of 3) — the recipe
+was live on two of the three screening columns but not on the one the question anchors on.
+Justified from schema grain + the engine's sublink refusal; no gold literal, label or
+threshold published. Live probe post-deploy: the membership-shaped query returns the
+cohort patient's three assessment rows at exact values, text column verbatim, bare-boolean
+rendering canonicalising onto gold; 3/3-relevant neighbour mental_health_10's passing SQL
+returns its recorded rows unchanged (F766, 2.0). Description-only in emitted YAML.
+
+Other three tasks, no change: mental_health_11 **gold-bound** — six of seven attempts match
+gold on every numeric cell at 2 dp and fail only on the summary-row label (`Total` where
+gold coalesces to a phrase no question wording or KB carries; answer-key firewall forbids
+publishing it). mental_health_7 **gold-bound** — gold's PSM aggregates encounter values
+through the treatmentbasics fan-out; the model's fan-out-free reading differs on 57 of 100
+facilities (verified live vs the template db), several flipping quadrant labels; dispatch
+of the failing SELECT preserves every clause (no silent rewrite). mental_health_16
+**agent-variance** — passed in-run on the exact shape the live descriptions steer to; the
+seven failing attempts either took the `Patient Mean` rollup twins (whose text names the
+assessment-grain columns and the 68-patients-disagree fact) or added the `Assessment` key
+column against the "settle the column list with a closed question" sentence (B-87
+compliance pattern; 534f90e's steers were in the run's deploy).
