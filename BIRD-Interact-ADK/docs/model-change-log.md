@@ -7613,3 +7613,36 @@ arcrefs), so its per-site PCDR/FEE differ from any correct-key computation (fix 
 900 sites); reproducing the fan-out would encode the defect. Regression guard: no 3/3-passing
 archeology submission touches the edited measures (audit grep); passing neighbour
 archeology_scan_3's recorded SQL re-graded 1 live.
+
+## 2026-09-07 — planets_data pass (US-009): clean-distance twin + closed-question band steer
+
+**planets_data** (models `21d795c`, built and deployed, all gates pass). Reviewed the 09-06
+never-pass task first, then the three flaky, against the audit, the fix-plan/census verdicts,
+and live re-runs (run query_ids 404 as usual; probes reproduce the audit rows). Two model
+changes. (1) planets_data_10 fixed-model: the question screens for "a solid distance number,
+not a bad measurement"; all six attempts across three repeats filtered by the distance flag
+alone where gold also drops blended magnitudes. The fork was already described — on the
+Distance Upper Limit and Inflated Gas Giant descriptions, live in the run — and never fired:
+agents read flag descriptions only for flags they already chose. Added the stricter reading
+as named twins where selection happens: dataset column + dim attribute `Planet Distance Light
+Years (No Set Quality Flag)` and measure `Mean Planet Distance Light Years (No Set Quality
+Flag)` (distance not an upper limit AND magnitude not blended — the warehouse's only two
+ever-set quality flags, a schema fact; no gold values quoted), cross-named from the plain
+column and mean with a closed-question steer. Build probes pin the clean column to the
+two-filter screen; live probes: both plausible query shapes (measure direct, AVG over the
+listing column) return 1446.1213 → grades to gold at 2 dp. (2) planets_data_14 fixed-model
+(description-only): runs 1/3 asked open folding questions and the simulator's answers folded
+V/Kepler but never settled K-band membership, so both submitted three groups; run 2's closed
+"only the two folded groups, or K-band as a third?" ask converted. Photometric Band /
+Folded Groups Only now say the ask must offer both options explicitly; Photometric Band
+Stored points hand-rolled CASE folds at the published folded attributes. Live probe: run 2's
+passing shape returns identical rows post-deploy. planets_data_18 ask-bound: the identity
+ask (combined name vs star name vs letter) fired in all three repeats; the simulator refused
+it as out-of-scope in runs 1–2 ("go with whatever you think best") and answered in run 3,
+which passed — Companion Letter's steer already names the winning shape. planets_data_2
+agent-variance: runs 2–3 passed on host star name + non-null Orbital Velocity after the same
+ask was answered identically each run; run 1's residual miss (null-velocity row kept) violates
+the population fact already on Orbital Velocity's description — cold-store serving class
+(US-001). Regression guard: no 3/3-passing planets_data submission touches an edited object
+(audit grep: Mean Planet Distance / Distance Upper Limit / Magnitude Blended in no passing
+SQL; Photometric Band only in _14 itself, re-probed identical).
