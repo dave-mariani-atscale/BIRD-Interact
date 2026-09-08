@@ -7322,6 +7322,20 @@ agent did not use before rebuilding the index with equal weights.
 Guidance COMPLIANCE is the binding constraint here; `scripts/guidance_compliance.py` is owed before
 any further bullet is written for this database. Total insider_trading spend this PRD: $4.87.
 
+**2026-09-08 - US-015 never-pass pass (`insider_trading_7`): no model change.** The 2026-09-04
+model edits (Leverage Recorded RAWR twin, 1/0 mimicry flag NULL where undefined) already answer
+gold: grouping by `Peer Mimicry Suspicion` and projecting it raw grades **1** against the task
+gold through `ex_base_external_pred` (probed live 2026-09-08; the grader renders a boolean gold
+and a 1/0 flag identically). Dispatch re-run of the failing shape preserves every clause - no
+silent rewrite. All three 09-06 failures relabeled the two groups with text words, steered by the
+`environment_backends.yaml` flag-attribute bullet ("when the user has specified wording, emit
+their text") - the question only *describes* the populations, it dictates no output wording. Fix
+is guidance-side, in the ADK repo: that bullet now defines specified wording as label values the
+question/KB names for display, and defaults a population-comparison to projecting the flag raw.
+Regression check: in the 09-06 run, 20/22 passing CASE-text submissions have their exact label in
+gold (question-dictated category/band names) - those stay inside the sharpened trigger.
+Verdict: fixed-guidance. Zero LLM calls.
+
 ## mental_health - 2026-08-28 pass
 
 **Starting point.** 0826 n=1 = 0.135 (base vector; the 0825 run had `grading_order_lint` ON and is
