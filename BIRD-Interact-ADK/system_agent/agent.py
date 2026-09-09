@@ -81,6 +81,32 @@ Strategy:
 # 2) was a regression the un-narrowed first bullet had itself caused. A second
 # rule repaired the first, on behaviour the agent already had, and cost 3 phases
 # across the 22 databases where obeying it loses a point — so it is gone.
+# ── Output-length rule (both arms, opt-in; settings.agent_terse_output) ──
+# Backend-agnostic, and it exists because output tokens are where an
+# a-interact task's wall-clock actually goes. Measured 2026-09-09 on the
+# 09-06 semantic-layer run against the 09-08 raw run, both at concurrency 5:
+# per agent call the semantic-layer arm emits 770 completion tokens against
+# raw's 535, and generation costs ~14.1 ms per token (probed live), so that
+# gap alone is 25.5 s of the 42.7 s per-task difference between the arms --
+# 60% of it. The prompt, despite being 25k tokens larger, accounts for ~1.5 s
+# (3%): a 22k-token system prompt costs only ~0.2 s per call, cached or not.
+# So the lever is what the agent WRITES, not what it is told.
+#
+# The wording targets narration only, never deliberation: the agent still
+# reasons and still asks, it just stops restating its plan and re-summarising
+# tool output that is already in the transcript. Whether that costs accuracy
+# is exactly what the A/B measures, which is why this is a flag and not a
+# default; the runner records it in the results deviations block.
+TERSE_OUTPUT_TIP = (
+    "\n\nOUTPUT LENGTH. Every token you write costs wall-clock time, and the graded artefact is "
+    "the query, not your commentary. Before a tool call, write at most one short sentence saying "
+    "what you are doing and why. Do not restate your plan, do not summarise what a tool just "
+    "returned (it is already in the transcript), and do not explain a query you are about to run. "
+    "Do not list columns in prose that you are also writing into the query. Keep an ask_user "
+    "message to the question itself and its options. Reasoning that changes your next action is "
+    "worth writing; narration of what you have already done is not."
+)
+
 RESULT_SHAPE_TIP = (
     "- Match the exact output shape the grading expects: return the column(s) the question actually asks for — in the order the question fixes, and where it fixes none (a prose list of figures, two figures asked as separate sentences, a follow-up that adds a column without saying where) in the order the USER gives when asked, because the reference's column order is not reliably the order the words come in — with no extra descriptive or ID columns (e.g. don't add a plant name or snapshot ID column unless the question asks to see it). Your submission is graded by comparing result rows to a reference answer as exact tuples, so a wrong column count fails even when the requested value itself is correct — and this cuts BOTH ways: an unrequested extra column and a missing implied column are equally fatal. Before submitting, ask what a person would expect to see, not just the literal nouns in the sentence: a request to identify or list the entities that qualify on some quantity (worst offenders, biggest claims, top spenders) usually expects that quantity shown next to the identifier, and a request to rank or sort implies the value being ranked by is part of the answer. When a pre-computed Yes/No flag encodes the qualifying condition, it tells you WHICH rows qualify but does not supply the underlying number — include that number too if the question is about how much or how many. And once the user has TOLD you which columns the result should hold ('a count per group along with the average'), the answer is exactly those columns, in the order they named them — not those plus the total you had already computed, and not the ones you had in mind before asking. Measured: an agent asked, was told 'count and average', submitted count, total AND average, and lost the phase on the extra column. Likewise, quantities the question says to include, show or give alongside the main figure ('include the daily recovery value and the total days in the calculation', 'along with the flag count and weight') are COLUMNS of the answer, not merely inputs you use and drop — a single-column answer to such a question is a wrong column count; if you cannot tell whether a named quantity is to be shown or only used, ask.\n"
     "- When the question NAMES the entity — 'for order OR6015391, what is its X', 'for market EX203, is it Y' — the identifier is NOT part of the answer. You were given it; the answer is the value asked for and nothing else, usually a single column of a single row. Projecting the id alongside the value is a wrong column count and fails, and bisecting your way to that by resubmitting one column shorter each time costs more than the task is worth. The same holds when the question SINGLES OUT one entity by a superlative or a screen and then asks one figure about it - 'find the plant that costs the most to run and tell me how much power it loses', 'find the planet with the biggest ratio and tell me its escape velocity': the entity is the route to the answer, not part of it, so return the figure alone unless the question also asks to see the name (measured: the two such questions in the corpus both grade a single value, and a submission with the right value beside the plant name failed twice on column count). The same holds for a question that asks for one overall figure ('calculate the X across all Y'): that is one row, so do not add a GROUP BY that turns it into one row per member.\n"
@@ -171,6 +197,8 @@ def build_agent(mode: str = "c-interact") -> Agent:
             tools = get_backend_tools_factory(settings.environment_backend)()
             instruction = (get_backend_instruction(settings.environment_backend)
                            + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP)
+        if settings.agent_terse_output:
+            instruction += TERSE_OUTPUT_TIP
         return Agent(
             model=model,
             name="bird_interact_agent",

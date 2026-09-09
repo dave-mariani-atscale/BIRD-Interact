@@ -132,6 +132,16 @@ class Settings(BaseSettings):
     # see the tracker's B-06, B-09 and B-10.
 
 
+    # EXPERIMENT (a real switch: it changes what the agent writes, so it is a
+    # flag and every run records it). True appends system_agent.agent's
+    # TERSE_OUTPUT_TIP, which forbids narration but not reasoning. Output
+    # tokens are 60% of the semantic-layer arm's per-task wall-clock excess
+    # over raw (25.5 s of 42.7 s; see that tip's comment for the measurement),
+    # so this is the only lever on run duration worth an accuracy risk --
+    # trimming the 16k-token instruction, by contrast, buys ~0.2 s per call.
+    # Default False until the paired A/B shows the pass rate holds.
+    agent_terse_output: bool = False
+
     # ACCOUNTING (not a deviation — nothing about a run changes). Path to a
     # JSONL file recording one row per LLM call (role, model, tokens, cache
     # tokens, dollar cost). Appended to by all three services; the orchestrator

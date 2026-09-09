@@ -62,6 +62,19 @@ async def run_parallel_evaluation(
             # lets a finished run be re-scored offline without a re-run.
             "run_started": run_started,
             "run_finished": time.time(),
+            # HOW PARALLEL THIS RUN WAS. Per-task `elapsed_seconds` includes time
+            # queued behind the other tasks in flight, so it is only comparable
+            # between runs at the SAME concurrency: the 2026-08-20 waves ran the
+            # raw arm ~31-way and the semantic-layer arm ~12-way, which made raw
+            # look 449 s/task against 380 and put six databases on the wrong side
+            # of the wall-clock comparison for three weeks. `concurrency` is the
+            # requested semaphore width; `effective_parallelism` is what actually
+            # overlapped (summed task time over the run's own duration), which is
+            # lower whenever tasks finish unevenly.
+            "concurrency": concurrency,
+            "effective_parallelism": round(
+                sum(float(r.get("elapsed_seconds") or 0) for r in results)
+                / max(time.time() - run_started, 1e-9), 2),
             "grading_audit_path": settings.grading_audit_path,
             # What produced this totals number. `grading_corrections` are the
             # four unconditional comparison fixes (shared/config.py) — listed,
@@ -72,6 +85,7 @@ async def run_parallel_evaluation(
             "deviations": {
                 "grading_corrections": list(GRADING_CORRECTIONS),
                 "feedback_memory": settings.feedback_memory,
+                "agent_terse_output": settings.agent_terse_output,
             },
             # API spend for this run, split by role and model. Sits next to the
             # scores on purpose: a score is only interesting alongside what it
