@@ -85,7 +85,6 @@ async def run_parallel_evaluation(
             "deviations": {
                 "grading_corrections": list(GRADING_CORRECTIONS),
                 "feedback_memory": settings.feedback_memory,
-                "agent_terse_output": settings.agent_terse_output,
             },
             # API spend for this run, split by role and model. Sits next to the
             # scores on purpose: a score is only interesting alongside what it
