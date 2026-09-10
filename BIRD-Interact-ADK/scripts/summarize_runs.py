@@ -191,6 +191,31 @@ def summarize(db: str, runs: list):
             print(f"   Largest single-arm spread (sd): {max(spreads):.3f} -- a lift smaller "
                   f"than roughly 2x this is not distinguishable from variance.")
 
+    # Time, normalised by outcome. Mean elapsed per task is NOT a fair arm
+    # comparison: only a task that passes phase 1 goes on to phase-2 work, so
+    # the arm that passes more does more and looks slower. Seconds per reward
+    # point (total elapsed / total reward) is what a correct answer costs.
+    print(f"\n3b. TIME on the same {len(query_ids)} query tasks (per run: mean, [min..max])")
+    print(f"   {'arm':<10} {'elapsed s/task':<22} {'s per reward point':<22} "
+          f"{'phase-1 s/task':<22} phase-2 reached")
+    for arm in sorted(by_arm):
+        rs = by_arm[arm]
+        el = [sum(float(r["by_id"][k].get("elapsed_seconds") or 0) for k in query_ids) / len(query_ids)
+              for r in rs]
+        spr = []
+        for r in rs:
+            rew = sum(float(r["by_id"][k].get("total_reward") or 0) for k in query_ids)
+            tot = sum(float(r["by_id"][k].get("elapsed_seconds") or 0) for k in query_ids)
+            spr.append(tot / rew if rew > 0 else float("nan"))
+        p1s = [[float(r["by_id"][k]["phase1_elapsed_seconds"]) for k in query_ids
+                if r["by_id"][k].get("phase1_elapsed_seconds") is not None] for r in rs]
+        p1 = [sum(v) / len(v) for v in p1s if v]
+        reached = [sum(1 for k in query_ids if r["by_id"][k].get("phase2_elapsed_seconds") is not None)
+                   / len(query_ids) for r in rs]
+        print(f"   {arm:<10} {_fmt(el):<22} {_fmt(spr):<22} "
+              f"{(_fmt(p1) if p1 else 'n/a (pre-stamp runs)'):<22} "
+              f"{_fmt(reached) if any(reached) else 'n/a'}")
+
     print(f"\n4. PER-TASK STABILITY (query tasks, phase 1)")
     for arm in sorted(by_arm):
         rs = by_arm[arm]

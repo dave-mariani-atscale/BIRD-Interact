@@ -126,7 +126,20 @@ async def run_single_task(task_data: dict) -> Dict[str, Any]:
 
         run_result = await run_agent_session(instance_id, initial_message)
         state = run_result.get("state", {})
-        elapsed = time.time() - start_time
+        end_time = time.time()
+        elapsed = end_time - start_time
+        has_follow_up = bool(task_data.get("follow_up") and task_data["follow_up"].get("sol_sql"))
+        # Phase split of the wall clock. Every task attempts phase 1, so
+        # phase1_elapsed_seconds is the like-for-like latency number; phase 2
+        # exists only for tasks that passed phase 1 and have a follow-up, so
+        # its elapsed is reported over those tasks and is None otherwise.
+        p1_at = state.get("phase1_completed_at")
+        if p1_at:
+            phase1_elapsed = max(0.0, float(p1_at) - start_time)
+            phase2_elapsed = max(0.0, end_time - float(p1_at)) if has_follow_up else None
+        else:
+            phase1_elapsed = elapsed
+            phase2_elapsed = None
 
         result = {
             "task_id": instance_id,
@@ -134,9 +147,12 @@ async def run_single_task(task_data: dict) -> Dict[str, Any]:
             "database": db_name,
             "phase1_passed": state.get("phase1_completed", False),
             "phase2_passed": state.get("phase2_completed", False),
-            "has_follow_up": bool(task_data.get("follow_up") and task_data["follow_up"].get("sol_sql")),
+            "has_follow_up": has_follow_up,
             "total_reward": state.get("total_reward", 0.0),
             "elapsed_seconds": elapsed,
+            "phase1_elapsed_seconds": phase1_elapsed,
+            "phase2_elapsed_seconds": phase2_elapsed,
+            "phase1_completed_at": p1_at,
             "budget_used": initial_budget - max(0, state.get("budget_remaining", initial_budget)),
             "budget_remaining": max(0, state.get("budget_remaining", initial_budget)),
             "dialogue_history": state.get("dialogue_history", []),

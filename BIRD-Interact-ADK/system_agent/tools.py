@@ -11,6 +11,8 @@ Budget deduction and trajectory logging are handled by callbacks (callbacks.py).
 
 import json
 import logging
+import time
+
 import httpx
 from typing import Optional
 
@@ -244,6 +246,12 @@ def submit_sql(sql: str, tool_context: ToolContext) -> str:
                 phase = data.get("phase_completed")
                 if phase == 1:
                     tool_context.state["phase1_completed"] = True
+                    # Wall-clock stamp of the phase boundary. The orchestrator
+                    # turns it into phase1/phase2 elapsed so that time can be
+                    # normalised by outcome: total elapsed alone penalises the
+                    # arm that passes phase 1 more often, because only that
+                    # arm goes on to do phase-2 work at all.
+                    tool_context.state["phase1_completed_at"] = time.time()
                     tool_context.state["current_phase"] = 2
                     if data.get("has_follow_up"):
                         try:
@@ -254,6 +262,7 @@ def submit_sql(sql: str, tool_context: ToolContext) -> str:
                         tool_context.state["task_done"] = True
                 elif phase == 2:
                     tool_context.state["phase2_completed"] = True
+                    tool_context.state["phase2_completed_at"] = time.time()
                     tool_context.state["task_done"] = True
 
             # Build response message

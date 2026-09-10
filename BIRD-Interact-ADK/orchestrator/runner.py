@@ -23,6 +23,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger(__name__)
 
 
+def time_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Wall clock normalised by outcome.
+
+    Mean elapsed per task compares arms unfairly: only tasks that pass phase 1
+    go on to phase 2, so the arm that passes more does more work and looks
+    slower. `seconds_per_reward_point` (total elapsed / total reward) is the
+    headline efficiency number -- what a unit of correct answer costs in time.
+    The phase split uses the `phase1_completed_at` stamp submit_sql writes into
+    session state; runs recorded before that stamp existed report None here.
+    """
+    elapsed = [float(r.get("elapsed_seconds") or 0) for r in results]
+    reward = sum(float(r.get("total_reward") or 0) for r in results)
+    p1 = [float(r["phase1_elapsed_seconds"]) for r in results
+          if r.get("phase1_elapsed_seconds") is not None]
+    p2 = [float(r["phase2_elapsed_seconds"]) for r in results
+          if r.get("phase2_elapsed_seconds") is not None]
+    n = len(results) or 1
+    return {
+        "elapsed_seconds_total": round(sum(elapsed), 1),
+        "elapsed_seconds_mean": round(sum(elapsed) / n, 1),
+        "seconds_per_reward_point": round(sum(elapsed) / reward, 1) if reward > 0 else None,
+        "phase1_elapsed_seconds_mean": round(sum(p1) / len(p1), 1) if p1 else None,
+        "phase2_reached_count": len(p2),
+        "phase2_elapsed_seconds_mean_reached": round(sum(p2) / len(p2), 1) if p2 else None,
+    }
+
+
 async def run_parallel_evaluation(
     tasks: List[dict],
     run_single_task: Callable[[dict], Awaitable[Dict[str, Any]]],
@@ -103,6 +130,7 @@ async def run_parallel_evaluation(
                 "phase2_rate": p2_count / n,
                 "phase1_count": p1_count,
                 "phase2_count": p2_count,
+                **time_metrics(results),
             },
             "results": results,
         }
@@ -153,10 +181,13 @@ async def run_parallel_evaluation(
 
     n = len(tasks)
     if n:
+        tm = time_metrics(results)
         logger.info(
-            "\nDone! Tasks: %d, Avg Reward: %.4f, P1: %d/%d (%.1f%%), P2: %d/%d (%.1f%%)",
+            "\nDone! Tasks: %d, Avg Reward: %.4f, P1: %d/%d (%.1f%%), P2: %d/%d (%.1f%%), "
+            "elapsed/task %.0fs, s per reward point %s",
             n, total_reward / n, p1_count, n, p1_count / n * 100,
             p2_count, n, p2_count / n * 100,
+            tm["elapsed_seconds_mean"], tm["seconds_per_reward_point"],
         )
         agg = llm_usage.aggregate(since=run_started)
         if agg.get("calls"):
