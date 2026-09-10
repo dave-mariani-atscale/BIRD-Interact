@@ -59,6 +59,16 @@ backends:
     # kept (HARNESS_ERROR_HINTS=0 disables it; entries here still append) but the list
     # is empty so the semantic layer's own guidance is what gets measured.
     error_hints: []
+    # tool_costs (bird-coins). These were dropped by accident in 90c21a8, whose
+    # message says they were meant to stay; the 2026-09-09 sweep therefore ran
+    # with free discovery and queries (only ask_user 2 / submit_sql 3 charged),
+    # which removed the budget pressure that bounds a task. Restored verbatim.
+    tool_costs:
+      list_models: 1.0
+      explore_columns: 1.0
+      focus_columns: 0.5
+      get_sml_skills: 1.0
+      run_query: 1.0
     # instruction (2026-09-09, ATSCALE-52704): every semantic-layer rule left this prompt.
     # The 45 engine-dialect rules and the discovery-mechanics rules now live in the MCP
     # server (query-semantic-layer/references/dialect.md and discovery.md, served on a
