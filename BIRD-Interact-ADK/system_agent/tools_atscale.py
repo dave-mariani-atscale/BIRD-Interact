@@ -116,7 +116,14 @@ async def list_models(tool_context: ToolContext) -> str:
     domain, err = _domain_or_error(tool_context)
     if err:
         return err
-    return await _call("list_models", domain, tool_context)
+    args = dict(domain)
+    if settings.list_models_question and tool_context is not None:
+        # Question-scoped memory (A/B flag): the server ranks its memory blocks
+        # by relevance to the question instead of serving the first EXEMPLARS_K.
+        question = tool_context.state.get("user_query", "")
+        if question:
+            args["question"] = question
+    return await _call("list_models", args, tool_context)
 
 
 async def explore_columns(

@@ -7,6 +7,7 @@ resolves the actual URL/token via shared.config.settings.
 
 import importlib
 import logging
+import os
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -111,6 +112,13 @@ def get_backend_instruction(backend_name: str) -> str:
     system_agent.agent.build_agent() appends the shared RESULT_SHAPE_TIP."""
     backend = get_backend_config(backend_name)
     instruction = backend.get("instruction")
+    # A/B override (2026-09-09, instruction-size experiment): a file whose text
+    # replaces the configured instruction for this backend. Off unless the env var
+    # is set; the runner records the path in `deviations` so a result file says
+    # which instruction it ran under.
+    override = os.environ.get("ATSCALE_INSTRUCTION_FILE", "").strip()
+    if override and backend_name != "raw":
+        instruction = Path(override).read_text()
     if not instruction:
         raise ValueError(
             f"Backend '{backend_name}' in {_CONFIG_PATH} has no 'instruction' - "

@@ -173,6 +173,12 @@ class Settings(BaseSettings):
     # every call degrades to a logged warning. Off preserves prior behavior
     # exactly. Recorded per run in the results JSON.
     feedback_memory: bool = False
+    # A/B 2026-09-09 (question-scoped memory): when true, list_models is called
+    # with the task's question so the server narrows the served memory blocks to
+    # the entries relevant to it (ATSCALE_MCP_FEEDBACK_QUESTION_SCOPE_K). False
+    # keeps the unscoped blocks — the control arm. Recorded in each run's
+    # `deviations` so a result file says which arm it was.
+    list_models_question: bool = False
 
     # Shared secret matching the MCP server's ATSCALE_MCP_FEEDBACK_RATER_TOKEN.
     # The server honors privileged feedback sources (end_user_explicit) only when

@@ -85,6 +85,9 @@ async def run_parallel_evaluation(
             "deviations": {
                 "grading_corrections": list(GRADING_CORRECTIONS),
                 "feedback_memory": settings.feedback_memory,
+                "list_models_question": settings.list_models_question,
+                "instruction_file": os.environ.get("ATSCALE_INSTRUCTION_FILE", ""),
+                "harness_error_hints": os.environ.get("HARNESS_ERROR_HINTS", "1"),
             },
             # API spend for this run, split by role and model. Sits next to the
             # scores on purpose: a score is only interesting alongside what it

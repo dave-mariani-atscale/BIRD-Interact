@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -197,6 +198,10 @@ def _error_hints(tool_response) -> str:
     Kept config-driven so this file never learns a specific engine's error
     strings; "raw" has no backend config and so never gets any."""
     if settings.environment_backend == "raw":
+        return ""
+    # A/B 2026-09-09 (server-side dialect guidance): HARNESS_ERROR_HINTS=0 turns the
+    # client-side hints off so the semantic layer's own error repairs are measured alone.
+    if os.environ.get("HARNESS_ERROR_HINTS", "1").strip().lower() in ("0", "false", "off"):
         return ""
     try:
         from shared.environment_backends import get_backend_error_hints
