@@ -55,19 +55,34 @@ def calculate_initial_budget(task_data: Dict[str, Any]) -> float:
     return 6.0 + 2.0 * m_amb + 2.0 * settings.patience
 
 
-async def init_task_on_services(task_id: str, task_data: dict):
+def task_backend(task_data: dict) -> str:
+    """The backend this task runs on. Leaderboard mode routes every
+    Management-category task (DDL/DML, 190 of the 600) to the raw Postgres
+    tools and the raw grading path, whatever the run's backend, because a
+    semantic layer is read-only and the leaderboard scores all 600 tasks. A
+    Query task's follow-up is always a Query, and a Management task's follow-up
+    needs the phase-1 state (the table it created), so routing on the phase-1
+    category covers both phases. Outside leaderboard mode every task runs on
+    the run's backend, exactly as before."""
+    if settings.leaderboard_mode and task_data.get("category", "Query") != "Query":
+        return "raw"
+    return settings.environment_backend
+
+
+async def init_task_on_services(task_id: str, task_data: dict, backend: str):
     payload = {
         "task_id": task_id,
-        "task_data": {**task_data, "_interact_mode": "a-interact"},
+        "task_data": {**task_data, "_interact_mode": "a-interact", "_backend": backend},
     }
     await _post(f"{DB_ENV_URL}/init_task", payload)
     await _post(f"{USER_SIM_URL}/init_task", payload)
-    logger.info("  [%s] Services initialized", task_id)
+    logger.info("  [%s] Services initialized (backend %s)", task_id, backend)
 
 
-async def init_agent_session(task_id: str, task_data: dict, budget: float):
+async def init_agent_session(task_id: str, task_data: dict, budget: float, backend: str):
     state = {
         "task_id": task_id,
+        "backend": backend,
         "db_name": task_data["selected_database"],
         "user_query": task_data.get("amb_user_query", ""),
         "current_phase": 1,
@@ -83,7 +98,8 @@ async def init_agent_session(task_id: str, task_data: dict, budget: float):
     }
     return await _post(
         f"{SYSTEM_AGENT_URL}/init_session",
-        {"task_id": task_id, "mode": "a-interact", "state": state, "reset": True},
+        {"task_id": task_id, "mode": "a-interact", "state": state, "reset": True,
+         "backend": backend},
         timeout=30.0,
     )
 
@@ -106,14 +122,16 @@ async def cleanup_task_service(task_id: str):
 async def run_single_task(task_data: dict) -> Dict[str, Any]:
     instance_id = task_data["instance_id"]
     db_name = task_data["selected_database"]
-    logger.info("Starting task: %s (db: %s)", instance_id, db_name)
+    backend = task_backend(task_data)
+    category = task_data.get("category", "Query")
+    logger.info("Starting task: %s (db: %s, %s, backend %s)", instance_id, db_name, category, backend)
     start_time = time.time()
 
-    await init_task_on_services(instance_id, task_data)
+    await init_task_on_services(instance_id, task_data, backend)
 
     try:
         initial_budget = calculate_initial_budget(task_data)
-        await init_agent_session(instance_id, task_data, initial_budget)
+        await init_agent_session(instance_id, task_data, initial_budget, backend)
 
         initial_message = (
             f"Database: {db_name}\n"
@@ -145,6 +163,10 @@ async def run_single_task(task_data: dict) -> Dict[str, Any]:
             "task_id": instance_id,
             "instance_id": instance_id,
             "database": db_name,
+            # Which path scored this task. Leaderboard mode mixes them in one
+            # run (Management -> raw), and the summary tab splits on category.
+            "category": category,
+            "backend": backend,
             "phase1_passed": state.get("phase1_completed", False),
             "phase2_passed": state.get("phase2_completed", False),
             "has_follow_up": has_follow_up,

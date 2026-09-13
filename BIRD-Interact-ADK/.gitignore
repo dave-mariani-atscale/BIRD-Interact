@@ -37,6 +37,7 @@ shared/_legacy_*.py
 # Local-only run scripts (personal task subsets, local endpoints)
 scripts/[0-9]*run.sh
 scripts/run_*.sh
+!scripts/run_leaderboard.sh
 # One-off task lists for --tasks, same reason as the runner scripts above
 scripts/tasks_*.txt
 # One-off scorers written for a single run's output layout
@@ -70,6 +71,7 @@ docs/*
 !docs/model-change-log.md
 !docs/bird-grading-comparison.md
 !docs/bird-database-testing-prompt.md
+!docs/leaderboard-submission-methodology.md
 
 # Personal / development files
 Bird_ADK_plan.md
@@ -93,3 +95,6 @@ Thumbs.db
 
 # local working files (handoff notes, run timestamps, one-off diagnostics)
 scratch/
+
+# leaderboard submission exports (regenerable from results/ via scripts/export_submission.py)
+submissions/

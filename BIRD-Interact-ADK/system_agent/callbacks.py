@@ -36,17 +36,50 @@ TOOL_COSTS = {
 }
 
 
-def _tool_cost(tool_name: str):
-    """Look up a tool's bird-coin cost: the backend-agnostic/raw table above,
-    falling back to the ACTIVE backend's own tool_costs from config. Resolved
-    per-call (not cached) since the backend can change at runtime via
-    /set_backend."""
-    if tool_name in TOOL_COSTS:
-        return TOOL_COSTS[tool_name]
-    if settings.environment_backend == "raw":
-        return None
-    from shared.environment_backends import get_backend_tool_costs
-    return get_backend_tool_costs(settings.environment_backend).get(tool_name)
+def cost_scheme_name() -> str:
+    """Which cost table a run charged - recorded in results and on /health.
+    "universal_cost_scheme" is the BIRD submission guidelines' rule for custom
+    agents: ask user 2, submit 3, execute 1 (fixed), and every other action 0.5
+    when its input is under 250 tokens and its average output under 1000,
+    otherwise 1. Under it explore_columns costs 0.5, not the 1 our A/B runs
+    charge (measured 2026-09-11 on 40 live calls each: explore_columns 17 in /
+    831 out, focus_columns 27 in / 772 out; list_models and get_sml_skills
+    exceed 1000 out and stay at 1). scripts/cost_scheme_audit.py re-measures."""
+    return "universal_cost_scheme" if settings.leaderboard_mode else "harness_default"
+
+
+def effective_tool_costs(backend: str) -> dict:
+    """The complete tool -> bird-coin table for a backend under the current
+    scheme: the raw/base table, then the backend's own tool_costs, then - in
+    leaderboard mode - its leaderboard_tool_costs (config/environment_backends.yaml)."""
+    costs = dict(TOOL_COSTS)
+    if backend != "raw":
+        from shared.environment_backends import (
+            get_backend_tool_costs, get_backend_leaderboard_tool_costs,
+        )
+        costs.update(get_backend_tool_costs(backend))
+        if settings.leaderboard_mode:
+            costs.update(get_backend_leaderboard_tool_costs(backend))
+    return costs
+
+
+def _session_backend(tool_context) -> str:
+    """The backend this session's agent was built for. Read from session state
+    (stamped by AdkRuntime.init_session), because a process can serve a raw
+    session and a semantic-layer session at once; the process-wide setting is
+    only the fallback for a session created without one."""
+    if tool_context is not None:
+        name = tool_context.state.get("backend")
+        if name:
+            return name
+    return settings.environment_backend
+
+
+def _tool_cost(tool_name: str, tool_context=None):
+    """Look up a tool's bird-coin cost for THIS session's backend. Resolved
+    per-call (not cached): the table depends on the session and on the cost
+    scheme, and the process backend can still change via /set_backend."""
+    return effective_tool_costs(_session_backend(tool_context)).get(tool_name)
 
 
 #: The engine's id for an executed query, appended by the MCP server as a
@@ -106,7 +139,7 @@ async def before_tool_callback(
 ) -> dict | None:
     """Deduct budget. Free submit exit when exhausted."""
     tool_name = tool.name if hasattr(tool, "name") else str(tool)
-    cost = _tool_cost(tool_name)
+    cost = _tool_cost(tool_name, tool_context)
     if cost is None:
         return None
 
@@ -136,12 +169,14 @@ async def after_tool_callback(
 ) -> dict | None:
     """Record tool event in trajectory and append budget note to response."""
     tool_name = tool.name if hasattr(tool, "name") else str(tool)
-    cost = _tool_cost(tool_name) or 0
+    cost = _tool_cost(tool_name, tool_context) or 0
     budget_before = tool_context.state.get("_budget_before")
     budget_after = tool_context.state.get("budget_remaining")
     initial = tool_context.state.get("initial_budget", 0)
 
     trajectory = tool_context.state.get("tool_trajectory", [])
+    full_text = (json.dumps(tool_response, ensure_ascii=False)
+                 if isinstance(tool_response, (dict, list)) else str(tool_response))
     # Engine query ids, read from the FULL response before _preview truncates it.
     # The MCP server appends `queryId: <uuid>` after the result rows, so a query
     # returning more than ~2000 characters of rows lost its id entirely - about a
@@ -155,13 +190,15 @@ async def after_tool_callback(
         "tool": tool_name,
         "args": args,
         "result": _preview(tool_response),
+        # Full response length. The preview above truncates at 2000 characters,
+        # which made average output size (the Universal Cost Scheme's criterion)
+        # unmeasurable from a run; scripts/cost_scheme_audit.py reads this.
+        "result_chars": len(full_text),
         "cost": cost,
         "budget_before": budget_before,
         "budget_after": budget_after,
     }
-    qids = _QUERY_ID_RE.findall(
-        json.dumps(tool_response, ensure_ascii=False)
-        if isinstance(tool_response, (dict, list)) else str(tool_response))
+    qids = _QUERY_ID_RE.findall(full_text)
     if qids:
         step["query_ids"] = qids
     # submit_sql's own text carries no id - the grading execution happens inside
@@ -173,6 +210,14 @@ async def after_tool_callback(
         graded = tool_context.state.get("_last_submit_query_id")
         if graded:
             step["query_id"] = graded
+        # The grader's verdict and phase for this attempt, and the engine's
+        # outbound Postgres SQL (leaderboard mode, semantic-layer path) - the
+        # fields scripts/export_submission.py builds the submission file from.
+        step["passed"] = bool(tool_context.state.get("_last_submit_passed"))
+        if tool_context.state.get("_last_submit_phase") is not None:
+            step["phase"] = tool_context.state.get("_last_submit_phase")
+        if tool_context.state.get("_last_submit_outbound_sql"):
+            step["outbound_sql"] = tool_context.state.get("_last_submit_outbound_sql")
     trajectory.append(step)
     tool_context.state["tool_trajectory"] = trajectory
 
@@ -187,17 +232,17 @@ async def after_tool_callback(
     # Append budget note to agent-visible response (matches reference implementation)
     if budget_after is not None and budget_after >= 0:
         budget_note = f"\n\n[SYSTEM NOTE: Remaining budget: {budget_after:.1f}/{initial:.1f}]"
-        return str(tool_response) + _error_hints(tool_response) + budget_note
+        return str(tool_response) + _error_hints(tool_response, _session_backend(tool_context)) + budget_note
     return None
 
 
-def _error_hints(tool_response) -> str:
-    """Hints the ACTIVE backend declares for errors whose own message misleads —
-    config/environment_backends.yaml's `error_hints`, matched case-insensitively
-    against the response text. Costs nothing: the response is already paid for.
-    Kept config-driven so this file never learns a specific engine's error
-    strings; "raw" has no backend config and so never gets any."""
-    if settings.environment_backend == "raw":
+def _error_hints(tool_response, backend: str) -> str:
+    """Hints THIS session's backend declares for errors whose own message
+    misleads — config/environment_backends.yaml's `error_hints`, matched
+    case-insensitively against the response text. Costs nothing: the response is
+    already paid for. Kept config-driven so this file never learns a specific
+    engine's error strings; "raw" has no backend config and so never gets any."""
+    if backend == "raw":
         return ""
     # A/B 2026-09-09 (server-side dialect guidance): HARNESS_ERROR_HINTS=0 turns the
     # client-side hints off so the semantic layer's own error repairs are measured alone.
@@ -205,7 +250,7 @@ def _error_hints(tool_response) -> str:
         return ""
     try:
         from shared.environment_backends import get_backend_error_hints
-        hints = get_backend_error_hints(settings.environment_backend)
+        hints = get_backend_error_hints(backend)
     except Exception:
         return ""
     text = str(tool_response).lower()

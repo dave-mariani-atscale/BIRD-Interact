@@ -69,6 +69,20 @@ backends:
       focus_columns: 0.5
       get_sml_skills: 1.0
       run_query: 1.0
+    # leaderboard_tool_costs (2026-09-11): overrides applied on top of tool_costs
+    # ONLY in leaderboard mode (LEADERBOARD_MODE=true), to charge the BIRD
+    # submission guidelines' Universal Cost Scheme for custom agents: ask user 2,
+    # submit 3, execute 1 (run_query, fixed "since all agents share the same
+    # database interface"), and any other action 0.5 when its input is under 250
+    # tokens and its AVERAGE output under 1000 tokens, else 1.0. Measured on 40
+    # live calls each, sampled from the 2026-09-10 run (scripts/cost_scheme_audit.py):
+    #   explore_columns  17 in / 831 out  -> 0.5   (tool_costs charges 1.0)
+    #   focus_columns    27 in / 772 out  -> 0.5   (unchanged)
+    #   list_models, get_sml_skills: >1000 out    -> 1.0 (unchanged)
+    # Only the difference is listed. The A/B arms keep tool_costs so their
+    # coin figures stay comparable with every earlier tab.
+    leaderboard_tool_costs:
+      explore_columns: 0.5
     # instruction (2026-09-09, ATSCALE-52704): every semantic-layer rule left this prompt.
     # The 45 engine-dialect rules and the discovery-mechanics rules now live in the MCP
     # server (query-semantic-layer/references/dialect.md and discovery.md, served on a

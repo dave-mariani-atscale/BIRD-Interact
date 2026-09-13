@@ -397,10 +397,21 @@ def canonical_cell(value) -> str:
         # 'f' avoids normalize()'s sci notation (1.86709472E+8) for big ints
         return format(Decimal(str(value)).normalize(), "f")
     text = str(value)
-    stamp = _TIMESTAMP_STR_RE.match(text.strip())
-    if stamp:
-        return stamp.group(1)
+    # Correction `timestamp_date` - off under the upstream regime (leaderboard
+    # mode), where a timestamp string must match gold byte for byte.
+    if settings.grading_regime == "corrected":
+        stamp = _TIMESTAMP_STR_RE.match(text.strip())
+        if stamp:
+            return stamp.group(1)
     return text
+
+
+def active_grading_corrections() -> tuple:
+    """The corrections this process applies. Single source of truth for
+    db_environment's /health, the runner's regime check and every results
+    file: settings.grading_corrections, which is empty under the upstream
+    regime (leaderboard mode) and the full six otherwise."""
+    return tuple(settings.grading_corrections)
 
 
 ORDER_CUE_RE = re.compile(
@@ -432,6 +443,8 @@ def effective_conditions(conditions, question_text):
     correction rather than a lift for either arm. `order_relaxed_no_cue` marks
     the rows the grading audit recorded under the relaxed condition."""
     conditions = dict(conditions or {})
+    if settings.grading_regime != "corrected":
+        return conditions  # upstream regime: the dataset's order flag is final
     if conditions.get("order") and not question_requests_order(question_text):
         conditions["order"] = False
         conditions["order_relaxed_no_cue"] = True
@@ -467,6 +480,10 @@ def _compare_rows(pred_res, gt_res, conditions, cell=None, raw=None) -> int:
     ordered = bool(conditions and conditions.get("order", False))
     if _rows_equal(pred_cells, gt_cells, ordered):
         return 1
+    if settings.grading_regime != "corrected":
+        # Upstream regime (leaderboard mode): exact list or set equality is the
+        # whole comparison, as in evaluation/src/eval_bird_interact.py ex_base.
+        return 0
     # Two symmetric corrections, both arms, unconditional since 2026-09-07
     # (they were GRADING_CASEFOLD_TEXT and GRADING_COLUMN_ORDER_FREE, both on by
     # default): text case, then a column permutation, then both together. Golds
@@ -910,6 +927,69 @@ def extract_query_id(result_text: str):
     """
     ids = _QUERY_ID_RE.findall(result_text or "")
     return ids[-1] if ids else None
+
+
+def trailing_order_by(sql: str) -> str:
+    """The top-level ORDER BY tail (with any LIMIT/OFFSET) of a query, or "".
+
+    Needed to rebuild a set operation from its per-branch outbound queries. The
+    engine dispatches one physical query per branch and applies the query's
+    ORDER BY to the CONCATENATED result, so no branch carries it: joining the
+    branches with UNION ALL reproduces the rows but not their order, and an
+    order-sensitive task then fails on a correct answer. Measured on the
+    2026-09-12 Sonnet run: organ_transplant_9 and virtual_idol_18 both returned
+    gold's exact rows in the wrong order for this reason.
+
+    Only a depth-0 ORDER BY counts - one inside a derived table belongs to that
+    subquery, not the statement - and only the LAST one, which is the statement's
+    own. Returns the text from ORDER BY to the end so LIMIT and OFFSET come with
+    it, since the engine applies those after ordering too.
+    """
+    if not sql:
+        return ""
+    depth = 0
+    in_str = False
+    best = -1
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if in_str:
+            if ch == "'":
+                if i + 1 < len(sql) and sql[i + 1] == "'":
+                    i += 1
+                else:
+                    in_str = False
+        elif ch == "'":
+            in_str = True
+        elif ch == '"':                       # quoted identifier: skip wholesale
+            j = sql.find('"', i + 1)
+            i = j if j != -1 else len(sql)
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and ch in "oO" and sql[i:i + 8].upper() == "ORDER BY":
+            best = i
+            i += 7
+        i += 1
+    return sql[best:].strip() if best != -1 else ""
+
+
+def extract_query_ids(result_text: str) -> List[str]:
+    """EVERY engine query_id in a run_query response, in order.
+
+    A set operation is not executed as one engine query: the MCP server runs it
+    branch by branch and the response carries one `queryId:` per branch. Taking
+    only the last (extract_query_id) therefore captures one branch's outbound
+    SQL and silently loses the rest - which, for a submission built from
+    outbound SQL, means exporting a query that returns a fraction of the rows it
+    was graded on. Measured on the 2026-09-12 runs: 7 of 410 Query tasks per run
+    are set operations, and the exported SQL for them returned only the final
+    branch. Callers that need the whole dispatched query use this; callers
+    keying the engine's query repository (aggregate and cache attribution) still
+    want a single id and keep using extract_query_id.
+    """
+    return list(_QUERY_ID_RE.findall(result_text or ""))
 
 
 def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) -> int:

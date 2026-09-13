@@ -49,6 +49,16 @@ class SubmitSQLResponse(BaseModel):
     #: engine. Never shown to the agent - system_agent/tools.py composes the
     #: agent-visible text from named fields, and this is not one of them.
     query_id: Optional[str] = None
+    #: Leaderboard mode only: the Postgres SQL the semantic-layer engine actually
+    #: dispatched for the graded execution (one entry per outbound statement),
+    #: fetched via get_outbound_queries right after grading. This is what the
+    #: submission file carries as the predicted SQL, since the agent's logical
+    #: SQL cannot run on the BIRD team's evaluator. None on the raw path, where
+    #: the submitted SQL already is Postgres SQL.
+    outbound_sql: Optional[List[str]] = None
+    #: The phase this submission was graded in (1 or 2), so the trajectory can
+    #: name it without inferring it from the message text.
+    phase: Optional[int] = None
 
 
 class SchemaRequest(BaseModel):

@@ -9,8 +9,10 @@ Users: copy .env.example to .env and edit.
 See .env.example for all available settings.
 """
 
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 # Load .env into os.environ so litellm/openai can read OPENAI_API_KEY etc.
@@ -18,6 +20,26 @@ load_dotenv()
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+#: The user simulator every leaderboard run uses. Fixed, not configurable: the
+#: leaderboard groups entries by simulator, every 2026 entry (Claude-Opus-4.6,
+#: MERIT + Claude-Opus-4.6, Kimi-2.5, GLM-4.7, ...) uses this one, and it is the
+#: upstream ADK default. A run with any other simulator lands in the
+#: "Customized-User" bucket and needs a 15-expert review before it is listed.
+LEADERBOARD_USER_SIM_MODEL = "anthropic/claude-haiku-4-5-20251001"
+
+#: The comparison corrections this harness adds on top of upstream grading.
+#: Applied under grading_regime == "corrected" (our A/B work) and NOT under
+#: "upstream" (leaderboard mode), where the grader must score exactly as the
+#: BIRD team's evaluator will. Names are the ones every results file records.
+GRADING_CORRECTION_NAMES = (
+    "timestamp_date",        # a timestamp STRING truncates to its date
+    "order_requires_cue",    # order=true only when the question asks for one
+    "casefold_text",         # text cells compare case-insensitively
+    "column_order_free",     # a column permutation of the gold matches
+    "ties_as_ties",          # ordered gold with ties: multiset within a tie group (key read from gold SQL)
+    "numeric_rel_tolerance", # pre-rounding numerics compare within 1e-6 relative
+)
 
 
 class Settings(BaseSettings):
@@ -36,6 +58,35 @@ class Settings(BaseSettings):
     system_agent_port: int = 6000
     user_sim_port: int = 6001
     db_env_port: int = 6002
+
+    # ── LEADERBOARD MODE ── one switch, every deviation from the published
+    # BIRD-Interact protocol off, so a run is comparable to the entries on
+    # https://bird-interact.github.io/ and exportable as a submission.
+    #
+    # LEADERBOARD_MODE=true (env or .env) makes ALL of the following true, in
+    # every process that reads settings (the three services and the runner):
+    #   1. grading_regime == "upstream": the six comparison corrections are off
+    #      and rows compare exactly as evaluation/src/eval_bird_interact.py does.
+    #   2. user_sim_model is forced to LEADERBOARD_USER_SIM_MODEL and the
+    #      simulator runs the UPSTREAM prompts and token limits - no fidelity
+    #      rules, no numeric guard (user_simulator/prompts.py, server.py).
+    #   3. system_agent_model defaults to leaderboard_agent_model (below).
+    #   4. Management-category tasks are RUN, not filtered: on a semantic-layer
+    #      backend each is routed per task to the raw Postgres tools and the
+    #      raw grading path, so all 600 tasks score (orchestrator/ainteract.py).
+    #   5. Tool costs follow the guidelines' Universal Cost Scheme
+    #      (system_agent/callbacks.py LEADERBOARD_TOOL_COSTS).
+    #   6. Every graded semantic-layer submission also records the engine's
+    #      OUTBOUND Postgres SQL, which is what the submission file carries as
+    #      the predicted SQL (db_environment/server.py, scripts/export_submission.py).
+    # The runner refuses to start if any service reports a different value of
+    # this flag than its own, so a half-switched stack cannot score a run.
+    # scripts/run_leaderboard.sh is the one-command entry point.
+    leaderboard_mode: bool = False
+    # The agent under test in leaderboard mode. Opus 4.6 first, so the run
+    # compares directly with Anthropic's Claude-Opus-4.6 entry (33.0% phase-1
+    # success, Claude-Haiku-4-5 simulator); override with LEADERBOARD_AGENT_MODEL.
+    leaderboard_agent_model: str = "anthropic/claude-opus-4-6"
 
     # Models (LiteLlm format: provider/model-name)
     user_sim_model: str = "anthropic/claude-haiku-4-5-20251001"
@@ -99,6 +150,12 @@ class Settings(BaseSettings):
     environment_backend: str = "raw"
     semantic_layer_mcp_url: str = ""
     semantic_layer_mcp_token: str = ""
+    # The MCP server's unauthenticated admin port (its /configz route), used only
+    # by the leaderboard-mode pre-flight: a leaderboard run on a semantic-layer
+    # backend needs the server started with ATSCALE_MCP_DISABLE_AGGREGATES=true,
+    # or the outbound SQL in the submission reads aggregate tables the BIRD
+    # evaluator does not have (scripts/mcp_aggregates.sh on).
+    semantic_layer_mcp_admin_url: str = "http://localhost:3003"
 
     # ── Grading corrections (unconditional, both arms) ──
     # Four corrections to upstream BIRD-Interact's comparison are applied on
@@ -186,6 +243,39 @@ class Settings(BaseSettings):
     # recorded at agent_inferred weight and never certifies on its own. Empty
     # means "send no token" - fine when the server has none configured.
     feedback_rater_token: str = ""
+
+    @model_validator(mode="after")
+    def _apply_leaderboard_mode(self):
+        """Leaderboard mode pins the models. Done here, once, so every reader of
+        settings.user_sim_model / system_agent_model - the services, the runner,
+        the usage log - sees the pinned value and nothing has to remember to
+        check the flag. A .env that names another simulator is overridden and
+        logged, never silently honoured."""
+        if not self.leaderboard_mode:
+            return self
+        log = logging.getLogger(__name__)
+        if self.user_sim_model != LEADERBOARD_USER_SIM_MODEL:
+            log.warning("LEADERBOARD_MODE: USER_SIM_MODEL=%r ignored; the simulator is pinned to %s",
+                        self.user_sim_model, LEADERBOARD_USER_SIM_MODEL)
+            self.user_sim_model = LEADERBOARD_USER_SIM_MODEL
+        if self.system_agent_model != self.leaderboard_agent_model:
+            log.info("LEADERBOARD_MODE: system agent is %s (LEADERBOARD_AGENT_MODEL), not SYSTEM_AGENT_MODEL=%r",
+                     self.leaderboard_agent_model, self.system_agent_model)
+            self.system_agent_model = self.leaderboard_agent_model
+        return self
+
+    @property
+    def grading_regime(self) -> str:
+        """"upstream" scores exactly as BIRD's evaluator; "corrected" adds the
+        six symmetric corrections. Derived from leaderboard_mode on purpose -
+        there is no way to run the leaderboard stack with corrected grading."""
+        return "upstream" if self.leaderboard_mode else "corrected"
+
+    @property
+    def grading_corrections(self) -> tuple:
+        """The corrections in force for this process - what /health reports and
+        every results file records. Empty under the upstream regime."""
+        return GRADING_CORRECTION_NAMES if self.grading_regime == "corrected" else ()
 
     @property
     def data_dir(self) -> Path:

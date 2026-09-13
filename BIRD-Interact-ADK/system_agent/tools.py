@@ -277,6 +277,13 @@ def submit_sql(sql: str, tool_context: ToolContext) -> str:
             # Written on every submit (None included) so a later submit cannot
             # inherit an earlier one's id.
             tool_context.state["_last_submit_query_id"] = data.get("query_id")
+            # Same route for the fields the submission export needs on the
+            # trajectory step: the verdict and phase as the grader stated them,
+            # and (leaderboard mode, semantic-layer path) the engine's outbound
+            # Postgres SQL for this execution. None when absent, never inherited.
+            tool_context.state["_last_submit_passed"] = bool(data.get("passed"))
+            tool_context.state["_last_submit_phase"] = data.get("phase")
+            tool_context.state["_last_submit_outbound_sql"] = data.get("outbound_sql")
 
             # Feedback memory (flag-gated, telemetry only): the simulated user
             # just told the agent whether this answer was right — record that

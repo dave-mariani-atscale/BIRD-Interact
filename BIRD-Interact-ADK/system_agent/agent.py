@@ -148,29 +148,50 @@ Important strategy tips:
 """ + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP
 
 
-def build_agent(mode: str = "c-interact") -> Agent:
+def _patch_instruction_costs(instruction: str, costs: dict) -> str:
+    """Rewrite the `- <tool>: ... Cost: N` lines of an instruction to the costs
+    actually charged. Leaderboard mode charges the guidelines' Universal Cost
+    Scheme, which can differ from the numbers written into the backend's prompt
+    (explore_columns is 0.5 there, 1 in the prompt); an agent told one price
+    and charged another would plan its budget wrong."""
+    import re
+    for tool, cost in costs.items():
+        text = format(cost, "g")
+        instruction = re.sub(rf"(^- {re.escape(tool)}\b[^\n]*Cost:\s*)[0-9.]+",
+                             lambda m: m.group(1) + text, instruction, flags=re.MULTILINE)
+    return instruction
+
+
+def build_agent(mode: str = "c-interact", backend: str = None) -> Agent:
     """Build the system agent for the given mode.
 
     Args:
         mode: "c-interact" for conversational, "a-interact" for agent with tools.
+        backend: the environment backend the a-interact tool set is built for;
+            None means settings.environment_backend. Leaderboard mode builds
+            one agent per backend in the same process (raw for Management
+            tasks, the run's semantic layer for Query tasks).
     """
     if not ADK_AVAILABLE:
         raise RuntimeError(f"google-adk runtime unavailable: {ADK_IMPORT_ERROR}")
 
+    backend = backend or settings.environment_backend
     model = _build_model(settings.system_agent_model)
     if mode == "a-interact":
         from system_agent.callbacks import (
             before_model_callback, before_tool_callback, after_tool_callback,
+            effective_tool_costs,
         )
-        if settings.environment_backend == "raw":
+        if backend == "raw":
             from system_agent.tools import get_ainteract_tools
             tools = get_ainteract_tools()
             instruction = AINTERACT_INSTRUCTION
         else:
             from shared.environment_backends import get_backend_instruction, get_backend_tools_factory
-            tools = get_backend_tools_factory(settings.environment_backend)()
-            instruction = (get_backend_instruction(settings.environment_backend)
+            tools = get_backend_tools_factory(backend)()
+            instruction = (get_backend_instruction(backend)
                            + RESULT_SHAPE_TIP + "\n" + ASK_USER_TIP)
+        instruction = _patch_instruction_costs(instruction, effective_tool_costs(backend))
         return Agent(
             model=model,
             name="bird_interact_agent",

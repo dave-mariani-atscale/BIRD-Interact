@@ -214,6 +214,55 @@ Because the breakpoints are position-based, anything that reshapes the message
 list can silently stop them landing. `cache_read_tokens` reading 0 on a
 multi-turn run means caching broke, whatever the config says.
 
+### 10. Leaderboard mode (submission-comparable runs)
+
+The A/B harness deliberately deviates from the published BIRD-Interact protocol
+(six symmetric grading corrections, a guarded simulator on the agent's own
+model, Management tasks excluded on a semantic-layer backend). One switch turns
+every deviation off so a run is comparable to the entries on
+[bird-interact.github.io](https://bird-interact.github.io/) and exportable as a
+submission:
+
+```bash
+bash scripts/run_leaderboard.sh                 # atscale, 3 runs, concurrency 5
+BACKEND=raw bash scripts/run_leaderboard.sh     # the raw control under the same protocol
+```
+
+`LEADERBOARD_MODE=true` (which the script exports before restarting the
+services) makes all of this true at once, in every process:
+
+| | A/B harness (default) | Leaderboard mode |
+|---|---|---|
+| Grading | six corrections, both arms | upstream: exact row comparison, as BIRD's evaluator |
+| User simulator | guarded prompts + numeric guard, same model as the agent | upstream prompts and limits, pinned to `claude-haiku-4-5` |
+| Agent model | `SYSTEM_AGENT_MODEL` | `LEADERBOARD_AGENT_MODEL` (default `claude-opus-4-6`) |
+| Management tasks | excluded on a semantic-layer backend | run, routed per task to the raw tools and raw grading; all 600 score |
+| Tool costs | `tool_costs` in config | Universal Cost Scheme (`leaderboard_tool_costs` overrides) |
+| Predicted SQL | the agent's logical SQL | the engine's outbound Postgres SQL, recorded per graded submission |
+| Aggregates | engine may route to `aggregates.as_agg_*` tables | every `run_query` carries `disable_aggregates=true` (engine hints `use_aggs(false)`, `generate_aggs(false)`), so the outbound SQL reads only base tables the BIRD evaluator has |
+
+The runner checks every service's `/health` for the same `leaderboard_mode`,
+grading regime, models and cost scheme and refuses to run on a mismatch, so a
+service left running from the other mode cannot score a run. Each results file
+records `leaderboard_mode`, the models, the regime and a `by_category` split.
+
+Then, per run:
+
+```bash
+# submission JSONL (+ summary), re-graded against gold with the upstream grader
+python scripts/export_submission.py results/leaderboard_<date>_atscale_run01_<ts>.json --validate
+# a "Leaderboard <label>" tab in the results workbook: Query / Management / blended, mean and best-of-3, lift
+python scripts/build_leaderboard_tab.py --atscale 'results/leaderboard_<date>_atscale_run0*.json' \
+    --raw 'results/leaderboard_<date>_raw_run0*.json' --label <date> --in-place
+# re-measure the cost scheme's token criterion for each tool
+python scripts/cost_scheme_audit.py --run 'results/leaderboard_<date>_atscale_run0*.json' --live 40
+```
+
+Submission goes by email to bird.bench25@gmail.com with the subject
+`[BIRD-INTERACT-1.0-full][a-Interact][AtScale][<method>]`; the guidelines report
+the best of at least three runs. `scripts/test_leaderboard_mode.py` covers the
+switch.
+
 ## LLM Configuration
 
 LLM calls use [LiteLlm](https://docs.litellm.ai/docs/providers), which supports 100+ providers. Set the API key and model name in `.env`:

@@ -47,6 +47,11 @@ class SessionInitRequest(BaseModel):
     mode: str = "a-interact"
     state: Dict[str, Any] = {}
     reset: bool = True
+    #: The backend THIS session's agent is built for. Leaderboard mode routes
+    #: Management-category tasks to "raw" while the run's backend stays a
+    #: semantic layer, so the orchestrator names it per task; None keeps the
+    #: process-wide settings.environment_backend, exactly as before.
+    backend: Optional[str] = None
 
 
 class SessionRunRequest(BaseModel):
@@ -67,6 +72,7 @@ async def init_session(req: SessionInitRequest):
         mode=req.mode,
         state=req.state,
         reset=req.reset,
+        backend=req.backend,
     )
 
 
@@ -96,11 +102,14 @@ async def set_backend(req: SetBackendRequest):
 
 @app.get("/health")
 async def health():
+    from system_agent.callbacks import cost_scheme_name
     return {
         "status": "healthy",
         "service": "system_agent",
         "model": settings.system_agent_model,
         "environment_backend": settings.environment_backend,
+        "leaderboard_mode": settings.leaderboard_mode,
+        "cost_scheme": cost_scheme_name(),
         "adk_available": runtime.available,
         "adk_error": runtime.error,
     }

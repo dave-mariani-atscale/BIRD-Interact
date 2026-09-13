@@ -58,15 +58,27 @@ def _task_client() -> TaskSessionMCPClient:
     )
 
 
+def _backend_name(tool_context: Optional[ToolContext]) -> str:
+    """This session's backend: stamped into session state by the runtime, so a
+    process can serve a raw session and a semantic-layer session side by side
+    (leaderboard mode routes Management tasks to raw)."""
+    if tool_context:
+        name = tool_context.state.get("backend")
+        if name:
+            return name
+    return settings.environment_backend
+
+
 def _domain_or_error(tool_context: Optional[ToolContext]):
     """Resolve {catalog, schema, table} for the active task's domain, or None
     plus an error string if this domain has no semantic model configured."""
     db_name = _get_db_name(tool_context)
-    domain = get_domain_config(settings.environment_backend, db_name)
+    backend = _backend_name(tool_context)
+    domain = get_domain_config(backend, db_name)
     if not domain:
         return None, (
             f"No semantic model configured for database '{db_name}' under backend "
-            f"'{settings.environment_backend}' — see config/environment_backends.yaml."
+            f"'{backend}' — see config/environment_backends.yaml."
         )
     return domain, None
 
@@ -266,6 +278,13 @@ async def run_query(query: str, tool_context: ToolContext) -> str:
         logger.warning("run_query blocked (wrong model): %s", query)
         return violation
     args = {"query": query}
+    if settings.leaderboard_mode:
+        # Leaderboard mode: the engine must neither read nor learn an aggregate
+        # table for anything the agent runs, so the outbound SQL of every query
+        # (and of the graded re-execution, db_environment/server.py) reads only
+        # base tables the BIRD evaluator has. Per request, so the same MCP
+        # server serves an A/B run unchanged.
+        args["disable_aggregates"] = True
     if feedback.enabled() and tool_context is not None:
         # Feedback memory (flag-gated, telemetry only): label the exchange with
         # the task's ambiguous question so the server can store the NL->SQL

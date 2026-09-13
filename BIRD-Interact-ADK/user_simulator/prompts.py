@@ -108,9 +108,7 @@ Action Choices:
 1. **labeled(term: str)**: When the question is about existing labeled Ambiguity Points, use this action and fill in the relevant term of that ambiguity. Format: **labeled("Amb")**.
 2. **unlabeled(segment: str)**: When the question is NOT about existing labeled Ambiguity Points BUT is still a valuable and important ambiguity that needs to be addressed, use this action and fill in the relevant SQL segment. Format: **unlabeled("ALTER")**.
 3. **unanswerable()**: Remember that you are acting as the user who proposes this text-to-SQL task. Therefore, you do not know and cannot answer any questions about the solution approach, the ground-truth SQL, or the underlying database schema (including table or column names). Format: **unanswerable()**.
-
-CRITICAL ROUTING RULE: if the question asks for a constant, threshold, cut-off, time horizon, formula term, population filter, or which of two similarly-named concepts/fields the task means, AND the Ground-truth SQL Segments contain something that answers it, you MUST choose labeled(...) or unlabeled(...) - such a question is never unanswerable. unanswerable() is only for questions with no basis in the labeled points or the SQL segments.
-<|The End of Task Description|>
+[[ROUTING_RULE]]<|The End of Task Description|>
 
 <|The Start of All Labeled Ambiguity Points (Not visible to the AI)|>
 ```json
@@ -209,8 +207,7 @@ Your Task: You should generate response to answer the AI Collaborator's question
 1. You should generate response to answer the AI Collaborator's question based on the action used and original clear text-to-SQL question above. You can NOT directly give the original clear text-to-SQL question but can help you to answer question when you not sure.
 2. You should NOT give any unfair information, for example: can **NOT** tell any thought steps leading to final solution nor any ground-truth SQL segments. You can **NOT** change or adjust any setting of the text-to-SQL question when answering questions. The response should be concise.
 3. You should NOT ask any question.
-4. FIDELITY OF VALUES: any specific value you state - a number, threshold, unit, date, category label, or formula - MUST be copied exactly from the Ground-truth SQL, the Labeled Ambiguity Points, or the Original Text-to-SQL Question above. Never invent, estimate, round, or substitute a different value (for example, do NOT say "10 miles" when the ground truth uses 50). CHECK THE GROUND TRUTH FIRST: when the Ground-truth SQL contains the constant, weight, horizon, filter, or field the question asks about, state that value - deferring with "that choice is up to you" when the ground truth pins it down is as unfaithful as inventing one. Only when those sources genuinely do not contain the detail, say the choice is up to the AI collaborator.
-
+[[FIDELITY_RULE]]
 ## Output Format:
 Your response must follow the format "<s>[Fill-in-Your-Response]</s>"; for example, if the action is "unanswerable()", you MUST exactly respond: "<s>Sorry, this question is out of scope, so I can not answer your question.</s>".
 
@@ -221,12 +218,60 @@ Your response must follow the format "<s>[Fill-in-Your-Response]</s>"; for examp
 # TEMPLATE REGISTRY
 # =============================================================================
 
+# The two rules this harness added to the upstream v2 prompts (2026-08, after
+# the simulator was seen paraphrasing gold constants wrong - "10 miles" where
+# gold filters on >= 50). They change the benchmark's answers, so they are part
+# of the "guarded" simulator variant only; leaderboard mode serves the upstream
+# text byte for byte, because every leaderboard entry was scored against it.
+ROUTING_RULE = (
+    "\nCRITICAL ROUTING RULE: if the question asks for a constant, threshold, cut-off, time horizon, "
+    "formula term, population filter, or which of two similarly-named concepts/fields the task means, "
+    "AND the Ground-truth SQL Segments contain something that answers it, you MUST choose labeled(...) "
+    "or unlabeled(...) - such a question is never unanswerable. unanswerable() is only for questions "
+    "with no basis in the labeled points or the SQL segments.\n"
+)
+FIDELITY_RULE = (
+    "4. FIDELITY OF VALUES: any specific value you state - a number, threshold, unit, date, category "
+    "label, or formula - MUST be copied exactly from the Ground-truth SQL, the Labeled Ambiguity Points, "
+    "or the Original Text-to-SQL Question above. Never invent, estimate, round, or substitute a different "
+    "value (for example, do NOT say \"10 miles\" when the ground truth uses 50). CHECK THE GROUND TRUTH "
+    "FIRST: when the Ground-truth SQL contains the constant, weight, horizon, filter, or field the "
+    "question asks about, state that value - deferring with \"that choice is up to you\" when the ground "
+    "truth pins it down is as unfaithful as inventing one. Only when those sources genuinely do not "
+    "contain the detail, say the choice is up to the AI collaborator.\n"
+)
+
+
+def simulator_variant() -> str:
+    """"upstream" (leaderboard mode: BIRD's own prompts, limits and no guard) or
+    "guarded" (this harness's fidelity rules and numeric guard)."""
+    from shared.config import settings
+    return "upstream" if settings.leaderboard_mode else "guarded"
+
+
+def _fill(template: str, guarded: bool) -> str:
+    return (template.replace("[[ROUTING_RULE]]", ROUTING_RULE if guarded else "")
+                    .replace("[[FIDELITY_RULE]]", FIDELITY_RULE if guarded else ""))
+
+
+def get_templates():
+    """(action_parser, response_generator) template registries for the current
+    variant. Resolved at call time, so a process reads the flag it was started
+    with and a test can flip it."""
+    guarded = simulator_variant() == "guarded"
+    action = {"v1": v1_action_parser, "v2": _fill(v2_action_parser, guarded)}
+    response = {"v1": v1_response_generator, "v2": _fill(v2_response_generator, guarded)}
+    return action, response
+
+
+# Module-level registries keep the historical import working; they are the
+# guarded variant. user_simulator/server.py uses get_templates().
 USER_SIMULATOR_ACTION_PARSER = {
     "v1": v1_action_parser,
-    "v2": v2_action_parser,
+    "v2": _fill(v2_action_parser, True),
 }
 
 USER_SIMULATOR_RESPONSE_GENERATOR = {
     "v1": v1_response_generator,
-    "v2": v2_response_generator,
+    "v2": _fill(v2_response_generator, True),
 }

@@ -21,6 +21,9 @@ class _SessionRef:
     app_name: str
     user_id: str
     session_id: str
+    #: Which runner (mode, backend) this session lives in, so run_turn can find
+    #: the same agent that init_session built for it.
+    backend: str = ""
 
 
 class AdkRuntime:
@@ -75,14 +78,28 @@ class AdkRuntime:
             self._runners.clear()
             self._session_refs.clear()
 
-    async def _get_runner(self, mode: str) -> tuple[Any, str]:
-        if mode in self._runners:
-            return self._runners[mode]
+    @staticmethod
+    def _resolve_backend(backend: Optional[str]) -> str:
+        if backend:
+            return backend
+        from shared.config import settings
+        return settings.environment_backend
+
+    async def _get_runner(self, mode: str, backend: Optional[str] = None) -> tuple[Any, str]:
+        """One runner (and one ADK agent, with its baked-in tool set) per
+        (mode, backend). Before 2026-09-11 the key was mode alone and the agent
+        was built for settings.environment_backend; leaderboard mode needs a raw
+        agent and a semantic-layer agent alive in the same process, because
+        Management tasks route to raw while Query tasks stay on the run's backend."""
+        backend = self._resolve_backend(backend)
+        key = (mode, backend)
+        if key in self._runners:
+            return self._runners[key]
         if not self.available or self._backend is None:
             raise RuntimeError(self.error or "ADK runtime unavailable")
 
-        app_name = f"bird_interact_{mode.replace('-', '_')}"
-        agent = self._backend["build_agent"](mode)
+        app_name = f"bird_interact_{mode.replace('-', '_')}_{backend}"
+        agent = self._backend["build_agent"](mode, backend=backend)
 
         if self._backend["runner_kind"] == "in_memory":
             runner = self._backend["runner_cls"](agent=agent, app_name=app_name)
@@ -94,7 +111,7 @@ class AdkRuntime:
                 session_service=session_service,
             )
 
-        self._runners[mode] = (runner, app_name)
+        self._runners[key] = (runner, app_name)
         return runner, app_name
 
     def _make_text_message(self, text: str) -> Any:
@@ -177,10 +194,29 @@ class AdkRuntime:
 
         return {"type": "unknown", "repr": self._preview(part)}
 
+    @staticmethod
+    def _serialize_usage(event: Any) -> Optional[Dict[str, Any]]:
+        """Per-turn token counts, when the model event carries them. The
+        submission format asks for token counts per step; before this they were
+        only in the process-wide usage log, attributable to a task by time alone."""
+        usage = getattr(event, "usage_metadata", None)
+        if usage is None:
+            return None
+        out = {}
+        for src, dst in (("prompt_token_count", "input_tokens"),
+                         ("candidates_token_count", "output_tokens"),
+                         ("thoughts_token_count", "thinking_tokens"),
+                         ("cached_content_token_count", "cache_read_tokens"),
+                         ("total_token_count", "total_tokens")):
+            val = getattr(usage, src, None)
+            if val is not None:
+                out[dst] = val
+        return out or None
+
     def _serialize_event(self, event: Any) -> Dict[str, Any]:
         content = getattr(event, "content", None)
         parts = getattr(content, "parts", None) or []
-        return {
+        out = {
             "type": "adk_event",
             "author": getattr(event, "author", ""),
             "invocation_id": getattr(event, "invocation_id", ""),
@@ -191,6 +227,10 @@ class AdkRuntime:
                 "parts": [self._serialize_part(part) for part in parts],
             },
         }
+        usage = self._serialize_usage(event)
+        if usage:
+            out["usage"] = usage
+        return out
 
     async def init_session(
         self,
@@ -198,9 +238,11 @@ class AdkRuntime:
         mode: str,
         state: Optional[Dict[str, Any]] = None,
         reset: bool = False,
+        backend: Optional[str] = None,
     ) -> Dict[str, Any]:
         async with self._lock:
-            runner, app_name = await self._get_runner(mode)
+            backend = self._resolve_backend(backend)
+            runner, app_name = await self._get_runner(mode, backend)
             key = (mode, task_id)
             if key in self._session_refs and not reset:
                 ref = self._session_refs[key]
@@ -212,10 +254,15 @@ class AdkRuntime:
                 }
 
             user_id = f"user_{task_id}"
+            state = dict(state or {})
+            # The tools and callbacks read the backend from session state (cost
+            # table, error hints, domain config), never from the process setting,
+            # so a raw session and a semantic-layer session can coexist.
+            state.setdefault("backend", backend)
             session = await runner.session_service.create_session(
                 app_name=app_name,
                 user_id=user_id,
-                state=state or {},
+                state=state,
             )
             session_state = getattr(session, "state", {}) or {}
             session_state.setdefault("tool_trajectory", [])
@@ -225,6 +272,7 @@ class AdkRuntime:
                 app_name=app_name,
                 user_id=user_id,
                 session_id=self._session_id(session),
+                backend=backend,
             )
             self._session_refs[key] = ref
             return {
@@ -243,8 +291,8 @@ class AdkRuntime:
         if key not in self._session_refs:
             await self.init_session(task_id=task_id, mode=mode, state={}, reset=False)
 
-        runner, _ = await self._get_runner(mode)
         ref = self._session_refs[key]
+        runner, _ = await self._get_runner(mode, ref.backend)
         new_message = self._make_text_message(message)
 
         # Reset per-phase flags via append_event (the ADK-native way)

@@ -10,13 +10,25 @@ from fastapi import FastAPI, HTTPException
 
 from shared.config import settings
 from shared.models import AskUserRequest, AskUserResponse, InitTaskRequest, PhaseTransitionRequest
-from user_simulator.prompts import USER_SIMULATOR_ACTION_PARSER, USER_SIMULATOR_RESPONSE_GENERATOR
+from user_simulator.prompts import get_templates, simulator_variant
 from user_simulator.sql_parser import segment_sql
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="BIRD-Interact User Simulator", version="1.0.0")
 
 PROMPT_VERSION = settings.prompt_version  # v1=legacy, v2=recommended
+
+# Upstream's completion limits (BIRD-Interact-ADK as released): 500 tokens for
+# the v2 action parse, 1024 for the response. Leaderboard mode runs exactly
+# these with the pinned Claude-Haiku-4-5, as every leaderboard entry did; the
+# guarded variant raises them to settings.user_sim_max_tokens because
+# sonnet-class simulators spend the budget thinking (see shared/config.py).
+UPSTREAM_ACTION_MAX_TOKENS = 500
+UPSTREAM_RESPONSE_MAX_TOKENS = 1024
+
+
+def _upstream() -> bool:
+    return simulator_variant() == "upstream"
 
 
 class TaskSimState:
@@ -79,14 +91,21 @@ def _call_llm(prompt: str, max_tokens: int = 200) -> str:
 
 def _parse_action(state: TaskSimState, question: str) -> str:
     """Stage 1: Action Parser — maps clarification question to action (AMB/LOC/UNA)."""
-    template = USER_SIMULATOR_ACTION_PARSER[PROMPT_VERSION]
+    template = get_templates()[0][PROMPT_VERSION]
     prompt = template.replace("[[clarification_Q]]", question)
     prompt = prompt.replace("[[amb_json]]", state.get_ambiguity_json())
     prompt = prompt.replace("[[SQL_Glot]]", state.get_all_sql_segments())
     prompt = prompt.replace("[[DB_schema]]", state.db_schema)
     # v2 includes <think> reasoning (plus the model's native thinking), which is
     # spent before the answer - budget generously or the action never arrives.
-    max_tok = settings.user_sim_max_tokens if PROMPT_VERSION == "v2" else 200
+    # Leaderboard mode keeps upstream's limit so the simulator behaves as it did
+    # for every listed entry.
+    if PROMPT_VERSION != "v2":
+        max_tok = 200
+    elif _upstream():
+        max_tok = UPSTREAM_ACTION_MAX_TOKENS
+    else:
+        max_tok = settings.user_sim_max_tokens
     content = _call_llm(prompt, max_tokens=max_tok)
     # Extract action from <s>...</s> (skip <think>...</think> if present)
     if "</s>" in content:
@@ -143,7 +162,7 @@ def _unsupported_numbers(state: TaskSimState, question: str, response: str) -> L
 
 def _generate_response(state: TaskSimState, question: str, action: str) -> str:
     """Stage 2: Response Generator — produces user response from action + context."""
-    template = USER_SIMULATOR_RESPONSE_GENERATOR[PROMPT_VERSION]
+    template = get_templates()[1][PROMPT_VERSION]
     prompt = template.replace("[[clarification_Q]]", question)
     prompt = prompt.replace("[[Action]]", action)
     prompt = prompt.replace("[[clear_query]]", state.clear_query)
@@ -151,6 +170,11 @@ def _generate_response(state: TaskSimState, question: str, action: str) -> str:
     prompt = prompt.replace("[[GT_SQL]]", state.get_gt_sql_str())
     prompt = prompt.replace("[[SQL_Glot]]", state.get_all_sql_segments())
     prompt = prompt.replace("[[DB_schema]]", state.db_schema)
+    if _upstream():
+        # Leaderboard mode: upstream prompt, upstream limit, no guard. What the
+        # simulator says is the benchmark's answer, so this path must be byte-
+        # identical to the released ADK simulator.
+        return _extract_response(_call_llm(prompt, max_tokens=UPSTREAM_RESPONSE_MAX_TOKENS))
     response = _extract_response(_call_llm(prompt, max_tokens=settings.user_sim_max_tokens))
 
     # Numeric-consistency guard: regenerate once if the response states numbers
@@ -227,7 +251,11 @@ async def phase_transition(req: PhaseTransitionRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "user_simulator"}
+    return {"status": "healthy", "service": "user_simulator",
+            "model": settings.user_sim_model,
+            "leaderboard_mode": settings.leaderboard_mode,
+            "simulator_variant": simulator_variant(),
+            "prompt_version": PROMPT_VERSION}
 
 
 @app.get("/debug_state/{task_id}")

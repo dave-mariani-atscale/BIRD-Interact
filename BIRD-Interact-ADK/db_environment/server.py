@@ -14,7 +14,7 @@ from shared.db_utils import (
     _get_or_init_pool, close_pool, execute_queries,
     reset_and_restore_database, test_case_default,
     ex_base, ex_base_external_pred, parse_semantic_layer_rows, effective_conditions,
-    extract_query_id,
+    extract_query_id, extract_query_ids, trailing_order_by, active_grading_corrections,
     remove_distinct, remove_comments, remove_round,
     create_task_db, reset_task_db, drop_task_db,
     canonical_cell, preprocess_results,
@@ -186,6 +186,12 @@ def _run_query_via_semantic_layer(query: str) -> str:
         args: dict = {"query": query}
         if settings.feedback_memory:
             args["log_exchange"] = False
+        if settings.leaderboard_mode:
+            # The outbound SQL of THIS execution is what the submission carries;
+            # with aggregates on it reads aggregates.as_agg_* tables the BIRD
+            # evaluator does not have (seen live 2026-09-11: a passing answer
+            # re-graded as 0 on plain Postgres).
+            args["disable_aggregates"] = True
         return client.call_tool("run_query", args)
     except (MCPClientError, MCPToolError) as e:
         return f"Error: {e}"
@@ -193,11 +199,46 @@ def _run_query_via_semantic_layer(query: str) -> str:
         return f"Error: {type(e).__name__}: {e}"
 
 
+def _fetch_outbound_sql(query_id: str) -> Optional[List[str]]:
+    """The Postgres statements the engine dispatched for `query_id`, via the MCP
+    server's get_outbound_queries, or None if they cannot be fetched. Leaderboard
+    mode only: the submission file needs SQL the BIRD evaluator can execute, and
+    the agent's logical SQL is not that. Fetched at grading time, not at export,
+    because the engine's query repository is not kept forever. Never raises into
+    the submit path - a missing outbound is a warning in the export, not a lost
+    submission."""
+    try:
+        client = MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url,
+                                       bearer_token=settings.semantic_layer_mcp_token))
+        raw = client.call_tool("get_outbound_queries", {"queryId": query_id})
+        try:
+            rows = json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\[.*\]", raw, re.S)
+            rows = json.loads(m.group(0)) if m else []
+        if isinstance(rows, dict):
+            rows = [rows]
+        sqls = [r.get("sql") for r in rows if isinstance(r, dict) and r.get("sql")]
+        return sqls or None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("get_outbound_queries(%s) failed: %s", query_id, e)
+        return None
+
+
+def _task_backend(td: dict) -> str:
+    """The backend THIS task runs on. Leaderboard mode routes Management-category
+    tasks to the raw tools and raw grading whatever the run's backend, so the
+    orchestrator stamps `_backend` on the task; anything else uses the process
+    setting, exactly as before."""
+    return td.get("_backend") or settings.environment_backend
+
+
 def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_phase1_sql) -> SubmitSQLResponse:
     """Blocking submit logic — runs in thread pool."""
     base_db = td["selected_database"]
     task_db = td.get("_task_db", base_db)
     current_phase = td.get("_current_phase", 1)
+    backend = _task_backend(td)
 
     if req_task_id not in _submit_attempts:
         _submit_attempts[req_task_id] = {1: 0, 2: 0}
@@ -246,8 +287,9 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
             # branch (raw backend, wrong-model rejection, execution error) must
             # still be able to return it as None.
             graded_query_id = None
+            outbound_sql = None
 
-            if sol_sqls and settings.environment_backend != "raw":
+            if sol_sqls and backend != "raw":
                 # Semantic-layer submission: the submitted query is in that
                 # layer's dialect (e.g. AtScale logical SQL), not raw Postgres
                 # SQL, so it can't run via execute_queries like the raw path
@@ -262,7 +304,7 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                 # Refuse to grade a submission aimed at a different semantic model.
                 # run_query carries no scope of its own, so without this a task can be
                 # scored on rows from a model that merely shares this one's label.
-                domain = get_domain_config(settings.environment_backend, base_db)
+                domain = get_domain_config(backend, base_db)
                 violation = query_domain_violation(pred_sql_text, domain) if domain else None
                 if violation:
                     # Scores 0 like any non-executable submit rather than aborting the
@@ -279,7 +321,42 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                         # The engine's id for THIS execution. Recorded because it
                         # is the only exact key into the engine query repository,
                         # which is where aggregate and cache behaviour lives.
-                        graded_query_id = extract_query_id(result_text)
+                        # A set operation is dispatched branch by branch, one
+                        # engine query per branch. graded_query_id stays the LAST
+                        # id (the engine query repository, and so every aggregate
+                        # and cache figure, is keyed on a single id), but the
+                        # outbound SQL must cover EVERY branch or the exported
+                        # submission returns only the final branch's rows.
+                        all_ids = extract_query_ids(result_text)
+                        graded_query_id = all_ids[-1] if all_ids else None
+                        if settings.leaderboard_mode and all_ids:
+                            per_branch = [_fetch_outbound_sql(qid) or [] for qid in all_ids]
+                            if len(all_ids) > 1 and all(len(b) == 1 for b in per_branch):
+                                # Each branch is one physical SELECT and the engine
+                                # concatenated their rows, so the single-statement
+                                # equivalent - which is what the evaluator can run -
+                                # is UNION ALL. ALL, not UNION: we are reproducing
+                                # the rows that were graded, duplicates included.
+                                # Parenthesised so a branch's own ORDER BY / LIMIT
+                                # stays attached to that branch.
+                                combined = "\nUNION ALL\n".join(
+                                    f"({b[0].rstrip().rstrip(';')})" for b in per_branch)
+                                # No branch carries the statement's own ORDER BY - the
+                                # engine applies it to the concatenated rows - so put it
+                                # back, or an order-sensitive task fails on right rows.
+                                tail = trailing_order_by(pred_sql_text)
+                                if tail:
+                                    combined = f"SELECT * FROM (\n{combined}\n) t\n{tail}"
+                                outbound_sql = [combined]
+                                logger.info("task %s: set operation dispatched as %d engine queries; "
+                                            "combined into one UNION ALL statement",
+                                            req_task_id, len(all_ids))
+                            else:
+                                outbound_sql = [x for b in per_branch for x in b] or None
+                                if len(all_ids) > 1:
+                                    logger.warning("task %s: %d engine queries with branch sizes %s - "
+                                                   "not a plain set operation, exported unjoined",
+                                                   req_task_id, len(all_ids), [len(b) for b in per_branch])
                         try:
                             result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
                             if result == 1:
@@ -296,10 +373,11 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                         record_graded_submission(
                             task_id=req_task_id, phase=current_phase,
                             attempt=_submit_attempts[req_task_id][current_phase],
-                            backend=settings.environment_backend, passed=passed,
+                            backend=backend, passed=passed,
                             conditions=conditions, sol_sql=sol_sqls,
                             pred_sql=pred_sql_text, pred_rows=pred_res,
-                            query_id=graded_query_id)
+                            query_id=graded_query_id, outbound_sql=outbound_sql,
+                            grading_regime=settings.grading_regime)
             elif sol_sqls:
                 # Execute pred SQL (also serves as executability check)
                 pred_query_result, pred_err, pred_to, _ = execute_queries(pred_sqls, task_db, conn)
@@ -324,9 +402,10 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                     record_graded_submission(
                         task_id=req_task_id, phase=current_phase,
                         attempt=_submit_attempts[req_task_id][current_phase],
-                        backend=settings.environment_backend, passed=passed,
+                        backend=backend, passed=passed,
                         conditions=conditions, sol_sql=sol_sqls,
-                        pred_sql=pred_sqls, pred_rows=pred_query_result)
+                        pred_sql=pred_sqls, pred_rows=pred_query_result,
+                        grading_regime=settings.grading_regime)
                 else:
                     # Compat wrapper: custom test cases expect 3-value return (result, error, timeout)
                     def _execute_queries_compat(queries, db_name, conn=None):
@@ -393,17 +472,17 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                             passed=True, message=f"Phase 1 correct! (Reward: {reward}). Moving to Phase 2.",
                             reward=reward, phase_completed=1, has_follow_up=True,
                             follow_up_query=follow_up_query,
-                            query_id=graded_query_id)
+                            query_id=graded_query_id, outbound_sql=outbound_sql, phase=1)
                     else:
                         return SubmitSQLResponse(
                             passed=True, message=f"Phase 1 correct! (Reward: {reward}). Task finished.",
                             reward=reward, phase_completed=1, has_follow_up=False,
-                            query_id=graded_query_id)
+                            query_id=graded_query_id, outbound_sql=outbound_sql, phase=1)
                 else:
                     return SubmitSQLResponse(
                         passed=True, message=f"Phase 2 correct! (Reward: {reward}). Task finished.",
                         reward=reward, phase_completed=2, has_follow_up=False,
-                        query_id=graded_query_id)
+                        query_id=graded_query_id, outbound_sql=outbound_sql, phase=2)
             else:
                 # Failed: restore task DB to pre-submit state for agent exploration
                 if current_phase == 1:
@@ -415,7 +494,8 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
 
                 return SubmitSQLResponse(
                     passed=False, message=f"SQL failed Phase {current_phase}. {message}",
-                    reward=0.0, query_id=graded_query_id)
+                    reward=0.0, query_id=graded_query_id, outbound_sql=outbound_sql,
+                    phase=current_phase)
         except Exception as inner_e:
             try: pool.putconn(conn)
             except: pass
@@ -527,31 +607,24 @@ async def set_backend(req: SetBackendRequest):
     return SetBackendResponse(status="ok", environment_backend=settings.environment_backend)
 
 
-# The grading corrections THIS build applies. Unconditional since 2026-09-07 —
-# they are bug fixes, not tolerances, so there is no env to disagree about (see
-# shared/config.py). Still reported on /health, for two reasons that survive the
-# flags: grading runs in THIS process, not in the runner, so this list is what
-# actually scored a run and belongs in its results file; and a service left
-# running from an older build answers with the old boolean flag keys instead of
-# this list, which is how the runner catches a deploy that never restarted the
-# services. The two used to disagree silently — on 2026-08-25/26 the service had
-# an order lint on while the runner's recorded deviations said off, and two
-# mental_health runs differing by exactly that were compared as comparable.
-GRADING_CORRECTIONS = (
-    "timestamp_date",        # a timestamp STRING truncates to its date
-    "order_requires_cue",    # order=true only when the question asks for one
-    "casefold_text",         # text cells compare case-insensitively
-    "column_order_free",     # a column permutation of the gold matches
-    "ties_as_ties",          # ordered gold with ties: multiset within a tie group (key read from gold SQL)
-    "numeric_rel_tolerance", # pre-rounding numerics compare within 1e-6 relative
-)
+# The grading regime THIS build applies is reported on /health because grading
+# runs in THIS process, not in the runner, so this is what actually scored a run
+# and belongs in its results file. Since 2026-09-11 the regime follows
+# settings.leaderboard_mode: "corrected" applies the six symmetric corrections
+# (shared/config.py GRADING_CORRECTION_NAMES), "upstream" applies none and
+# scores exactly as BIRD's evaluator. The runner refuses a service whose
+# leaderboard_mode or regime differs from its own - the two used to disagree
+# silently (2026-08-25/26: an order lint on in the service, off in the recorded
+# deviations, and two runs differing by exactly that compared as comparable).
 
 
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "db_environment",
             "environment_backend": settings.environment_backend,
-            "grading": {"corrections": list(GRADING_CORRECTIONS)}}
+            "leaderboard_mode": settings.leaderboard_mode,
+            "grading": {"regime": settings.grading_regime,
+                        "corrections": list(active_grading_corrections())}}
 
 
 if __name__ == "__main__":

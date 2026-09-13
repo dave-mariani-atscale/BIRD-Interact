@@ -135,6 +135,16 @@ def get_backend_tool_costs(backend_name: str) -> Dict[str, float]:
     return backend.get("tool_costs", {})
 
 
+def get_backend_leaderboard_tool_costs(backend_name: str) -> Dict[str, float]:
+    """This backend's overrides for leaderboard mode - the costs the BIRD
+    submission guidelines' Universal Cost Scheme assigns where they differ from
+    the backend's own table (config key `leaderboard_tool_costs`). Applied on
+    top of tool_costs by system_agent.callbacks.effective_tool_costs only when
+    settings.leaderboard_mode is on. Empty dict if the backend defines none."""
+    backend = get_backend_config(backend_name)
+    return backend.get("leaderboard_tool_costs", {}) or {}
+
+
 def get_backend_error_hints(backend_name: str) -> List[Dict[str, str]]:
     """This backend's [{match, hint}] list — a hint is appended to any tool
     response containing `match`. Lets a backend correct its own engine's

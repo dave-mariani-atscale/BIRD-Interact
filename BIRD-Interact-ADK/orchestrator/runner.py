@@ -16,11 +16,38 @@ import httpx
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
+from shared.db_utils import active_grading_corrections
 from shared.output_paths import timestamped_output_path
 from shared import usage as llm_usage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _cost_scheme_name() -> str:
+    # Lives in system_agent.callbacks (needs google-adk); the runner only names it.
+    return "universal_cost_scheme" if settings.leaderboard_mode else "harness_default"
+
+
+def category_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Per-category (Query / Management) task counts, pass rates and reward.
+    Category comes from the per-task record (written since 2026-09-11); older
+    files fall back to the task-id convention `<db>_M_<n>`, which is right for
+    all but three Query tasks and is only used for files that predate the field."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in results:
+        cat = r.get("category") or ("Management" if "_M_" in str(r.get("task_id", "")) else "Query")
+        c = out.setdefault(cat, {"total_tasks": 0, "phase1_count": 0, "phase2_count": 0, "total_reward": 0.0})
+        c["total_tasks"] += 1
+        c["phase1_count"] += int(bool(r.get("phase1_passed")))
+        c["phase2_count"] += int(bool(r.get("phase2_passed")))
+        c["total_reward"] += float(r.get("total_reward") or 0)
+    for c in out.values():
+        n = c["total_tasks"] or 1
+        c["phase1_rate"] = c["phase1_count"] / n
+        c["phase2_rate"] = c["phase2_count"] / n
+        c["average_reward"] = c["total_reward"] / n
+    return out
 
 
 def time_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -110,12 +137,19 @@ async def run_parallel_evaluation(
             # run. `deviations_as_graded` in meta is the grading process's own
             # view of the corrections, which is the authoritative one.
             "deviations": {
-                "grading_corrections": list(GRADING_CORRECTIONS),
+                "grading_regime": settings.grading_regime,
+                "grading_corrections": list(active_grading_corrections()),
                 "feedback_memory": settings.feedback_memory,
                 "list_models_question": settings.list_models_question,
                 "instruction_file": os.environ.get("ATSCALE_INSTRUCTION_FILE", ""),
                 "harness_error_hints": os.environ.get("HARNESS_ERROR_HINTS", "1"),
             },
+            # The leaderboard switch and everything it pins, so a results file
+            # says on its face whether it is a leaderboard-comparable run.
+            "leaderboard_mode": settings.leaderboard_mode,
+            "agent_model": settings.system_agent_model,
+            "user_sim_model": settings.user_sim_model,
+            "cost_scheme": _cost_scheme_name(),
             # API spend for this run, split by role and model. Sits next to the
             # scores on purpose: a score is only interesting alongside what it
             # cost to get, and a cheaper agent model is only a saving if the
@@ -131,6 +165,10 @@ async def run_parallel_evaluation(
                 "phase1_count": p1_count,
                 "phase2_count": p2_count,
                 **time_metrics(results),
+                # Query vs Management split. A leaderboard-mode run mixes the two
+                # (Management routed to raw); the blended figures above are the
+                # leaderboard's numbers, these say where they came from.
+                "by_category": category_metrics(results),
             },
             "results": results,
         }
@@ -232,23 +270,35 @@ def load_tasks(data_path: str, limit: int = None, databases: List[str] = None, q
                         before_count - len(tasks), len(tasks))
 
     if settings.environment_backend != "raw":
-        # Semantic layers are read-only — Management-category (DDL/DML) tasks
-        # are structurally inapplicable, not a harness bug to route around
-        # (see docs/semantic-layer-environment-backends.md's "Task scope").
-        # Verified: a Query phase-1 task never has a Management follow-up, so
-        # filtering on phase-1 category alone is sufficient.
-        before_count = len(tasks)
-        tasks = [t for t in tasks if t.get("category") == "Query"]
-        logger.warning("Non-raw backend '%s': excluded %d Management-category tasks (%d Query tasks remain)",
-                        settings.environment_backend, before_count - len(tasks), len(tasks))
+        if settings.leaderboard_mode:
+            # Leaderboard mode scores all 600 tasks: Management-category tasks
+            # are kept and routed per task to the raw tools and raw grading
+            # (orchestrator.ainteract.task_backend), so only the Query tasks
+            # need a semantic model.
+            n_mgmt = sum(1 for t in tasks if t.get("category") != "Query")
+            logger.warning("LEADERBOARD MODE: keeping %d Management-category tasks; they run on the "
+                           "raw backend, the %d Query tasks on '%s'",
+                           n_mgmt, len(tasks) - n_mgmt, settings.environment_backend)
+        else:
+            # Semantic layers are read-only — Management-category (DDL/DML) tasks
+            # are structurally inapplicable, not a harness bug to route around
+            # (see docs/semantic-layer-environment-backends.md's "Task scope").
+            # Verified: a Query phase-1 task never has a Management follow-up, so
+            # filtering on phase-1 category alone is sufficient.
+            before_count = len(tasks)
+            tasks = [t for t in tasks if t.get("category") == "Query"]
+            logger.warning("Non-raw backend '%s': excluded %d Management-category tasks (%d Query tasks remain)",
+                            settings.environment_backend, before_count - len(tasks), len(tasks))
 
         # Only domains with a real semantic model configured are eligible —
         # run the whole suite at once, coverage grows as domains get modeled.
         from shared.environment_backends import get_configured_domains
         configured = get_configured_domains(settings.environment_backend)
         before_count = len(tasks)
-        tasks = [t for t in tasks if t.get("selected_database") in configured]
-        logger.warning("Non-raw backend '%s': %d/%d tasks have a configured semantic model (domains: %s)",
+        tasks = [t for t in tasks
+                 if t.get("selected_database") in configured or t.get("category") != "Query"]
+        logger.warning("Non-raw backend '%s': %d/%d tasks eligible (Query tasks need a configured "
+                       "semantic model; domains: %s)",
                         settings.environment_backend, len(tasks), before_count, sorted(configured))
 
     if databases:
@@ -373,61 +423,81 @@ def _set_service_backend(backend: str) -> None:
         logger.info("%s: environment_backend set to %r", name, confirmed)
 
 
-#: The comparison corrections this build applies unconditionally. Mirrors
-#: db_environment.server.GRADING_CORRECTIONS, which is the authoritative copy
-#: because grading runs in that process; _fetch_graded_regime checks the two
-#: agree, so a service left running from an older build is caught rather than
-#: silently scoring the run under a different set.
-GRADING_CORRECTIONS = ("timestamp_date", "order_requires_cue",
-                       "casefold_text", "column_order_free",
-                       "ties_as_ties", "numeric_rel_tolerance")
-
-
-def _fetch_graded_regime() -> dict:
-    """The grading corrections the db_environment service will actually apply.
-
-    Grading happens in that process, so what it reports is authoritative. Since
-    2026-09-07 the corrections are unconditional in both processes, so they can
-    only differ when the service is running an OLDER build than this runner —
-    which is exactly the failure this check exists for: a code change that never
-    restarted the services. An old build answers with boolean flag keys
-    (grading_casefold_text: true) instead of a `corrections` list, and either
-    shape mismatching is logged loudly rather than left for a post-mortem.
-    Before the flags were removed the two could also disagree by env, and on
-    2026-08-25/26 they did — the service had an order lint on, the recorded
-    deviations said off, and two mental_health runs whose numbers differed by
-    exactly that were compared as if they were comparable.
-    """
-    url = f"http://localhost:{settings.db_env_port}/health"
+def _get_health(name: str, port: int) -> dict:
+    url = f"http://localhost:{port}/health"
     try:
         resp = httpx.get(url, timeout=10.0, trust_env=False)
         resp.raise_for_status()
-        regime = resp.json().get("grading") or {}
+        return resp.json() or {}
     except Exception as exc:
-        logger.warning("Could not read db_environment's grading regime (%s): this run records "
-                       "only the runner's own settings, which may not be what graded it.", exc)
-        return {}
-    if not regime:
-        logger.warning("db_environment /health carries no grading block — restart the services "
-                       "(scripts/start_services.sh) so the run records what actually graded it.")
-        return {}
+        raise SystemExit(f"Could not read {name}'s /health ({url}): {exc}. Is it running? "
+                         f"(scripts/start_services.sh)")
+
+
+def _check_services() -> dict:
+    """Refuse to score a run on a stack that disagrees with this runner.
+
+    The three services are long-lived processes that read settings at start-up;
+    this runner cannot change what they hold. So before a run every one of them
+    must report the SAME leaderboard_mode as the runner, the grading service the
+    same regime and corrections, the agent service the same model and cost
+    scheme, and the simulator the same model. A mismatch means a service was not
+    restarted after the switch, and a run scored on it would carry a mixed
+    protocol - exactly what happened on 2026-08-25/26, when a service had an
+    order lint on while the recorded deviations said off, and two runs differing
+    by exactly that were compared as comparable. Hard stop, with the fix named.
+
+    Returns the grading service's own view of the regime, which is what the
+    results file records as `deviations_as_graded`: grading runs there.
+    """
+    want_lb = settings.leaderboard_mode
+    fix = ("Restart all three services so they pick up the same settings as this runner: "
+           f"LEADERBOARD_MODE={'true' if want_lb else 'false'} bash scripts/start_services.sh")
+    sa = _get_health("system_agent", settings.system_agent_port)
+    us = _get_health("user_simulator", settings.user_sim_port)
+    db = _get_health("db_environment", settings.db_env_port)
+    problems = []
+    for name, h in (("system_agent", sa), ("user_simulator", us), ("db_environment", db)):
+        if "leaderboard_mode" not in h:
+            problems.append(f"{name} predates the leaderboard switch (no leaderboard_mode on /health)")
+        elif bool(h["leaderboard_mode"]) != want_lb:
+            problems.append(f"{name} reports leaderboard_mode={h['leaderboard_mode']}, runner has {want_lb}")
+    regime = (db.get("grading") or {})
     served = regime.get("corrections")
     if served is None:
-        logger.warning("GRADING REGIME MISMATCH — db_environment reports grading FLAGS (%s), not "
-                       "the unconditional corrections this build applies. That service predates "
-                       "2026-09-07 and is what scores this run: restart it "
-                       "(scripts/start_services.sh) before trusting these numbers.",
-                       ", ".join(f"{k}={v}" for k, v in sorted(regime.items())))
-        return regime
-    logger.info("Grading corrections AS GRADED (db_environment): %s", ", ".join(served))
-    missing = [c for c in GRADING_CORRECTIONS if c not in served]
-    extra = [c for c in served if c not in GRADING_CORRECTIONS]
-    if missing or extra:
-        logger.warning("GRADING REGIME MISMATCH — the service applies a different set of "
-                       "corrections than this runner expects (missing here: %s; extra there: %s). "
-                       "The service's set is what scores this run; restart the services so the "
-                       "two agree, or expect scores that are not comparable.",
-                       missing or "none", extra or "none")
+        problems.append("db_environment reports no grading corrections list (old build)")
+    else:
+        want = list(active_grading_corrections())
+        if regime.get("regime") != settings.grading_regime or sorted(served) != sorted(want):
+            problems.append(f"db_environment grades under regime={regime.get('regime')!r} corrections={served}, "
+                            f"runner expects {settings.grading_regime!r} {want}")
+    if sa.get("model") and sa["model"] != settings.system_agent_model:
+        problems.append(f"system_agent model is {sa['model']!r}, runner expects {settings.system_agent_model!r}")
+    if us.get("model") and us["model"] != settings.user_sim_model:
+        problems.append(f"user_simulator model is {us['model']!r}, runner expects {settings.user_sim_model!r}")
+    if sa.get("cost_scheme") and sa["cost_scheme"] != _cost_scheme_name():
+        problems.append(f"system_agent cost scheme is {sa['cost_scheme']!r}, runner expects {_cost_scheme_name()!r}")
+    if want_lb and settings.environment_backend != "raw":
+        # The submission carries the engine's OUTBOUND SQL. With aggregates on,
+        # that SQL reads aggregates.as_agg_* tables the BIRD evaluator does not
+        # have, and every such task scores zero there (seen live 2026-09-11). In
+        # leaderboard mode the harness sends disable_aggregates=true on every
+        # run_query, which needs an MCP server that understands the parameter
+        # (it advertises that on /configz); a server-wide flag also satisfies it.
+        url = f"{settings.semantic_layer_mcp_admin_url.rstrip('/')}/configz"
+        try:
+            cfg = httpx.get(url, timeout=10.0, trust_env=False).json()
+        except Exception as exc:
+            cfg = {"error": str(exc)}
+        if not (cfg.get("per_query_disable_aggregates") is True or cfg.get("disable_aggregates") is True):
+            problems.append(f"the MCP server at {url} neither accepts run_query(disable_aggregates=true) nor "
+                            f"disables aggregates globally ({cfg}); deploy an MCP build with the per-query "
+                            "parameter (or set SEMANTIC_LAYER_MCP_ADMIN_URL if the server is elsewhere)")
+    if problems:
+        raise SystemExit("SERVICE / RUNNER MISMATCH - refusing to run:\n  - " + "\n  - ".join(problems) + "\n" + fix)
+    logger.info("Services agree: leaderboard_mode=%s, grading regime=%s (%s), agent=%s, simulator=%s (%s), cost scheme=%s",
+                want_lb, regime.get("regime"), ", ".join(served) or "none", sa.get("model"), us.get("model"),
+                us.get("simulator_variant"), sa.get("cost_scheme"))
     return regime
 
 
@@ -471,8 +541,15 @@ def main():
     else:
         from orchestrator.cinteract import run_single_task
 
+    if args.query_only and settings.leaderboard_mode:
+        parser.error("--query-only cannot be combined with LEADERBOARD_MODE: a leaderboard run scores all "
+                     "600 tasks (Management tasks are routed to the raw backend).")
+    if settings.leaderboard_mode:
+        logger.warning("LEADERBOARD MODE: upstream grading, simulator %s (upstream prompts), agent %s, "
+                       "Universal Cost Scheme, Management tasks routed to raw, outbound SQL recorded.",
+                       settings.user_sim_model, settings.system_agent_model)
     _set_service_backend(args.backend)
-    graded_regime = _fetch_graded_regime()
+    graded_regime = _check_services()
 
     databases = [d.strip() for d in args.databases.split(",") if d.strip()] if args.databases else None
     tasks_filter = None
@@ -513,7 +590,9 @@ def main():
                   "deviations_as_graded": graded_regime,
                   # Task scope, so a results file states its own comparability.
                   "query_only": args.query_only,
-                  "task_count": len(tasks)},
+                  "task_count": len(tasks),
+                  "task_categories": {c: sum(1 for t in tasks if t.get("category", "Query") == c)
+                                      for c in sorted({t.get("category", "Query") for t in tasks})}},
         ))
 
 
