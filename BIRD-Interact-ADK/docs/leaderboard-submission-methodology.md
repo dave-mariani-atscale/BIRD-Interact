@@ -51,8 +51,11 @@ PostgreSQL the engine dispatched for that execution, and that is what
 `subtask_*_predicted_sql` contains. The agent's own logical SQL is preserved in
 `prompt_flow` under the `submit_sql` action so the two can be compared. Every
 query ran with the engine hints `use_aggs(false)` and `generate_aggs(false)`, so
-no aggregate table was read or created and the outbound SQL references only base
-tables present in your database.
+no aggregate table was read and the outbound SQL references only base tables
+present in your database. (In the runs reported here those hints covered every
+query the agent and the grader ran; the server's own sample-value previews, which
+no submitted SQL comes from, were unhinted and did create aggregates. That is
+fixed for later runs and changes nothing about the SQL in this file.)
 
 A **set operation** is not dispatched as one engine query: the engine runs it
 branch by branch and applies the statement's `ORDER BY` to the concatenated

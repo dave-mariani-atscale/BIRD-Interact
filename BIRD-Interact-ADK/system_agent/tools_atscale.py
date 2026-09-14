@@ -243,7 +243,15 @@ async def focus_columns(columns: List[str], tool_context: ToolContext) -> str:
     domain, err = _domain_or_error(tool_context)
     if err:
         return err
-    return await _call("focus_columns", {**domain, "columns": columns}, tool_context)
+    args = {**domain, "columns": columns}
+    if settings.leaderboard_mode:
+        # focus_columns issues one distinct-value preview query per dimension
+        # column, which makes it the most numerous engine path in a run. Left
+        # unhinted it teaches the engine aggregates even when every graded query
+        # carries the hints - measured: a sweep that began with zero aggregates
+        # ended with 34, none of them from run_query. Same flag, same meaning.
+        args["disable_aggregates"] = True
+    return await _call("focus_columns", args, tool_context)
 
 
 async def get_sml_skills(tool_context: ToolContext) -> str:
