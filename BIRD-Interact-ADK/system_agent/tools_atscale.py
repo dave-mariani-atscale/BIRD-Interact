@@ -135,6 +135,11 @@ async def list_models(tool_context: ToolContext) -> str:
         question = tool_context.state.get("user_query", "")
         if question:
             args["question"] = question
+    args = dict(args)
+    if settings.leaderboard_mode:
+        # A model load pre-samples every text dimension in the model; those engine
+        # queries are hinted only if this call asks. Same flag as run_query.
+        args["disable_aggregates"] = True
     return await _call("list_models", args, tool_context)
 
 
