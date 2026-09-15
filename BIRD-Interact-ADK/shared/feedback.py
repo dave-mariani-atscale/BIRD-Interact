@@ -263,7 +263,22 @@ def record_submission_verdict(
                     # and the agent never sees it. A submission the engine
                     # rejects produces no exchangeId line and the verdict is
                     # dropped — there is no stored SQL to protect or poison.
-                    text = client.call_tool("run_query", {"query": sql, "question": question})
+                    args = {"query": sql, "question": question}
+                    if settings.leaderboard_mode:
+                        # Same bypass every other run_query carries in
+                        # leaderboard mode. This one is a BACKGROUND thread, so
+                        # its aggregates land a second or two after submit_sql
+                        # and look unattributable: measured on the 2026-09-14
+                        # Kimi sweep, ~62 aggregates.as_agg_* tables per cold
+                        # run, all of them from here - the agent's run_query,
+                        # the grading re-execution and the metadata tools were
+                        # already hinted and create none (verified by dropping
+                        # the schema and replaying each tool at volume). No
+                        # graded SQL ever read them, so the submission was
+                        # never wrong; the engine was just being taught
+                        # aggregates by telemetry the agent cannot see.
+                        args["disable_aggregates"] = True
+                    text = client.call_tool("run_query", args)
                     match = _EXCHANGE_LINE.search(text or "")
                     if not match:
                         logger.info(
