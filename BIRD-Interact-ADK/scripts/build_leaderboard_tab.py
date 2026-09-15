@@ -40,6 +40,9 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter as GL
 
+GREY = "FFD9D9D9"
+BLUE = "FFBDD7EE"
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from orchestrator.ainteract import calculate_initial_budget  # noqa: E402
 
@@ -126,9 +129,12 @@ def style(c, *, fill=None, bold=False, color=None, fmt=None, center=False, wrap=
         c.alignment = Alignment(horizontal="center" if center else None, vertical="center", wrap_text=wrap)
 
 
-def build(src, out, paths, label, in_place=False):
+def build(src, out, paths, label, in_place=False, raw_paths=None):
     per, meta, docs = load(paths)
     nr = meta["runs"]
+    per_raw = raw_meta = None
+    if raw_paths:
+        per_raw, raw_meta, _ = load(raw_paths)
     wb = openpyxl.load_workbook(src)
     title = f"Leaderboard {label}"
     if title in wb.sheetnames:
@@ -153,6 +159,13 @@ def build(src, out, paths, label, in_place=False):
     section(s, "BLENDED - THE LEADERBOARD'S OWN FIGURES (all 600 tasks)", YELLOW); add("s3", 2)
     s = c; add("eff", 12); add("coins", 12); add("percorr", 14); add("oob", 12)
     section(s, "EFFICIENCY - bird-coins", PEACH)
+    if per_raw is not None:
+        add("s4", 2)
+        s = c; add("raw_q_p1", 12); add("raw_q_p2", 12); add("raw_sr", 12); add("raw_b_p2", 12); add("raw_rw", 12)
+        section(s, "RAW ARM - NO SEMANTIC LAYER (control, n=%d)" % raw_meta["runs"], GREY)
+        add("s5", 2)
+        s = c; add("lift_q_p1", 13); add("lift_sr", 13); add("lift_rw", 13)
+        section(s, "LIFT - ATSCALE vs RAW", BLUE)
 
     ws["A1"] = f"BIRD-Interact-Full, leaderboard protocol - {label}"
     style(ws["A1"], bold=True, size=14)
@@ -169,7 +182,10 @@ def build(src, out, paths, label, in_place=False):
              "q_p1": "Query P1 %", "q_p2": "Query P2 %", "m_p1": "Mgmt P1 %", "m_p2": "Mgmt P2 %",
              "sr": "Success Rate (P1)", "rw": "Reward", "b_p2": "Blended P2 %",
              "eff": "Efficiency (budget)", "coins": "Coins used", "percorr": "Coins per correct",
-             "oob": "% out of budget"}
+             "oob": "% out of budget",
+             "raw_q_p1": "Raw Query P1 %", "raw_q_p2": "Raw Query P2 %", "raw_sr": "Raw Success Rate (P1)",
+             "raw_b_p2": "Raw Blended P2 %", "raw_rw": "Raw Reward",
+             "lift_q_p1": "Query P1 lift", "lift_sr": "Success Rate lift", "lift_rw": "Reward lift"}
     for i in range(1, nr + 1):
         heads[f"sr_r{i}"] = f"P1 r{i}"; heads[f"p2_r{i}"] = f"P2 r{i}"
         heads[f"rw_r{i}"] = f"Reward r{i}"
@@ -199,12 +215,26 @@ def build(src, out, paths, label, in_place=False):
             for key, val, fmt in ((f"sr_r{i2}", p1, PCT), (f"p2_r{i2}", p2, PCT),
                                   (f"rw_r{i2}", rw, "0.000")):
                 cell = ws[f"{cols[key]}{r}"]; cell.value = val; cell.number_format = fmt
+        if per_raw is not None:
+            dr = db_cols(per_raw, db, raw_meta["runs"])
+            for key, val, fmt in (("raw_q_p1", dr["q"][0], PCT), ("raw_q_p2", dr["q"][1], PCT),
+                                  ("raw_sr", dr["b"][0], PCT), ("raw_b_p2", dr["b"][1], PCT),
+                                  ("raw_rw", dr["b"][2], "0.000")):
+                cell = ws[f"{cols[key]}{r}"]; cell.value = val; cell.number_format = fmt
+            for key, a_key, r_key in (("lift_q_p1", "q_p1", "raw_q_p1"), ("lift_sr", "sr", "raw_sr"),
+                                      ("lift_rw", "rw", "raw_rw")):
+                cell = ws[f"{cols[key]}{r}"]
+                cell.value = (f'=IF(OR({cols[r_key]}{r}="",{cols[r_key]}{r}=0),"n/a",'
+                              f'{cols[a_key]}{r}/{cols[r_key]}{r}-1)')
+                cell.number_format = "+0%;-0%"
 
     ws[f"A{ALL}"] = "ALL 22 DATABASES (task-mean over runs)"
     for k in ("nq", "nm", "n"):
         ws[f"{cols[k]}{ALL}"] = f"=SUM({cols[k]}{FIRST}:{cols[k]}{LAST})"
-    W = {"q_p1": "nq", "q_p2": "nq", "m_p1": "nm", "m_p2": "nm"}
-    for key in ("q_p1", "q_p2", "m_p1", "m_p2", "sr", "b_p2", "rw", "eff", "coins", "oob",
+    W = {"q_p1": "nq", "q_p2": "nq", "m_p1": "nm", "m_p2": "nm",
+         "raw_q_p1": "nq", "raw_q_p2": "nq"}
+    raw_keys = ["raw_q_p1", "raw_q_p2", "raw_sr", "raw_b_p2", "raw_rw"] if per_raw is not None else []
+    for key in ("q_p1", "q_p2", "m_p1", "m_p2", "sr", "b_p2", "rw", "eff", "coins", "oob", *raw_keys,
                 *[f"sr_r{i}" for i in range(1, nr + 1)], *[f"p2_r{i}" for i in range(1, nr + 1)],
                 *[f"rw_r{i}" for i in range(1, nr + 1)]):
         L, w = cols[key], cols[W.get(key, "n")]
@@ -218,6 +248,13 @@ def build(src, out, paths, label, in_place=False):
                                      f"SUMPRODUCT({cols['sr']}{FIRST}:{cols['sr']}{LAST},"
                                      f"{cols['n']}{FIRST}:{cols['n']}{LAST})")
     ws[f"{cols['percorr']}{ALL}"].number_format = R2
+
+    if per_raw is not None:
+        for key, a_key, r_key in (("lift_q_p1", "q_p1", "raw_q_p1"), ("lift_sr", "sr", "raw_sr"),
+                                  ("lift_rw", "rw", "raw_rw")):
+            cell = ws[f"{cols[key]}{ALL}"]
+            cell.value = f"={cols[a_key]}{ALL}/{cols[r_key]}{ALL}-1"
+            cell.number_format = "+0%;-0%"
 
     ws[f"A{BEST}"] = "BEST SINGLE RUN (leaderboard reporting convention)"
     rr = [cols[f"rw_r{i}"] for i in range(1, nr + 1)]
@@ -284,13 +321,15 @@ def main():
     ap.add_argument("--src", default=DRIVE_XLSX)
     ap.add_argument("--out", default=None)
     ap.add_argument("--in-place", action="store_true")
+    ap.add_argument("--raw-runs", nargs="*", default=None)
     a = ap.parse_args()
     paths = sorted(p for g in a.runs for p in glob.glob(g))
     if not paths:
         raise SystemExit("no results files matched")
     if not a.out and not a.in_place:
         raise SystemExit("give --out <file.xlsx> or --in-place")
-    build(a.src, a.out or a.src, paths, a.label, in_place=a.in_place)
+    raw_paths = sorted(p for g in (a.raw_runs or []) for p in glob.glob(g)) or None
+    build(a.src, a.out or a.src, paths, a.label, in_place=a.in_place, raw_paths=raw_paths)
 
 
 if __name__ == "__main__":
