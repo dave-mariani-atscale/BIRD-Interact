@@ -9,7 +9,8 @@ import sys
 from decimal import Decimal
 
 sys.path.insert(0, ".")
-from shared.config import Settings, LEADERBOARD_USER_SIM_MODEL, settings  # noqa: E402
+from shared.config import (Settings, LEADERBOARD_USER_SIM_MODEL,  # noqa: E402
+                           LEADERBOARD_USER_SIM_MODELS, settings)
 from shared import db_utils as U  # noqa: E402
 
 ORD, UNORD = {"order": True}, {"order": False}
@@ -131,6 +132,39 @@ def test_pinned_models():
     assert s2.system_agent_model == "anthropic/claude-sonnet-5"
     s3 = Settings(leaderboard_mode=False, user_sim_model="anthropic/claude-sonnet-5", _env_file=None)
     assert s3.user_sim_model == "anthropic/claude-sonnet-5"
+
+
+def test_leaderboard_tracks():
+    """The board is grouped by simulator and publishes a full track for each:
+    Claude-Haiku-4-5 (our Opus/Sonnet/Kimi tabs) and GPT-4o (GPT-5, Sonnet-4,
+    Gemini-2.5-Pro, ...). Both are listable; only a simulator outside the set
+    makes a run a Customized-User entry, so an unknown track is refused rather
+    than silently run."""
+    haiku = Settings(leaderboard_mode=True, leaderboard_track="haiku",
+                     user_sim_model="anthropic/claude-sonnet-5", _env_file=None)
+    assert haiku.user_sim_model == LEADERBOARD_USER_SIM_MODELS["haiku"]
+
+    gpt4o = Settings(leaderboard_mode=True, leaderboard_track="gpt4o",
+                     user_sim_model="anthropic/claude-sonnet-5", _env_file=None)
+    assert gpt4o.user_sim_model == LEADERBOARD_USER_SIM_MODELS["gpt4o"] == "openai/gpt-4o"
+
+    # default track is the one the existing tabs were measured on
+    assert Settings(leaderboard_mode=True, _env_file=None).user_sim_model == LEADERBOARD_USER_SIM_MODEL
+
+    # case/whitespace tolerated, unknown refused
+    assert Settings(leaderboard_mode=True, leaderboard_track=" GPT4O ",
+                    _env_file=None).user_sim_model == "openai/gpt-4o"
+    try:
+        Settings(leaderboard_mode=True, leaderboard_track="gemini", _env_file=None)
+    except Exception:
+        pass
+    else:
+        raise AssertionError("unknown leaderboard_track must be refused")
+
+    # outside leaderboard mode the track is inert
+    off = Settings(leaderboard_mode=False, leaderboard_track="gpt4o",
+                   user_sim_model="anthropic/claude-sonnet-5", _env_file=None)
+    assert off.user_sim_model == "anthropic/claude-sonnet-5"
 
 
 if __name__ == "__main__":

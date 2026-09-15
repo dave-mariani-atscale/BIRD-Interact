@@ -21,12 +21,25 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-#: The user simulator every leaderboard run uses. Fixed, not configurable: the
-#: leaderboard groups entries by simulator, every 2026 entry (Claude-Opus-4.6,
-#: MERIT + Claude-Opus-4.6, Kimi-2.5, GLM-4.7, ...) uses this one, and it is the
-#: upstream ADK default. A run with any other simulator lands in the
-#: "Customized-User" bucket and needs a 15-expert review before it is listed.
-LEADERBOARD_USER_SIM_MODEL = "anthropic/claude-haiku-4-5-20251001"
+#: The user simulators the BIRD-Interact leaderboard runs its own tracks on. The
+#: board is GROUPED BY SIMULATOR, not pinned to one: bird-interact.github.io
+#: publishes a full Claude-Haiku-4-5 board (Claude-Opus-4.6, Kimi-2.5, GLM-4.7,
+#: MiniMax-M2.1, ...) AND a full GPT-4o board (GPT-5, Claude-Sonnet-4,
+#: Gemini-2.5-Pro, O3-Mini, ...). Both are first-class; an entry is listed on the
+#: board matching its simulator. Only a simulator outside this set makes a run a
+#: "Customized-User" entry.
+#:
+#: A run is therefore comparable to the other entries on ITS OWN board and to no
+#: other - the same agent scores differently under different simulators, so a
+#: Haiku-track number must never be set beside a GPT-4o-track number.
+LEADERBOARD_USER_SIM_MODELS = {
+    "haiku": "anthropic/claude-haiku-4-5-20251001",
+    "gpt4o": "openai/gpt-4o",
+}
+
+#: Default track when LEADERBOARD_TRACK is unset - the board our existing tabs
+#: (Opus-4.6, Sonnet-5, Kimi-2.5) were measured on.
+LEADERBOARD_USER_SIM_MODEL = LEADERBOARD_USER_SIM_MODELS["haiku"]
 
 #: The comparison corrections this harness adds on top of upstream grading.
 #: Applied under grading_regime == "corrected" (our A/B work) and NOT under
@@ -87,6 +100,12 @@ class Settings(BaseSettings):
     # compares directly with Anthropic's Claude-Opus-4.6 entry (33.0% phase-1
     # success, Claude-Haiku-4-5 simulator); override with LEADERBOARD_AGENT_MODEL.
     leaderboard_agent_model: str = "anthropic/claude-opus-4-6"
+    # Which leaderboard track (= which user simulator) this run belongs to:
+    # "haiku" (default, our existing tabs) or "gpt4o" (the board's GPT-5 /
+    # Sonnet-4 / Gemini-2.5-Pro track). Names a simulator from
+    # LEADERBOARD_USER_SIM_MODELS; anything else is refused at startup rather
+    # than silently producing an unlistable Customized-User run.
+    leaderboard_track: str = "haiku"
 
     # Models (LiteLlm format: provider/model-name)
     user_sim_model: str = "anthropic/claude-haiku-4-5-20251001"
@@ -254,10 +273,18 @@ class Settings(BaseSettings):
         if not self.leaderboard_mode:
             return self
         log = logging.getLogger(__name__)
-        if self.user_sim_model != LEADERBOARD_USER_SIM_MODEL:
-            log.warning("LEADERBOARD_MODE: USER_SIM_MODEL=%r ignored; the simulator is pinned to %s",
-                        self.user_sim_model, LEADERBOARD_USER_SIM_MODEL)
-            self.user_sim_model = LEADERBOARD_USER_SIM_MODEL
+        track = (self.leaderboard_track or "haiku").strip().lower()
+        if track not in LEADERBOARD_USER_SIM_MODELS:
+            raise ValueError(
+                f"LEADERBOARD_TRACK={self.leaderboard_track!r} is not a board track; "
+                f"choose one of {sorted(LEADERBOARD_USER_SIM_MODELS)}. A simulator outside "
+                "this set makes the run a Customized-User entry, not a listable one."
+            )
+        pinned = LEADERBOARD_USER_SIM_MODELS[track]
+        if self.user_sim_model != pinned:
+            log.warning("LEADERBOARD_MODE (track %s): USER_SIM_MODEL=%r ignored; the simulator "
+                        "is pinned to %s", track, self.user_sim_model, pinned)
+            self.user_sim_model = pinned
         if self.system_agent_model != self.leaderboard_agent_model:
             log.info("LEADERBOARD_MODE: system agent is %s (LEADERBOARD_AGENT_MODEL), not SYSTEM_AGENT_MODEL=%r",
                      self.leaderboard_agent_model, self.system_agent_model)
