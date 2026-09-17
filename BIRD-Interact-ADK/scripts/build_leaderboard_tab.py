@@ -119,6 +119,16 @@ def db_cols(per, db, nruns):
     }
 
 
+def query_reward_lift(cols, r):
+    """Reward lift over the QUERY tasks only: BIRD's own 0.7*P1 + 0.3*P2, built
+    from the two Query columns rather than read off the blended Reward column,
+    which carries the 190 Management tasks both arms answer with the same raw
+    Postgres tools."""
+    a = f"(0.7*{cols['q_p1']}{r}+0.3*{cols['q_p2']}{r})"
+    b = f"(0.7*{cols['raw_q_p1']}{r}+0.3*{cols['raw_q_p2']}{r})"
+    return f'=IF(OR({cols["raw_q_p1"]}{r}="",{b}=0),"n/a",{a}/{b}-1)'
+
+
 def style(c, *, fill=None, bold=False, color=None, fmt=None, center=False, wrap=False, size=10):
     if fill:
         c.fill = PatternFill("solid", fgColor=fill)
@@ -164,8 +174,13 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
         s = c; add("raw_q_p1", 12); add("raw_q_p2", 12); add("raw_sr", 12); add("raw_b_p2", 12); add("raw_rw", 12)
         section(s, "RAW ARM - NO SEMANTIC LAYER (control, n=%d)" % raw_meta["runs"], GREY)
         add("s5", 2)
-        s = c; add("lift_q_p1", 13); add("lift_sr", 13); add("lift_rw", 13)
-        section(s, "LIFT - ATSCALE vs RAW", BLUE)
+        s = c; add("lift_q_p1", 13); add("lift_q_p2", 13); add("lift_q_rw", 13)
+        # QUERY TASKS ONLY, deliberately. In leaderboard mode the 190 Management
+        # tasks are routed to the raw Postgres tools on BOTH arms, so they are the
+        # same system twice and a blended lift just dilutes the measurement toward
+        # 1.0 with a third of the benchmark. The semantic layer only touches Query
+        # tasks, so that is where a lift means anything.
+        section(s, "LIFT - ATSCALE vs RAW (QUERY TASKS ONLY)", BLUE)
 
     ws["A1"] = f"BIRD-Interact-Full, leaderboard protocol - {label}"
     style(ws["A1"], bold=True, size=14)
@@ -185,7 +200,8 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
              "oob": "% out of budget",
              "raw_q_p1": "Raw Query P1 %", "raw_q_p2": "Raw Query P2 %", "raw_sr": "Raw Success Rate (P1)",
              "raw_b_p2": "Raw Blended P2 %", "raw_rw": "Raw Reward",
-             "lift_q_p1": "Query P1 lift", "lift_sr": "Success Rate lift", "lift_rw": "Reward lift"}
+             "lift_q_p1": "Query P1 lift", "lift_q_p2": "Query P2 lift",
+             "lift_q_rw": "Query reward lift"}
     for i in range(1, nr + 1):
         heads[f"sr_r{i}"] = f"P1 r{i}"; heads[f"p2_r{i}"] = f"P2 r{i}"
         heads[f"rw_r{i}"] = f"Reward r{i}"
@@ -221,12 +237,15 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
                                   ("raw_sr", dr["b"][0], PCT), ("raw_b_p2", dr["b"][1], PCT),
                                   ("raw_rw", dr["b"][2], "0.000")):
                 cell = ws[f"{cols[key]}{r}"]; cell.value = val; cell.number_format = fmt
-            for key, a_key, r_key in (("lift_q_p1", "q_p1", "raw_q_p1"), ("lift_sr", "sr", "raw_sr"),
-                                      ("lift_rw", "rw", "raw_rw")):
+            for key, a_key, r_key in (("lift_q_p1", "q_p1", "raw_q_p1"),
+                                      ("lift_q_p2", "q_p2", "raw_q_p2")):
                 cell = ws[f"{cols[key]}{r}"]
                 cell.value = (f'=IF(OR({cols[r_key]}{r}="",{cols[r_key]}{r}=0),"n/a",'
                               f'{cols[a_key]}{r}/{cols[r_key]}{r}-1)')
                 cell.number_format = "+0%;-0%"
+            cell = ws[f"{cols['lift_q_rw']}{r}"]
+            cell.value = query_reward_lift(cols, r)
+            cell.number_format = "+0%;-0%"
 
     ws[f"A{ALL}"] = "ALL 22 DATABASES (task-mean over runs)"
     for k in ("nq", "nm", "n"):
@@ -250,11 +269,14 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
     ws[f"{cols['percorr']}{ALL}"].number_format = R2
 
     if per_raw is not None:
-        for key, a_key, r_key in (("lift_q_p1", "q_p1", "raw_q_p1"), ("lift_sr", "sr", "raw_sr"),
-                                  ("lift_rw", "rw", "raw_rw")):
+        for key, a_key, r_key in (("lift_q_p1", "q_p1", "raw_q_p1"),
+                                  ("lift_q_p2", "q_p2", "raw_q_p2")):
             cell = ws[f"{cols[key]}{ALL}"]
             cell.value = f"={cols[a_key]}{ALL}/{cols[r_key]}{ALL}-1"
             cell.number_format = "+0%;-0%"
+        cell = ws[f"{cols['lift_q_rw']}{ALL}"]
+        cell.value = query_reward_lift(cols, ALL)
+        cell.number_format = "+0%;-0%"
 
     ws[f"A{BEST}"] = "BEST SINGLE RUN (leaderboard reporting convention)"
     rr = [cols[f"rw_r{i}"] for i in range(1, nr + 1)]
