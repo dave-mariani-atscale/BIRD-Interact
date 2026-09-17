@@ -104,6 +104,12 @@ def db_cols(per, db, nruns):
         rows = [x for c in runs.get(i, {}) for x in runs[i][c]]
         per_run[i] = ((agg(rows, "p1"), agg(rows, "p2"), agg(rows, "rw"))
                       if rows else (None, None, None))
+    per_run_q, per_run_m = {}, {}
+    for i in range(1, nruns + 1):
+        qr = runs.get(i, {}).get("Query", [])
+        mr = runs.get(i, {}).get("Management", [])
+        per_run_q[i] = (agg(qr, "p1"), agg(qr, "p2")) if qr else (None, None)
+        per_run_m[i] = (agg(mr, "p1"), agg(mr, "p2")) if mr else (None, None)
     first = runs.get(min(runs), {}) if runs else {}
     passes = sum(x["p1"] for x in a)
     coins = sum(x["coins"] for x in a)
@@ -112,7 +118,7 @@ def db_cols(per, db, nruns):
         "n": len(first.get("Query", [])) + len(first.get("Management", [])),
         "q": (agg(q, "p1"), agg(q, "p2")), "m": (agg(m, "p1"), agg(m, "p2")),
         "b": (agg(a, "p1"), agg(a, "p2"), agg(a, "rw")),
-        "runs": per_run,
+        "runs": per_run, "runs_q": per_run_q, "runs_m": per_run_m,
         "budget": agg(a, "budget"), "coins": agg(a, "coins"),
         "per_correct": (coins / passes) if passes else None,
         "oob": agg(a, "oob"),
@@ -161,8 +167,12 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
         sections.append((start, c - 1, heading, fill))
 
     s = c; add("db", 32); add("nq", 8); add("nm", 8); add("n", 8); section(s, "MODEL", PALE); add("s0", 2)
-    s = c; add("q_p1", 11); add("q_p2", 11); section(s, "QUERY TASKS (semantic layer)", GREEN); add("s1", 2)
-    s = c; add("m_p1", 11); add("m_p2", 11); section(s, "MANAGEMENT TASKS (raw Postgres)", GREEN2); add("s2", 2)
+    s = c; add("q_p1", 11); [add(f"q_p1_r{i}", 9) for i in range(1, nr + 1)]
+    add("q_p2", 11); [add(f"q_p2_r{i}", 9) for i in range(1, nr + 1)]
+    section(s, "QUERY TASKS (semantic layer)", GREEN); add("s1", 2)
+    s = c; add("m_p1", 11); [add(f"m_p1_r{i}", 9) for i in range(1, nr + 1)]
+    add("m_p2", 11); [add(f"m_p2_r{i}", 9) for i in range(1, nr + 1)]
+    section(s, "MANAGEMENT TASKS (raw Postgres)", GREEN2); add("s2", 2)
     s = c; add("sr", 13); [add(f"sr_r{i}", 9) for i in range(1, nr + 1)]
     add("b_p2", 12); [add(f"p2_r{i}", 9) for i in range(1, nr + 1)]
     add("rw", 12); [add(f"rw_r{i}", 9) for i in range(1, nr + 1)]
@@ -205,6 +215,8 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
     for i in range(1, nr + 1):
         heads[f"sr_r{i}"] = f"P1 r{i}"; heads[f"p2_r{i}"] = f"P2 r{i}"
         heads[f"rw_r{i}"] = f"Reward r{i}"
+        heads[f"q_p1_r{i}"] = f"Query P1 r{i}"; heads[f"q_p2_r{i}"] = f"Query P2 r{i}"
+        heads[f"m_p1_r{i}"] = f"Mgmt P1 r{i}"; heads[f"m_p2_r{i}"] = f"Mgmt P2 r{i}"
     for name, letter in cols.items():
         if name.startswith("s") and name[1:].isdigit():
             continue
@@ -231,6 +243,12 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
             for key, val, fmt in ((f"sr_r{i2}", p1, PCT), (f"p2_r{i2}", p2, PCT),
                                   (f"rw_r{i2}", rw, "0.000")):
                 cell = ws[f"{cols[key]}{r}"]; cell.value = val; cell.number_format = fmt
+        for i2 in range(1, nr + 1):
+            qp1, qp2 = d["runs_q"].get(i2, (None, None))
+            mp1, mp2 = d["runs_m"].get(i2, (None, None))
+            for key, val in ((f"q_p1_r{i2}", qp1), (f"q_p2_r{i2}", qp2),
+                             (f"m_p1_r{i2}", mp1), (f"m_p2_r{i2}", mp2)):
+                cell = ws[f"{cols[key]}{r}"]; cell.value = val; cell.number_format = PCT
         if per_raw is not None:
             dr = db_cols(per_raw, db, raw_meta["runs"])
             for key, val, fmt in (("raw_q_p1", dr["q"][0], PCT), ("raw_q_p2", dr["q"][1], PCT),
@@ -252,10 +270,15 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
         ws[f"{cols[k]}{ALL}"] = f"=SUM({cols[k]}{FIRST}:{cols[k]}{LAST})"
     W = {"q_p1": "nq", "q_p2": "nq", "m_p1": "nm", "m_p2": "nm",
          "raw_q_p1": "nq", "raw_q_p2": "nq"}
+    for i in range(1, nr + 1):
+        W[f"q_p1_r{i}"] = "nq"; W[f"q_p2_r{i}"] = "nq"
+        W[f"m_p1_r{i}"] = "nm"; W[f"m_p2_r{i}"] = "nm"
     raw_keys = ["raw_q_p1", "raw_q_p2", "raw_sr", "raw_b_p2", "raw_rw"] if per_raw is not None else []
     for key in ("q_p1", "q_p2", "m_p1", "m_p2", "sr", "b_p2", "rw", "eff", "coins", "oob", *raw_keys,
                 *[f"sr_r{i}" for i in range(1, nr + 1)], *[f"p2_r{i}" for i in range(1, nr + 1)],
-                *[f"rw_r{i}" for i in range(1, nr + 1)]):
+                *[f"rw_r{i}" for i in range(1, nr + 1)],
+                *[f"q_p1_r{i}" for i in range(1, nr + 1)], *[f"q_p2_r{i}" for i in range(1, nr + 1)],
+                *[f"m_p1_r{i}" for i in range(1, nr + 1)], *[f"m_p2_r{i}" for i in range(1, nr + 1)]):
         L, w = cols[key], cols[W.get(key, "n")]
         cell = ws[f"{L}{ALL}"]
         cell.value = (f'=IF(SUM(${w}${FIRST}:${w}${LAST})=0,"n/a",'
