@@ -7972,3 +7972,20 @@ run bought; canaries _1 and _7 held.
 T1, reference answers a different question), _4 and _7 phase 2 (reference label strings,
 B-95 carry-forward), _8 (agent projected a 6th column). Tracker M-89. Worklist and spend:
 `results/robot_v12_pass_0918.md` (local).
+
+**PATIENCE=6 diagnostic (same model a4182fe, $4.57, not a scoring run):** P1 7/10, P2 3/10,
+reward 0.61. Only _8 flipped on budget alone; phase 2 of _3, _4, _6 and _7 opened with 12–20
+coins and spent them on 3–4 wrong submits each, so those are not budget-bound. Scoring stays at
+the upstream PATIENCE=3.
+
+**Iteration 2 (f31e13f):** three robot-grain attributes — Robot Has Performance / Maintenance /
+Mechanical Status Record (Yes/No, 464/499/698 robots) — so "every robot with its <satellite
+value>" can be written as the left-join shape `Has X Record = 'Yes' OR Robot Has X Record = 'No'`
+without the IN-subquery the engine rejects; that sentence added to the performance POPULATION
+clause; the High Safety-Risk Unit verdict says it is a Yes/No, not the label a question asks to
+tag rows with (_6 phase 2 projected the verdict where the reference carries a literal). Ceiling
+test after deploy: 965 of 966 rows — RB9624 has two performance records with the same condition
+index and the engine collapses the identical rows, the same keyless-collapse class as _7 phase 2.
+Nothing bought for _6; a $1 canary run (_1, _5, _8, PATIENCE=3) checks the wider description
+change for regressions. _3 phase 2 (138 vs 137 rows) bisected: the extra row is not one of the
+four two-record robots and not a satellite-population gap; left as a grain ambiguity.
