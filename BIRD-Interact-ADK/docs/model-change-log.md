@@ -7932,3 +7932,43 @@ Kept rather than reverted: it converts the half it targeted, measurably, and car
 regression surface — no 3/3-passing archeology task's SQL touches these objects, and
 `archeology_scan_3` (3/3 both phases) held at 3/3 both phases post-deploy. Deploy gates
 1-3 green, 22 models, engine alive after deploy (checked on port 15432, not on gate 2).
+
+## 2026-09-18 — robot_fault_prediction v12 one-pass build (diannewood/bird-robot-fault-prediction), comparison arm
+
+A second robot_fault_prediction model, built from scratch with `docs/create_bird_model_prompt.v12.md`
+in a new repo (`diannewood/bird-robot-fault-prediction`, catalog `bird_robot_fault_prediction_v12`,
+model "Robot Fault Prediction V12") to test the v12 process and the per-task loop in
+`docs/bird-database-testing-prompt.md`. The shared-repo robot model is untouched; the new
+model is reached through the `atscale_v12` backend in `config/environment_backends.yaml`
+(one domain). Build machinery is `utilities/birdsml` vendored from `dw-clean-generate`.
+
+**Build (6be2ff1, 684a494):** one wide Operation Snapshot fact (1000 records; every satellite
+folded, populations published as Has ... Record flags and Robot Code On ... Record attributes)
+plus a Robot dimension (951). 161 attributes, 138 metrics, 41 calculations; every birdsml gate,
+A8, A10, the dimension-key audit and `sml-cli validate` clean. KB formulas at warehouse types
+with (Exact) twins; padded CHAR columns kept as recorded with trimmed Code twins; all-NULL
+columns (upkeep cost, energy, power factor, tool wear, thermal level, humidity) published only
+to say they are empty. One calculation (an `[All]`-tuple fleet share) removed after a live
+probe returned 100 for every group.
+
+**Baseline (n=1, $3.06):** P1 4/10 (_1, _4, _6, _7), P2 1/10, reward 0.31. Existing model:
+P1 0.60 / reward 0.48; raw 0.233 / 0.163.
+
+**Iteration 1 (a4182fe, description-only):** POPULATION clause on every performance-,
+maintenance- and mechanical-record column and verdict (a listing that shows such a column
+reaches robots through that record: 479 / 513 / 728 records) — robot_fault_prediction_3 listed
+36 records where the reference has the 17 with a performance record; Remaining Useful Life
+Days and Fault Prediction Score Tier name each other as the time-horizon and failure-risk
+readings a question can combine, with a closed ask — robot_fault_prediction_5 applied only the
+RUL cutoff; row-collapse note (project Operation Record beside a verdict) — _7 phase 2 returned
+193 rows for 194. Ceiling tests ($0, `gold_diff.py --sql`) passed for _3, _5 and _8 before the
+run. Targeted run n=2 ($2.54): _5 converged 2/2 on both phases (the ask now names the Imminent
+Failure Warning option and the simulator chooses "both"); _3 1/2 (the agent added the
+performance-record filter after one failed submit in run 2, never in run 1) — flaky, no third
+run bought; canaries _1 and _7 held.
+
+**Estimate after one pass:** P1 0.55 / P2 0.20 / reward 0.445 — +28.2 pp reward over raw
+(2.7x), 3.5 pp under the tuned existing model. Caps: _10 (B-68 fan-out), _11 and _12 (census
+T1, reference answers a different question), _4 and _7 phase 2 (reference label strings,
+B-95 carry-forward), _8 (agent projected a 6th column). Tracker M-89. Worklist and spend:
+`results/robot_v12_pass_0918.md` (local).

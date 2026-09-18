@@ -293,3 +293,18 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_main
         table: Fake Account Detection
+
+  # v12-build comparison arm (2026-09-18). Same tools, instruction, costs and hints
+  # as `atscale` (YAML merge), but robot_fault_prediction resolves to the model
+  # built from scratch with docs/create_bird_model_prompt.v12.md in
+  # diannewood/bird-robot-fault-prediction, deployed as its own catalog so the two
+  # robot models never share a name (Q-17). Only this one domain is configured, so
+  # a run on this backend can only load robot_fault_prediction tasks. Schema read
+  # back from list_models after the deploy.
+  atscale_v12:
+    <<: *atscale
+    domains:
+      robot_fault_prediction:
+        catalog: atscale_catalogs
+        schema: bird_robot_fault_prediction_v12
+        table: Robot Fault Prediction V12
