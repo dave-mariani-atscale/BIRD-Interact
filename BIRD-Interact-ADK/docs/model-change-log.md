@@ -7989,3 +7989,17 @@ index and the engine collapses the identical rows, the same keyless-collapse cla
 Nothing bought for _6; a $1 canary run (_1, _5, _8, PATIENCE=3) checks the wider description
 change for regressions. _3 phase 2 (138 vs 137 rows) bisected: the extra row is not one of the
 four two-record robots and not a satellite-population gap; left as a grain ambiguity.
+
+**Iteration 2 reverted (same day):** the canary run failed robot_fault_prediction_1 (4/4 passes
+before) and a second run of _1 alone failed the same way — the agent filtered on the Urgent
+Maintenance Required verdict (24 records) instead of the urgency score above 50 (2) without
+asking, although neither description changed. A live `list_models` showed the cause of the
+drift is not attributable: with feedback memory on, the server appends certified exemplars,
+query patterns, a column track record and clarification counts built from the day's earlier
+runs, so the agent's inputs change between iterations even when the model does not. With the
+target task capped, iteration 2 bought nothing and cost surface (3 attributes, a longer clause
+on every performance column), so it is reverted on merit; the model content is back to a4182fe.
+Process finding for `docs/bird-database-testing-prompt.md`: run the per-task loop with feedback
+memory off (or a reset store) so an iteration compares model changes only. Also seen in the
+served exemplars: a "certified" answer projecting Maintenance Cost Per Hour from Upkeep Cost
+Estimate, a column that is NULL on every row.
