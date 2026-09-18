@@ -37,6 +37,16 @@ not with answers.
    the honest prediction is "nothing measurable", say so and don't run.
 4. Never start a run I didn't ask for. Never run two evaluations at once — usage is
    attributed by timestamp window.
+5. **Feedback memory off for every loop run.** With it on, the MCP server appends certified
+   exemplars, query patterns, a column track record and clarification counts built from your
+   own earlier runs to `list_models`, so the agent's inputs change every run even when the
+   model does not. On 2026-09-18 robot_fault_prediction_1 went 4/4 then 0/3 on identical
+   model content; a whole iteration was reverted before the cause was found. Both sides must
+   be off — `FEEDBACK_MEMORY=false` in the ADK `.env` (restart services) and
+   `ATSCALE_MCP_FEEDBACK_MEMORY=false` in the MCP server's `.env` (recreate the container).
+   Check: a scoped `list_models` ends at the Column Index, with no "Certified query
+   exemplars" or "Column track record" section. Memory is its own experiment (A-61..A-65),
+   never a passenger on a model-tuning run.
 
 ### What is free (no LLM calls, no benchmark tokens)
 
@@ -246,6 +256,11 @@ read any improvement. Then:
   guidance or grading code, or the run silently uses the old rules.
 - `scripts/sheet.py` has no append primitive — read the cell, concatenate, write back, then
   verify with `get` (a `set` can time out silently).
+- A canary that fails after a model change is not proof the change did it. Before
+  reverting, run the canary once more on the changed model, then once on the reverted
+  model; if it fails on both, look at what else moved — on 2026-09-18 it was memory blocks.
+- `git revert -q` is not a flag; a failed command at the head of an `&&` chain lets the `;`
+  tail run anyway. Never put the run launch on the same line as the deploy.
 
 ## Non-negotiable
 
@@ -289,6 +304,11 @@ of each task and of the database capped before you start.
    tasks that read the same object). Order by predicted payoff, sufficiency-proven first.
 5. State the caps at the top of the session. Defaults: **3 paid iterations or $3 per task,
    $25 per database.** Change them out loud before the pass, never mid-task.
+6. Fix the instrument before the first paid run and do not touch it during the pass:
+   `SYSTEM_AGENT_MODEL` Sonnet, `PATIENCE=3` (the upstream budget; a bigger purse is a
+   diagnostic you run once and never score), feedback memory off on both sides (spend rule
+   5), grading regime unchanged. Write these four in the run script header with the
+   prediction. A regression on a canary is only a regression if all four held.
 
 ### 1. Per task — the loop
 
