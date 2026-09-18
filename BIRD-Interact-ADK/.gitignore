@@ -73,6 +73,7 @@ docs/*
 !docs/bird-grading-comparison.md
 !docs/bird-database-testing-prompt.md
 !docs/leaderboard-submission-methodology.md
+!docs/create_bird_model_prompt*.md
 
 # Personal / development files
 Bird_ADK_plan.md

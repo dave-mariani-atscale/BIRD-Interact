@@ -6,8 +6,9 @@ Distilled from the ETF work of 2026-08-13/14; the examples are ETF, the method i
 ---
 
 We are measuring **semantic-layer lift**: how much better the `atscale` arm scores than the
-`raw` arm on the same tasks. Your job is to find why tasks fail, fix them in the right
-layer, and report numbers that survive a repeat.
+`raw` arm on the same tasks. Your job is to take each failing task to a stop condition — fixed,
+capped, or out of budget — in one pass over the model, and report numbers that survive a
+repeat. The unit of work is a task, not an arm (§ The pass).
 
 ## How to behave
 
@@ -29,8 +30,9 @@ of spend because the whole conversation is re-sent every turn, so cost scales wi
 not with answers.
 
 1. **Do all $0 work first, in one batch.** Most questions never need a run.
-2. **One run per session, and only when a $0 route cannot answer the question.** Batch every
-   pending change into it.
+2. **Runs are per task, never per arm.** `--tasks <id>,<canaries> --repeat 2`, bought only
+   after the fix is proven sufficient at $0 and only inside that task's cap (§ The pass).
+   The one whole-arm run in a pass is the baseline, and only when none exists.
 3. **Predict what each change will move before you spend.** Write the prediction down. If
    the honest prediction is "nothing measurable", say so and don't run.
 4. Never start a run I didn't ask for. Never run two evaluations at once — usage is
@@ -43,9 +45,10 @@ not with answers.
 | `scripts/outbound_sql.py "SELECT ..."` | what the engine actually dispatched |
 | `scripts/outbound_sql.py --query-id <uuid>` | resolve an earlier `run_query` |
 | `scripts/clause_fidelity.py` | battery: inbound vs dispatched, dropped clauses |
-| `scripts/regrade_flags.py` | re-score a finished run under new grading logic |
-| MCP `run_query` + Postgres on `<db>_template` | model vs gold, value by value |
-| stored trajectories in `results/*.json` | every query the agent wrote, and its verdict |
+| `scripts/regrade_sweep.py` | re-score recorded submissions under the current grader (`regrade_flags.py` no longer exists) |
+| `scripts/gold_diff.py` | model vs gold: row count, columns, values, order, rounding — without showing you gold |
+| MCP `run_query` + Postgres on `<db>_template` | anything gold_diff does not answer |
+| `scripts/failing_sql.py <results.json>` | every query the agent wrote, its verdict, and the asks it made |
 | `--mode oracle`, `orchestrator.test_harness` | plumbing checks with zero LLM calls |
 
 Set `GRADING_AUDIT_PATH` on every run so it stays re-gradable offline later.
@@ -99,14 +102,31 @@ grain-forcing derived table that drops the entity key and re-groups on the value
 eliminates a whole layer. **Clause fidelity is necessary, not sufficient:** every clause can
 survive and still resolve at the wrong grain, which shows up only as two different numbers.
 
-### 2. Diff against gold at value level
+### 2. Diff against gold at value level — with `gold_diff.py`, not by hand
 
-For any failing task, in one batch: pull the graded submission (the **last** trajectory
-entry carrying an `sql` key, not the first), run it live, run gold against
-`<db>_template`, and compare row count, column count and order, values, row order, rounding.
-This diagnosed four ETF tasks in one sitting for $0 and named a cause for each.
+    PYTHONPATH=. .venv-adk/bin/python scripts/gold_diff.py \
+        --results results/<run>.json <instance_id> [<instance_id> ...]
 
-Gold may be read to **diagnose**, never to build.
+It pulls the graded submission (the **last** trajectory entry carrying an `sql` key, not
+the first), re-executes it **live** against the model as it stands now, executes gold
+against `<db>_template`, and returns the finding: row count, column count and order,
+values, row order, rounding — plus the real grader's verdict, from the grading code
+itself rather than a reimplementation. $0, no LLM calls. This is how four ETF tasks were
+diagnosed in one sitting.
+
+It reads gold so that you do not. **Gold SQL never appears in its output** — not the
+text, not a fragment, not a paraphrase of the construction; the Postgres `LINE n:` echo
+is stripped for the same reason. Column labels and a capped sample of differing cell
+values do appear, because otherwise it is not a value diff. Those are diagnosis only.
+
+Read the finding, not the rows: `ROW ORDER` is an `ORDER BY` defect, `VALUES ROUNDING`
+is a ROUND/CAST defect, a row-count difference with the non-numeric columns matching is
+a measure or filter defect and not a join one. `--phase 2` for the follow-up. `--sql
+"..."` diffs a candidate query with no run to pull it from — which is how you prove a
+model fix **sufficient** before spending anything (§ Predict the payoff).
+
+If you find yourself opening gold SQL directly, the tool is missing a comparison. Add it
+there rather than reading around it.
 
 ### 3. Derive the decision rule, don't read the score
 
@@ -121,7 +141,10 @@ score suggested.
 Every stored baseline was graded under whatever code existed then, and comparing across that
 boundary invents regressions.
 
-    python scripts/regrade_flags.py atscale|raw <results.json> --database <db>
+    PYTHONPATH=. .venv-adk/bin/python scripts/regrade_sweep.py \
+        --atscale-audit <grading_audit.jsonl> --raw-audit <grading_audit.jsonl> --out <dir>
+
+It needs the `GRADING_AUDIT_PATH` rows, which is why every run sets it.
 
 Re-grade for grading logic, flags, tolerance, rounding, comparison fixes. Re-run only when
 the change affects what the agent *does* — prompts, tools, budget, model, backend.
@@ -185,9 +208,9 @@ follow-up from a **stale earlier exploratory query** rather than the submission 
 — these differ exactly when the discriminating filter was added last, which is the normal
 case.
 
-## Running an arm
+## Running a targeted run
 
-Write a script per run, with a header stating what changed, which tasks it should move, and
+Write a script per run, with a header stating what changed, which task it should move, and
 which tasks are canaries — so a null result is readable and a regression is caught before you
 read any improvement. Then:
 
@@ -195,13 +218,18 @@ read any improvement. Then:
   commit, catalog healthy (a working `run_query` is *not* evidence — metadata calls can be
   dead while queries work), template databases unmodified.
 - Keep `SYSTEM_AGENT_MODEL` fixed for anything scored. Haiku is fine for plumbing only.
-- `--query-only` on the raw arm, or the arms cover different task sets. **Compute lift on the
-  intersection, never on arm totals.**
-- `--tasks <id,...> --repeat N` for targeted validation; ~$0.25 per task-run.
-- **Repeats belong on the raw arm.** Measured: across repeats the semantic arm moved on 1
-  task of 19, raw on 7 of 19; 13 raw tasks were perfectly stable and six carried the whole
-  spread. Budget ~4 raw repeats to 1–2 semantic. A single run per arm read anywhere from +7
-  to +32 pp of lift on identical code.
+- `--tasks <id>,<canaries> --repeat 2` is the loop's instrument; ~$0.25 per task-run at the
+  run mean, **~$0.48 for a never-pass task** (measured 2026-09-08 — they burn attempts).
+  Budget from the higher figure.
+- The raw arm is the control. It does not move with model edits (measured 2026-09-08:
+  0.3029 before and after a 22-db model pass), so it is never re-run inside the loop.
+  `--query-only` when you do run it, or the arms cover different task sets. **Compute lift
+  on the intersection, never on arm totals.**
+- **Whole-arm repeats belong on the raw baseline, once.** Measured: across repeats the
+  semantic arm moved on 1 task of 19, raw on 7 of 19; 13 raw tasks were perfectly stable
+  and six carried the whole spread. Budget n≥3 raw when establishing a baseline. Inside the
+  loop, the target's n=2 *is* the semantic repeat. A single run per arm read anywhere from
+  +7 to +32 pp of lift on identical code.
 - Report the mean of the repeats with its range, in percentage points, relative alongside.
   Never quote a single pair. One outlier run paired with one good run produced a headline
   double the settled value — and it was the number everything else got compared against.
@@ -221,8 +249,13 @@ read any improvement. Then:
 
 ## Non-negotiable
 
-- **Gold SQL diagnoses, never builds.** Nothing shipped to the model, guidance, or code may
-  come from an answer key. Masked thresholds never ship; gate it mechanically.
+- **Gold SQL is read by `scripts/gold_diff.py`, not by you.** It returns a description of
+  the difference and never the answer key's SQL, which is what keeps "diagnose, never
+  build" true by construction instead of by discipline. Open gold directly only when a
+  diff the tool cannot express is the only way forward, say so in the tracker when you
+  do, and do not carry that session's work into a model change.
+- **Nothing shipped to the model, guidance, or code may come from an answer key.**
+  Masked thresholds never ship; gate it mechanically.
 - Record findings in the tracker as you go, including corrections to your own entries.
 - **File engine defects.** Guidance mitigation is a workaround; a defect with a
   mechanism-grade repro and no ticket never gets fixed, and the same dialect gaps will hit
@@ -231,20 +264,73 @@ read any improvement. Then:
   corrupts the grading reference for every future run — this cost two tasks in every arm for
   a day before it was found.
 
-## Start here on a new database
+## The pass: one task at a time, to convergence
 
-Batch 1 — **$0, do all of it before spending anything:**
+A whole-arm re-run after a batch of fixes tells you what moved but not why, costs a full arm
+to learn it, and the next pass diagnoses the same tasks again from fresh trajectories.
+Instead, take each fixable task to a stop condition before touching the next, with the price
+of each task and of the database capped before you start.
 
-1. Re-grade any existing baseline; only run both arms if none exists.
-2. Read every failing task's submitted SQL from the stored trajectories.
-3. Value-diff each failure against gold; read the dispatched SQL for anything
-   plausible-but-wrong.
-4. Group failures by shared cause, and sort into: engine-blocked, model-fixable,
-   simulator/ambiguity, gold non-unique, agent-side.
-5. For each model-fixable one, prove sufficiency for free (§ Predict the payoff).
+### 0. Once per database — baseline and worklist ($0 when a baseline exists)
 
-Batch 2 — **one run:** every change that survived batch 1, with predictions written down
-first. Gate, run, then judge by the mechanism you targeted, not by the total.
+1. Baseline: any existing run for this db, re-graded with `scripts/regrade_sweep.py` so it
+   sits under the current grader. Only if none exists, run both arms once (raw at n≥3) —
+   the only whole-arm run in the pass.
+2. `scripts/failing_sql.py <results.json>`, then `scripts/gold_diff.py --results
+   <results.json> <every failing id>` in one invocation; read the dispatched SQL for
+   anything plausible-but-wrong.
+3. Sort every failure into one class: **engine-blocked, gold-bound** (non-unique, tie,
+   column order), **simulator-bound, model-fixable, agent-variance.** Only model-fixable
+   enters the loop. Everything else gets a tracker row and $0. Verify a shared-cause claim
+   on the SQL before grouping tasks under one fix — three "same cause" tasks on 09-07 were
+   three causes.
+4. Write the worklist before spending — one line per model-fixable task: id, `gold_diff`
+   finding, the model object you will change, the predicted outcome, the canaries (passing
+   tasks that read the same object). Order by predicted payoff, sufficiency-proven first.
+5. State the caps at the top of the session. Defaults: **3 paid iterations or $3 per task,
+   $25 per database.** Change them out loud before the pass, never mid-task.
 
-Then report: what failed, why, which layer, what it cost, what's next — and what you
-predicted versus what happened.
+### 1. Per task — the loop
+
+One iteration is:
+
+1. **Fix** in the model. Steer the model object — description, gap-naming sentence, twin
+   measure — not the shared instruction: appended instruction bullets measured 0/3 and 1/3
+   firing (B-87). Asserting the answer in a description does nothing; naming the choice as
+   *unsettled* fires the ask.
+2. **Prove sufficiency at $0**: `gold_diff.py --task <id> --sql "<the query the agent should
+   now write>"` shows no finding for phase 1, then `--phase 2`. If no query against the
+   fixed model is sufficient, the fix is not ready — stay here, still $0. Then deploy, record
+   in `docs/model-change-log.md`, `bash scripts/gate_run.sh`.
+3. **Buy one targeted run**: `--tasks <id>,<canaries> --repeat 2`. About $1 for the target
+   plus ~$0.30 per canary-run.
+4. **Read the new trajectory, not the score**: `failing_sql.py` for the asks and the
+   submitted SQL, `gold_diff.py` for the finding. The question is whether the finding is the
+   same class as last iteration or a new one — a new one means the fix landed and the next
+   constraint up the stack is now binding; the same one means the lever does not reach.
+
+### 2. Stop conditions — the first to fire ends the task
+
+| stop | signal | record |
+|---|---|---|
+| **converged** | 2/2 at P1, canaries unchanged | model commit, iterations, spend |
+| **flaky** | 1/2 | log it and move on; do not buy a third — flaky is a separate pool, not a model defect |
+| **stalled** | same `gold_diff` finding class two iterations running | cap row: the lever does not reach |
+| **reclassified** | the new failure is engine-, gold-, or simulator-bound | cap row with the mechanism |
+| **capped** | 3 paid iterations or $3 on this task | cap row, "budget", with the last finding |
+| **regression** | a canary drops | revert the object first; never carry a regression forward |
+
+Passing tasks do regress under later fixes (insider_trading_15 did), which is what the
+canaries are for. A task that stops for any reason other than *converged* is not revisited
+in this pass.
+
+### 3. Once per database — close ($1–3)
+
+One run of every task whose model object you touched — targets and canaries — at n=1 on the
+final deployed model, so the pass ends on one artifact under one grader against one model.
+Stop when the worklist has no task left in the loop or the database cap is reached,
+whichever is first.
+
+Then report from the worklist: each task's stop condition and price, predicted versus what
+happened, spend against the caps, and the lift on the intersection against the re-graded
+raw baseline, in percentage points with relative alongside.
