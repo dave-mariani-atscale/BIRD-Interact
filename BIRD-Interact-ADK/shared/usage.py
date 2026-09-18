@@ -19,6 +19,11 @@ Attribution:
   model  is always recorded, so rows stay attributable even when the env var is
          missing -- unless both roles run the same model, which is exactly the
          Haiku-everywhere case, hence the env var.
+  task   comes from a ContextVar the request handlers set (task_context), because
+         the callback fires deep inside litellm where the task is not in scope and
+         several tasks are in flight at once. Without it cost existed only per run:
+         the ledger could say a sweep cost $140 but not which database spent it,
+         so a per-database cost column could only ever be an apportionment.
   to a run: by timestamp window (see aggregate()).
 
 Rows are appended, never rewritten, and a failure here is always swallowed:
@@ -27,6 +32,8 @@ accounting must not be able to break a run.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
 import logging
 import os
@@ -41,6 +48,28 @@ logger = logging.getLogger(__name__)
 
 _write_lock = threading.Lock()
 _installed = False
+
+# The callback fires deep inside litellm, far from the request handler that knows
+# which task is being worked on, and uvicorn interleaves several tasks at once
+# (concurrency 5 by default). A ContextVar is the one mechanism that survives both
+# facts: it propagates down the async call chain into the callback and stays
+# isolated per in-flight request, where a module global would race.
+_task_var: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar(
+    "bird_llm_task", default=None)
+
+
+@contextlib.contextmanager
+def task_context(task_id: Optional[str]):
+    """Attribute every LLM call made inside this block to `task_id`."""
+    token = _task_var.set(task_id or None)
+    try:
+        yield
+    finally:
+        _task_var.reset(token)
+
+
+def current_task() -> Optional[str]:
+    return _task_var.get()
 
 # Rows are short (<500 bytes), so a single append write from each of the three
 # processes is atomic in practice on POSIX and they can share one file without
@@ -121,6 +150,10 @@ def _row_from_call(kwargs: Dict[str, Any], response_obj: Any) -> Dict[str, Any]:
     return {
         "ts": time.time(),
         "role": _role(),
+        # None when a call is made outside a task (startup probes, health checks).
+        # Rows written before 2026-09-18 have no "task" key at all -- readers must
+        # treat missing and null alike and fall back to run-level totals.
+        "task": _task_var.get(),
         "model": slo.get("model") or kwargs.get("model") or "",
         "call_type": slo.get("call_type") or "",
         "prompt_tokens": prompt_tokens,
@@ -208,14 +241,17 @@ def aggregate(since: Optional[float] = None, path: Optional[str] = None) -> Dict
     total = _blank()
     by_role: Dict[str, Dict[str, Any]] = {}
     by_model: Dict[str, Dict[str, Any]] = {}
+    by_task: Dict[str, Dict[str, Any]] = {}
     priced = 0
     for row in rows:
         _add(total, row)
         _add(by_role.setdefault(row.get("role") or _UNKNOWN_ROLE, _blank()), row)
         _add(by_model.setdefault(row.get("model") or "", _blank()), row)
+        if row.get("task"):
+            _add(by_task.setdefault(row["task"], _blank()), row)
         if row.get("cost_usd") is not None:
             priced += 1
-    for acc in [total, *by_role.values(), *by_model.values()]:
+    for acc in [total, *by_role.values(), *by_model.values(), *by_task.values()]:
         acc["cost_usd"] = round(acc["cost_usd"], 6)
     return {
         "calls": total["calls"],
@@ -225,6 +261,10 @@ def aggregate(since: Optional[float] = None, path: Optional[str] = None) -> Dict
         "total": total,
         "by_role": by_role,
         "by_model": by_model,
+        # Empty for runs recorded before task attribution existed, so a reader can
+        # tell "this run predates it" from "this run cost nothing".
+        "by_task": by_task,
+        "unattributed_calls": total["calls"] - sum(a["calls"] for a in by_task.values()),
         "source": path or _usage_path(),
     }
 

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 
 from fastapi import FastAPI, HTTPException
 
+from shared import usage
 from shared.config import settings
 from shared.models import AskUserRequest, AskUserResponse, InitTaskRequest, PhaseTransitionRequest
 from user_simulator.prompts import get_templates, simulator_variant
@@ -235,7 +236,11 @@ async def ask_user(req: AskUserRequest):
     state = _task_states.get(req.task_id)
     if not state:
         raise HTTPException(404, f"Task {req.task_id} not initialized")
-    response = await asyncio.to_thread(_ask_sync, state, req.question)
+    # /ask is the only endpoint here that reaches the model. asyncio.to_thread
+    # copies the current context into the worker thread, so the simulator's
+    # synchronous litellm calls stay attributed to this task.
+    with usage.task_context(req.task_id):
+        response = await asyncio.to_thread(_ask_sync, state, req.question)
     logger.info(f"User response for {req.task_id}: {response[:100]}...")
     return AskUserResponse(answer=response)
 

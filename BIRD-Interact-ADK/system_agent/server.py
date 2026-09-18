@@ -27,6 +27,7 @@ from pydantic import BaseModel
 # root-free way to see the stuck Python frames on the NEXT occurrence.
 faulthandler.register(signal.SIGUSR1, all_threads=True)
 
+from shared import usage
 from shared.config import settings
 from shared.models import SetBackendRequest, SetBackendResponse
 from system_agent.adk_runtime import AdkRuntime
@@ -67,25 +68,28 @@ async def init_session(req: SessionInitRequest):
     """Initialize an ADK runner session for a task."""
     if not runtime.available:
         raise HTTPException(status_code=503, detail=f"ADK runtime unavailable: {runtime.error}")
-    return await runtime.init_session(
-        task_id=req.task_id,
-        mode=req.mode,
-        state=req.state,
-        reset=req.reset,
-        backend=req.backend,
-    )
+    with usage.task_context(req.task_id):
+        return await runtime.init_session(
+            task_id=req.task_id,
+            mode=req.mode,
+            state=req.state,
+            reset=req.reset,
+            backend=req.backend,
+        )
 
 
 @app.post("/run_session")
 async def run_session(req: SessionRunRequest):
     """Run one ADK turn on an existing task session."""
+    # Every LLM call this turn makes is attributed to this task; see shared/usage.py.
     if not runtime.available:
         raise HTTPException(status_code=503, detail=f"ADK runtime unavailable: {runtime.error}")
-    return await runtime.run_turn(
-        task_id=req.task_id,
-        mode=req.mode,
-        message=req.message,
-    )
+    with usage.task_context(req.task_id):
+        return await runtime.run_turn(
+            task_id=req.task_id,
+            mode=req.mode,
+            message=req.message,
+        )
 
 
 @app.post("/set_backend", response_model=SetBackendResponse)
