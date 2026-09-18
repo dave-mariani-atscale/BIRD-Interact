@@ -138,6 +138,37 @@ def fill_best(ws, regrades):
             ws[f"{H[adj]}{BEST}"].font = Font(bold=True, size=10)
             written += 1
 
+    # Raw arm and lift, same row. The raw control is n=1, so "the best run" on the
+    # raw side is the only run: point row 29 at the ALL row rather than inventing a
+    # figure. The lifts then divide THIS run's Query rates by that single raw arm,
+    # which is what the tab claims the BEST SINGLE RUN line means.
+    for col in ("Raw Query P1 %", "Raw Query P2 %", "Raw Success Rate (P1)",
+                "Raw Blended P2 %", "Raw Reward"):
+        if col in H:
+            cell = ws[f"{H[col]}{BEST}"]
+            cell.value = f"={H[col]}{ALL}"
+            cell.number_format = ws[f"{H[col]}{ALL}"].number_format
+            cell.font = Font(bold=True, size=10)
+            written += 1
+    if {"Query P1 lift", "Raw Query P1 %", "Query P1 %"} <= set(H):
+        a1, a2 = H["Query P1 %"], H["Query P2 %"]
+        r1, r2 = H["Raw Query P1 %"], H["Raw Query P2 %"]
+        for lift, a, raw in (("Query P1 lift", a1, r1), ("Query P2 lift", a2, r2)):
+            if lift in H:
+                cell = ws[f"{H[lift]}{BEST}"]
+                cell.value = f'=IF(OR({raw}{BEST}="",{raw}{BEST}=0),"n/a",{a}{BEST}/{raw}{BEST}-1)'
+                cell.number_format = "+0%;-0%"
+                cell.font = Font(bold=True, size=10)
+                written += 1
+        if "Query reward lift" in H:
+            num = f"(0.7*{a1}{BEST}+0.3*{a2}{BEST})"
+            den = f"(0.7*{r1}{BEST}+0.3*{r2}{BEST})"
+            cell = ws[f"{H['Query reward lift']}{BEST}"]
+            cell.value = f'=IF(OR({r1}{BEST}="",{den}=0),"n/a",{num}/{den}-1)'
+            cell.number_format = "+0%;-0%"
+            cell.font = Font(bold=True, size=10)
+            written += 1
+
     # corrected-regime section, same run, if the regrade data covers it
     rg = next((r for r in regrades if best in r.get("per_task", {})), None)
     if rg and "Query P1 % (corrected)" in H:
