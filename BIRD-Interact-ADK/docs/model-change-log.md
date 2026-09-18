@@ -8003,3 +8003,12 @@ Process finding for `docs/bird-database-testing-prompt.md`: run the per-task loo
 memory off (or a reset store) so an iteration compares model changes only. Also seen in the
 served exemplars: a "certified" answer projecting Maintenance Cost Per Hour from Upkeep Cost
 Estimate, a column that is NULL on every row.
+
+**Root cause, same evening ($0):** the 12:05, 12:10 and 12:42 passes of _1 (and _5's second pass)
+were copies of a certified exemplar the 11:47 baseline pass had written to the feedback store
+(agent text in `adk_events`: "matches the certified exemplar exactly"). The iteration-2 deploy
+changed the model content hash; memory lookups are scoped by `model_version`, so the exemplar
+disappeared and the unassisted agent name-matched the Urgent Maintenance Required verdict, 1 of 5
+unassisted runs asked the closed question the description calls for. The 0.445 estimate is
+withdrawn; the clean number is the baseline 0.31 (n=1, store cold for this model). Repeat runs
+on one model with memory on measure the first pass, not the model - memory stays off for loops.
