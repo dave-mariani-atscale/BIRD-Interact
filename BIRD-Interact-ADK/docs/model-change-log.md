@@ -8166,10 +8166,17 @@ repo. Build and gate every model you have touched before deploying, and remember
 `build.sh` validates the whole repo at its last step — a break in another database's YAML fails
 your build too, which is the point of sharing a catalog.
 
-**Left behind, deliberately.** The two old catalogs `bird_robot_fault_prediction_v12` and
-`bird_archeology_scan_v12` are still published in AtScale and still hold the same two models.
-Nothing routes to them any more. They are inert for grading but the engine will keep building
-aggregates for them, so they are worth deleting once the merged catalog has carried a run.
+**Old catalogs dropped, same day.** Dianne undeployed the two old catalogs
+`bird_robot_fault_prediction_v12` and `bird_archeology_scan_v12`, and the two old repos are
+archived on GitHub. **The undeploy also took `bird_models_v12` down** - the merged catalog
+publishes models under the same two names, "Robot Fault Prediction V12" and "Archeology Scan
+V12", so undeploying by model name removed every copy. Caught by a scoped `list_models` before
+anything ran on the dead backend, and fixed by redeploying `f3f59c5`; verified by `list_models`
+plus Site Count 900 and Robot Count 951. Nothing was lost - the repo is the source of truth and
+the redeploy is one command - but a *run* started in that window would have failed at its first
+metadata call, and `scripts/gate_run.sh` would not have said why: gate 2 reads only
+`bird_atscale_models_catalog_main`, so the v12 arm has no Q-17b gate of its own. That gap is
+open.
 
 **The build prompt was changed to stop this recurring.** `docs/create_bird_model_prompt.v12.md`
 step 0 now says a from-scratch model goes into an existing multi-database repo as a new folder,
