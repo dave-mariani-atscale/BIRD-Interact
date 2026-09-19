@@ -328,6 +328,11 @@ One iteration is:
    submitted SQL, `gold_diff.py` for the finding. The question is whether the finding is the
    same class as last iteration or a new one — a new one means the fix landed and the next
    constraint up the stack is now binding; the same one means the lever does not reach.
+   **A pass counts only if the trajectory shows the fix's mechanism firing** — the ask you
+   wrote was asked (with the alternatives you named), the filter you described was written,
+   the twin you added was projected. A pass with zero asks, or one that copies a prior
+   answer (`adk_events` text like "matches the certified exemplar"), is not evidence for the
+   fix. On 2026-09-18 two "converged" fixes were memory copies and failed 0/2 when run clean.
 
 ### 2. Stop conditions — the first to fire ends the task
 
