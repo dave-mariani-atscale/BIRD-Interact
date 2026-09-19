@@ -22,6 +22,33 @@ repeat. The unit of work is a task, not an arm (§ The pass).
 - Correct your own earlier conclusions in one line and move on. A wrong finding left
   standing costs the next session more than it cost you.
 
+## Who does what — three model tiers, one session
+
+The session that runs this document is **Opus**. It owns the worklist, the caps, the
+tracker and every decision in the stop table. Two things are delegated, in opposite
+directions:
+
+- **Down to Sonnet or a script, everything mechanical.** Reading a finished run is
+  `python scripts/loop_step.py <results.json> [task ...] --expect ask:<text> --expect
+  filter:<text>` — one screen per task (verdicts, coins, asks, every submitted WHERE with its
+  verdict, the gold_diff FINDING, and whether the named mechanism fired). Never read
+  `failing_sql.py` output, `gold_diff.py` output and the trajectory by hand when that
+  screen answers the question; it is ~1k tokens against ~20k. Sonnet subagents
+  (`Agent` with `model: sonnet`) run builds, gates, deploys, tracker and change-log writes,
+  and report the exit status and the one line that matters. They never decide anything.
+- **Up to Fable, two moments only** (`Agent` with `model: fable`, a fresh context each
+  time, handed the brief and the exact question): (1) the first draft of a model's
+  `spec.py` from the build prompt, which is where description quality is decided; (2) a
+  task that stays failing after the cheap classification — `loop_step.py` read, gold
+  finding classified, first lever tried — and the question is what the lever is. Hand it the
+  trajectories and the finding, not the whole session. Everything else in this document is
+  Opus's job.
+
+Measurement is **n=1 per task with feedback memory off**, plus the mechanism check in
+step 1.4. n=1 is enough to see a mechanism fire or not; it is not enough to quote a rate,
+so the report says "fired 1/1" and the sheet number waits for the close run. Buy a second
+run only where the stop table says so (a canary drop, a flaky first result).
+
 ## Spend rules — read before running anything
 
 Measured: **~$0.25 per task-run** on atscale, ~$0.20 on raw, Sonnet with caching on. A
@@ -329,8 +356,9 @@ One iteration is:
    in `docs/model-change-log.md`, `bash scripts/gate_run.sh`.
 3. **Buy one targeted run**: `--tasks <id>,<canaries> --repeat 2`. About $1 for the target
    plus ~$0.30 per canary-run.
-4. **Read the new trajectory, not the score**: `failing_sql.py` for the asks and the
-   submitted SQL, `gold_diff.py` for the finding. The question is whether the finding is the
+4. **Read the new trajectory, not the score**: `scripts/loop_step.py <results.json> <id>
+   --expect <mechanism>` first; `failing_sql.py` and `gold_diff.py` only for what it does
+   not show. The question is whether the finding is the
    same class as last iteration or a new one — a new one means the fix landed and the next
    constraint up the stack is now binding; the same one means the lever does not reach.
    **A pass counts only if the trajectory shows the fix's mechanism firing** — the ask you
