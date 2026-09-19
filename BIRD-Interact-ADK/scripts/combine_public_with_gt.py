@@ -36,8 +36,17 @@ def combine_public_with_gt(public_jsonl_path: str, gt_jsonl_path: str, output_js
     combined_count = 0
     missing_gt_count = 0
     
-    with open(public_jsonl_path, 'r') as f_in, open(output_jsonl_path, 'w') as f_out:
-        for line in f_in:
+    # Read the input FULLY before opening the output. Python evaluates both context
+    # managers before the loop body, so when the two paths are the same file - which
+    # is exactly what this script's own usage example and the README both show - the
+    # 'w' handle truncates the input to zero bytes before a single line is read, and
+    # the dataset is destroyed with no error and a cheerful "Combined 0 entries".
+    # Recovering it means re-downloading from HuggingFace.
+    with open(public_jsonl_path, 'r') as f_in:
+        public_lines = f_in.readlines()
+
+    with open(output_jsonl_path, 'w') as f_out:
+        for line in public_lines:
             line = line.strip()
             if not line:
                 continue
