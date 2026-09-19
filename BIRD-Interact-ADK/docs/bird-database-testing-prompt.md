@@ -29,11 +29,10 @@ repeat. The unit of work is a task, not an arm (§ The pass).
 - Correct your own earlier conclusions in one line and move on. A wrong finding left
   standing costs the next session more than it cost you.
 
-## Who does what — three model tiers, one session
+## Who does what — two model tiers, one session
 
 The session that runs this document is **Opus**. It owns the worklist, the caps, the
-tracker and every decision in the stop table. Two things are delegated, in opposite
-directions:
+tracker and every decision in the stop table. Everything mechanical is delegated downward; nothing is delegated upward:
 
 - **Down to Sonnet or a script, everything mechanical.** Reading a finished run is
   `python scripts/loop_step.py <results.json> [task ...] --expect ask:<text> --expect
@@ -62,13 +61,24 @@ directions:
   Re-derive from a clean context if the change is genuinely rule-mandated, or cap the task. What
   you may keep is anything you re-verify yourself from the warehouse alone: a join cardinality,
   a row count, a key's uniqueness.
-- **Up to Fable, two moments only** (`Agent` with `model: fable`, a fresh context each
-  time, handed the brief and the exact question): (1) the first draft of a model's
-  `spec.py` from the build prompt, which is where description quality is decided; (2) a
-  task that stays failing after the cheap classification — `loop_step.py` read, gold
-  finding classified, first lever tried — and the question is what the lever is. Hand it the
-  trajectories and the finding, not the whole session. Everything else in this document is
-  Opus's job.
+- **Nothing is delegated upward. Fable is reserved** (2026-09-19). The week's Fable quota is
+  nearly spent and resets Thursday, so `model: fable` is not called by a session running this
+  document; if a database genuinely stalls, ask Dianne one closed question naming what is stuck
+  and what Opus and Sonnet have already tried, and let her decide. The two moments that used to
+  go up now resolve as follows. **The first draft of a model's `spec.py`** becomes a two-step
+  Opus job: a Sonnet subagent runs a measurement-only pass over the warehouse, the KB and the
+  column meanings and writes `generator/facts.md` (column types and where Postgres truncates,
+  degenerate columns, `character(n)` columns, unit-suffixed text columns, JSON profile keys at
+  every nesting level, join cardinalities and orphan counts, every KB formula the warehouse
+  already stores with `corr(stored, recomputed)`, candidate column bindings per KB term with live
+  counts) and authors nothing; Opus then writes the spec from those facts, because description
+  quality is what the build is for and it is the one thing that cannot be delegated downward.
+  **A task still failing after the cheap classification** — `loop_step.py` read, gold finding
+  classified, first lever tried — is Opus's to solve, with `gold_diff.py --sql` proving each
+  candidate lever sufficient at $0 before any spend. Measured 2026-09-19 on solar_panel: the
+  Fable spec draft cost 563k subagent tokens and 45 minutes to reach a green build over six
+  gate iterations, so the measurement half is the expensive half and it is the half Sonnet can
+  do.
 
 Measurement is **n=1 per task with feedback memory off**, plus the mechanism check in
 step 1.4. n=1 is enough to see a mechanism fire or not; it is not enough to quote a rate,
