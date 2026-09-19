@@ -378,6 +378,32 @@ of each task and of the database capped before you start.
    enters the loop. Everything else gets a tracker row and $0. Verify a shared-cause claim
    on the SQL before grouping tasks under one fix — three "same cause" tasks on 09-07 were
    three causes.
+
+   **Falsify every cap before you write it — two $0 checks, both mandatory.** A cap row tells
+   the next session not to spend on that task, so a wrong one is more expensive than a missed
+   finding, and it is the easiest row in the tracker to write by accident. Measured 2026-09-19
+   on solar_panel: five phase-1 tasks were capped and **four were not caps at all** — the tuned
+   model of the same database scored 3/3 on every one of them, so no reasoning about gold could
+   have been right.
+
+   a. **Diff against another arm's per-task verdicts.** `results/bird_full_run_*/scoring/
+      per_task_verdicts_by_run.json` carries every database's per-task phase-1 and phase-2
+      results under the tuned models. Any task another model passes is reachable, full stop.
+      Read the **verdicts only**: opening the other model's objects contaminates a from-scratch
+      build, and that trade is Dianne's to make, not yours to drift into.
+   b. **Name the rule that makes it unreachable and re-read that rule.** Both 09-19 mis-cappings
+      were a rule applied to the wrong shape — the dimensional-inconsistency rule stretched over
+      a percent-versus-fraction twin, and "the caller supplies the constant" read as "publish
+      nothing". Re-reading the rule was enough to see it in both cases.
+
+   Also re-check **inherited** caps, in the same pass and for the opposite reason: tie-order and
+   casing caps filed before the grading corrections no longer bind. `B-77`'s `_10`, `_13` and
+   `_16` all ceiling-pass under the current grader and two of them passed a live baseline with no
+   model work, and archeology_scan's `_6` did the same the day before. A cap has a date on it, and
+   the grader has moved since most of them were written.
+
+   The honest cap list is the deliverable here, in both directions: a real cap with a mechanism is
+   worth as much as a fix, and a fictitious one costs every session that reads it.
 4. Write the worklist before spending — one line per model-fixable task: id, `gold_diff`
    finding, the model object you will change, the predicted outcome, the canaries (passing
    tasks that read the same object). Order by predicted payoff, sufficiency-proven first.
