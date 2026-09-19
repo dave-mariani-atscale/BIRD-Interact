@@ -331,6 +331,17 @@ read any improvement. Then:
 - Never write to a `*_template` database. Gold executes against it, so a stray DML there
   corrupts the grading reference for every future run — this cost two tasks in every arm for
   a day before it was found.
+- **A model built in this session goes into an existing multi-database model repo as a new
+  folder — one root `catalog.yml`, one shared `utilities/`, a folder per database.** One repo
+  per database is the mistake to avoid: it buys a second catalog, a second deployed schema, a
+  second vendored copy of the build machinery to keep in sync by hand, and a second deploy, for
+  models that are one comparison arm. Before building, work out which repo the arm already uses
+  — a brief that names a *build process* or an *arm* ("a from-scratch v12 model") is not naming
+  a repo. If you genuinely cannot tell, ask one closed question naming the candidates before you
+  build, never after. Measured 2026-09-19: robot_fault_prediction and archeology_scan were built
+  into `diannewood/bird-robot-fault-prediction` and `diannewood/bird-archeology-scan` and had to
+  be merged into `diannewood/bird-models-v12` afterwards, which is strictly harder than starting
+  there because the models were already measured and could not be allowed to change.
 - **The grader does not change during a pass, or between passes, without Dianne saying so
   explicitly.** A grader gap found while tuning (2026-09-18: `column_order_free` and
   `ties_as_ties` never tried together, robot_fault_prediction_8 phase 2) is a cap row with the

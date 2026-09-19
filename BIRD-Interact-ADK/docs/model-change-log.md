@@ -8135,3 +8135,43 @@ under both ESI readings.
 points, 2.7x** — and against the tuned shared-repo model's 0.340 (09-10 run 1). Spend $11.29 of a
 $25 cap, of which $3.17 was the voided run. Tracker M-90, E-15, A-69. Worklist, ceiling tests and
 per-iteration evidence: `results/archeology_scan_v12_pass_0919.md` (local).
+
+## 2026-09-19 — the v12 models become one repo and one catalog (diannewood/bird-models-v12)
+
+**What changed.** `diannewood/bird-robot-fault-prediction` and `diannewood/bird-archeology-scan`
+were merged into `diannewood/bird-models-v12`: one root `catalog.yml`, one `utilities/`, a
+top-level folder per BIRD database. Both git histories are merged with
+`--allow-unrelated-histories`, so every build and iteration commit each pass cites (`732a6d5`,
+`1b94e4e` and the rest) is still reachable. No model object changed — `spec.py`, `sql_defs.py` and
+every emitted YAML are byte-identical to what the two passes measured.
+
+**Why.** The one-repo-per-database shape was a scaffolding accident, not a decision. It cost a
+second vendored copy of `utilities/` that had to be kept in sync by hand, a second catalog, a
+second deploy, and a second schema for what is one comparison arm. `AtScaleInc/bird-atscale-models`
+has always been one catalog with a folder per database and the v12 repos now match it.
+`generator/build.sh` already resolved the repo root as `../..` and gated on `$REPO/utilities`, so
+it needed no edit; the two models' `unique_name`s do not collide anywhere, and
+`utilities/` was byte-identical in the two repos and merged with no conflict. Only `catalog.yml`
+and `README.md` had to be resolved by hand.
+
+**What this changes for a run.** The catalog is `bird_models_v12`, so that is now the deployed
+schema for BOTH models, and the `atscale_v12` domains in `config/environment_backends.yaml` move
+to it in this commit — read back from `list_models` after the deploy, not assumed. The catalog
+name still differs from the shared repo's, so Q-17 stays away: no v12 model shares a deployed
+`catalog.schema` with the same database's model in the `atscale` backend.
+
+**Deploy is now all-or-nothing.** `sml-cli atscale-deploy . --catalog-name=bird_models_v12`
+publishes every model in the repo, the same way `scripts/deploy_models.sh` does for the shared
+repo. Build and gate every model you have touched before deploying, and remember that each
+`build.sh` validates the whole repo at its last step — a break in another database's YAML fails
+your build too, which is the point of sharing a catalog.
+
+**Left behind, deliberately.** The two old catalogs `bird_robot_fault_prediction_v12` and
+`bird_archeology_scan_v12` are still published in AtScale and still hold the same two models.
+Nothing routes to them any more. They are inert for grading but the engine will keep building
+aggregates for them, so they are worth deleting once the merged catalog has carried a run.
+
+**The build prompt was changed to stop this recurring.** `docs/create_bird_model_prompt.v12.md`
+step 0 now says a from-scratch model goes into an existing multi-database repo as a new folder,
+and only starts a repo when there is none — and if the session cannot tell which, it asks before
+building rather than after.
