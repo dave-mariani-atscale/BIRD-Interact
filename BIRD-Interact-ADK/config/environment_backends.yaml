@@ -297,10 +297,11 @@ backends:
   # v12-build comparison arm (2026-09-18). Same tools, instruction, costs and hints
   # as `atscale` (YAML merge), but robot_fault_prediction resolves to the model
   # built from scratch with docs/create_bird_model_prompt.v12.md in
-  # diannewood/bird-robot-fault-prediction, deployed as its own catalog so the two
-  # robot models never share a name (Q-17). Only this one domain is configured, so
-  # a run on this backend can only load robot_fault_prediction tasks. Schema read
-  # back from list_models after the deploy.
+  # The v12-build models, each in its own repo and its own catalog so it never
+  # shares a deployed name with the same database's model in the shared repo
+  # (Q-17): diannewood/bird-robot-fault-prediction and
+  # diannewood/bird-archeology-scan. Only the domains listed here can load tasks
+  # on this backend. Each schema was read back from list_models after its deploy.
   atscale_v12:
     <<: *atscale
     domains:
@@ -308,3 +309,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_robot_fault_prediction_v12
         table: Robot Fault Prediction V12
+      archeology_scan:
+        catalog: atscale_catalogs
+        schema: bird_archeology_scan_v12
+        table: Archeology Scan V12

@@ -8036,3 +8036,102 @@ had closed one description and fired 1 time in 5 unassisted; _1 had been filed a
 agent-variance with this lever untried. Run (n=1, memory off, PATIENCE=3, $0.40): _1 1.0 both
 phases, first ask "Urgent Maintenance Required flag, or Predictive Maintenance Trigger?", the
 simulator chose the trigger. Clean per-task reward 0.55 (P1 7/10, P2 2/10; 0.7*P1 + 0.3*P2) vs raw 0.163.
+
+## 2026-09-19 — archeology_scan v12 one-pass build (diannewood/bird-archeology-scan), comparison arm
+
+A second database built from scratch with `docs/create_bird_model_prompt.v12.md` in its own repo
+(`diannewood/bird-archeology-scan`, catalog `bird_archeology_scan_v12`, model "Archeology Scan
+V12"), reached through the `atscale_v12` backend in `config/environment_backends.yaml` (now two
+domains). The shared-repo archeology model is untouched. Build machinery is `utilities/birdsml`
+vendored from the robot v12 repo.
+
+**Build (0f03ca2):** two facts sharing the Site dimension — Scan Session (1000, five satellites
+folded) and Site Equipment Record (998 pairs, four folded) — plus Site (900) and Equipment (944).
+244 attributes, 138 metrics-and-calculations; every birdsml gate, A8, A10, the dimension-key audit
+and `sml-cli validate` clean. **5 generator iterations to first green, +2 after the correction
+below.** The two fact families share no key (`pointcloud`/`spatial`/`registration` are keyed by
+project+personnel, `mesh`/`processing`/`features`/`environment` by site+equipment, and `scans` is
+the only table carrying both), which is the structural fact behind most of what follows.
+
+**Firewall.** Ten knowledge ids are deleted across the running Query tasks; eight are
+`calculation_knowledge` named formulas and ship under their own names even when deleted, and only
+KB 13 (High Fidelity Mesh) and KB 14 (Degradation Risk Zone) are `domain_knowledge` and stay
+withheld with their `children_knowledge` closure. Their inputs ship, and their **label
+vocabulary** ships with them with a closed-question ask-trigger.
+
+**Correction made to the first draft:** the draft shipped the real-division reading of ESI and
+SDI under the bare name. Both divide JSON fields the column meanings declare BIGINT, so a plain
+SQL reader gets Postgres integer division and the bare name must carry it, with an `(Exact)`
+twin. Flipped on that rule alone. Re-deriving the bare figures caught two claims the draft would
+have shipped as prose — "no two sites tie" was false (two do) and the SDI-50 count was 163, not
+164 — and a paired raw-source check that was casting the bigint quotient to double, i.e. checking
+the model against the wrong plain-reader form. Both golds in this database disagree with each
+other on this point, which is why both readings must exist as named objects: `_3` passed using
+`(Exact)` after asking, and the census records `_1`'s phase-2 gold as integer division.
+
+**A voided run and an environment defect (E-15).** The first baseline lost 8 of 10 tasks to
+`httpx.ReadTimeout` at the hardcoded 1800s `/run_session` timeout. Cause was not the model: the
+engine was in a failed-aggregate-build retry loop, 138 `ERROR: schema "aggregates" does not
+exist` per 70 seconds on connection `bird_archeology_scan`, starving query planning. The derived
+datasets run in 0.0s in Postgres and ~2s through the semantic layer once the engine is idle.
+Fixed by `CREATE SCHEMA IF NOT EXISTS "aggregates"` in the `archeology_scan` warehouse — the step
+`utilities/create_bird_connections.sh` provisions, missing on **all 22** databases because the
+warehouses were recreated after the connections were made. $3.17 lost.
+
+**Baseline (n=1, $4.22): P1 1/10, P2 1/10, reward 0.100** — below raw's 0.113. Budget was
+exhausted on 8 of 10 tasks but discovery was not the cause; the coins went on failed submits.
+
+**Iteration 1 (d41461c), `_4`:** the ask-trigger that already fired asked which *confidence-label*
+reading was meant and the simulator declined to choose, so the agent listed all 729 registrations
+where the reference has the 528 with a computed ratio. Amended rather than added — the ask budget
+is ~3 per task — so Registration Accuracy Ratio leads with the **population** choice as a closed
+two-option question and the confidence level routes to the same answer. `_4` → 1.0/1.0, both
+mechanisms fired. Shipped in the same deploy but not bought: missing-input-as-zero twins for DPQ,
+PCDR and FEE, required by the rule regardless.
+
+**Iteration 2 (2b07def), `_3`:** `_3` passed at baseline *because* the agent happened to ask which
+ESI reading was meant; on the next run it spent its asks elsewhere and failed on 763 of 825 site
+values. The deciding sentence was the last clause of a seven-clause description. It now **opens**
+both ESI descriptions as a closed question naming both readings. `_3` → 1.0/1.0 with the reading
+ask fired first. Its baseline pass is recorded as luck, not a settled pass.
+
+**Iteration 3 (2aa667b, 1b94e4e), `_6`:** `Site Equipment Fact` covered 898 of 900 sites, so any
+per-site report aggregating a pair-grain column silently returned 898 — the conformance shape the
+build prompt warns about. The fact now carries a covering row per pair-less site (1000 rows, 900
+sites) with `Has Equipment Pair` to filter. That alone took the ceiling test to identical rows,
+900 of 900, with `ORDER BY` the only defect. Added: Mesh Record Count Of Site opens with the fact
+that a per-site mesh proportion barely orders anything (133 sites carry no mesh; one tie group
+covers 831 of 900) and asks for a tiebreaker as a closed question naming the report's own columns
+in the question's own order — no reference to the withheld rule's selectivity, A10 confirms.
+`_6` → 1.0/1.0, the tiebreaker ask fired.
+
+**A firewall breach, and what was discarded (A-69).** The subagent diagnosing `_5`/`_9` read
+`bird_interact_data.jsonl` directly, where `follow_up` carries phase-2 gold SQL. It disclosed this
+unprompted and marked its tainted conclusions. **All three of its proposed spec changes were
+discarded** — gold is never folded back into the build, and the hypothesis space is contaminated
+even where each measured step is sound; it disqualified one itself. The extractor was not at
+fault: the brief is verified clean. The delegation was: the build brief named the forbidden file
+by path and was honoured, the diagnosis brief named only the concept. Both lessons are now rules
+in `docs/bird-database-testing-prompt.md`.
+
+**Caps, seven of ten.** `_5` and `_9` are gold-bound: re-verified from the warehouse alone,
+`scans` is 1000 rows with (arcref, crewref) unique and joining `pointcloud` on both keys gives
+697 rows with no fan-out against 829 on project alone, while 88 projects carry more than one
+session and **all 88 span more than one site** (179 sites exposed). The model's two-key join is
+correct by the warehouse's own keys and the residual is confined to fan-out-exposed sites. `_8` is
+the standing census T1 gold clamp. `_1` is agent output shape — it projects a 4th column, its own
+`RANK()` alias, where the reference has 3, and the model publishes no rank object, confirmed on
+two runs. `_2` is the firewall plus the same fan-out (926 gold rows for 900 sites). `_10` needs a
+JSON-object column the dialect cannot build. `_7` is **simulator-bound and newly well
+characterised**: after the ESI clause it now projects the right 8 columns and differs only on
+Suitability Quartile, on **exactly 111** of 825 sites — which is precisely the divergence between
+the 825-rated and the all-900 quartile ladders. The model publishes both, correctly named, and the
+agent found them; it asked the population question and the simulator told it the rated-only
+answer, which contradicts the reference. Two other hypotheses were killed at $0 first: NTILE
+against the percentile-threshold reading differs on 0 of 825 here, and the quartile is identical
+under both ESI readings.
+
+**Estimate after one pass: P1 3/10, P2 3/10, reward 0.30** against raw 0.113 — **+18.7 percentage
+points, 2.7x** — and against the tuned shared-repo model's 0.340 (09-10 run 1). Spend $11.29 of a
+$25 cap, of which $3.17 was the voided run. Tracker M-90, E-15, A-69. Worklist, ceiling tests and
+per-iteration evidence: `results/archeology_scan_v12_pass_0919.md` (local).

@@ -13,12 +13,19 @@ repeat. The unit of work is a task, not an arm (§ The pass).
 ## How to behave
 
 - **Hands-off.** Batch the work and keep going. Background long jobs, do free analysis while
-  they run, report when there is something to report. Stop only for decisions that are
-  genuinely mine: spending beyond what I approved, shipping a change whose evidence you
-  doubt, or a real tradeoff with no better option.
+  they run. Stop only for decisions that are genuinely mine: spending beyond what I approved,
+  shipping a change whose evidence you doubt, or a real tradeoff with no better option.
+- **A diagnosis is not a deliverable.** Finishing the classification, writing the worklist and
+  proving a fix sufficient at $0 are the *first steps of iteration 1*, not a place to hand
+  back. If the worklist has a task in it, the caps have room and no stop condition has fired,
+  do the next thing rather than describing it. "Next: ..." at the end of a message, followed
+  by nothing, is the failure this line exists to prevent — it has cost whole sessions.
 - **Concise.** Real numbers, no preamble, no recap of what you just did. What you found,
   what it means, what it cost.
-- **Always end with next steps and their price.**
+- **Report at a boundary, not between iterations.** The boundaries are: the pass is finished,
+  a cap or stop condition fired, a run is in flight and there is genuinely nothing free left
+  to do, or you need a decision that is mine. At those points, and only those, end with the
+  next step and its price.
 - Correct your own earlier conclusions in one line and move on. A wrong finding left
   standing costs the next session more than it cost you.
 
@@ -36,6 +43,25 @@ directions:
   screen answers the question; it is ~1k tokens against ~20k. Sonnet subagents
   (`Agent` with `model: sonnet`) run builds, gates, deploys, tracker and change-log writes,
   and report the exit status and the one line that matters. They never decide anything.
+- **Every subagent brief names the forbidden files by path, not the forbidden concept.**
+  "You may not read gold SQL" is not an instruction a fresh context can follow — it does not
+  know which file that is. Name `bird_interact_data.jsonl` and the denied keys (`sol_sql`,
+  `follow_up.sol_sql`, `sql_snippet`, `test_cases`, `conditions`, `preprocess_sql`,
+  `clean_up_sqls`) in **every** delegation that touches diagnosis, and say that the brief at
+  `<model>/brief/task_brief.json` is the only task data it may open. Measured 2026-09-19: the
+  build brief carried the prohibition by path and was honoured; the *diagnosis* brief said only
+  "you may NOT read gold SQL" and pointed at `gold_diff.py`, and the subagent opened the raw
+  JSONL, where `follow_up` carries phase-2 gold SQL. It disclosed this unprompted and marked
+  which of its conclusions were tainted — which is the behaviour to want — but the whole
+  diagnosis then had to be discarded under the rule below. The extractor was not at fault: the
+  brief was verified clean, no denied key and no SQL-shaped value.
+- **A contaminated diagnosis is discarded, not laundered.** When a session or subagent has seen
+  gold for a task, nothing from that context may become a model object, however well-reasoned —
+  `docs/create_bird_model_prompt.v12.md` puts it as "never folded back into the build", and the
+  reason is that the *hypothesis space* is contaminated even where each measured step is sound.
+  Re-derive from a clean context if the change is genuinely rule-mandated, or cap the task. What
+  you may keep is anything you re-verify yourself from the warehouse alone: a join cardinality,
+  a row count, a key's uniqueness.
 - **Up to Fable, two moments only** (`Agent` with `model: fable`, a fresh context each
   time, handed the brief and the exact question): (1) the first draft of a model's
   `spec.py` from the build prompt, which is where description quality is decided; (2) a
@@ -343,6 +369,23 @@ of each task and of the database capped before you start.
    prediction. A regression on a canary is only a regression if all four held.
 
 ### 1. Per task — the loop
+
+**The model is frozen for the duration of a run.** The agent queries a deployed catalog, tasks
+run concurrently, and a redeploy mid-run changes `model_version` under them. So "fix it during
+the run" is not a thing that exists: per-task iteration means per-task *targeted runs* against
+successive deploys. The cycle below is the smallest unit that can attribute a change.
+
+**Run the cycle to its stop condition without checking in.** Diagnose, fix, prove at $0,
+deploy, gate, buy the targeted run, read it, decide against the stop table, and go straight
+into the next task's fix. Each iteration's evidence goes into the report file as you make it,
+so the write-up is accumulating while you work and nothing is re-derived at the end.
+
+**Batch fixes that touch disjoint model objects into one deploy and one run.** One task at a
+time is about *attribution*, not about deploy count: two fixes to objects no shared task
+reads are still attributable, because the targeted run names each task and the canaries catch
+the crossover. Deploy and gate are the wall-clock cost of the loop — paying them once for
+three independent fixes is strictly cheaper and no less readable. Fixes that touch the same
+object, or a task that reads both, go in separate iterations.
 
 One iteration is:
 
