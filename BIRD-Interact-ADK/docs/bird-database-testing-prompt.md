@@ -349,6 +349,16 @@ Passing tasks do regress under later fixes (insider_trading_15 did), which is wh
 canaries are for. A task that stops for any reason other than *converged* is not revisited
 in this pass.
 
+**"Agent-variance" is not a stop.** It may be written only after two checks on the failing
+trajectories: (1) the agent never read the column whose description carries the deciding
+sentence, or (2) it read it and that sentence was not the first thing said about the column.
+If neither holds, the failure is the same for the same reason and there is a lever: move the
+deciding sentence to the front of the description (robot_fault_prediction_5, 2026-09-18: one
+reorder, the ask fired), and if the sentence is read and still ignored, ship the choice or the
+population as a value the agent can filter or project (robot_fault_prediction_3: three
+sentences failed, one twin verdict landed first try). Four identical failing trajectories on
+robot_fault_prediction_1 were filed as variance the same day, with the lever untried.
+
 ### 3. Once per database — close ($1–3)
 
 One run of every task whose model object you touched — targets and canaries — at n=1 on the
