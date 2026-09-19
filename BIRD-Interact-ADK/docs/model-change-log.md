@@ -8174,9 +8174,13 @@ V12", so undeploying by model name removed every copy. Caught by a scoped `list_
 anything ran on the dead backend, and fixed by redeploying `f3f59c5`; verified by `list_models`
 plus Site Count 900 and Robot Count 951. Nothing was lost - the repo is the source of truth and
 the redeploy is one command - but a *run* started in that window would have failed at its first
-metadata call, and `scripts/gate_run.sh` would not have said why: gate 2 reads only
-`bird_atscale_models_catalog_main`, so the v12 arm has no Q-17b gate of its own. That gap is
-open.
+metadata call, and `scripts/gate_run.sh` would not have said why: gate 2 named
+`bird_atscale_models_catalog_main` literally, so it printed "catalog healthy / GATE PASSED" with
+the whole v12 arm missing. **Closed the same day** - gate 2 now reads
+`config/environment_backends.yaml` and checks that every domain of every backend resolves to a
+published model, naming the domain when one does not. It takes an optional 2nd argument to gate a
+single backend when another arm is deliberately down. Exercised against a simulated missing
+schema, a missing model, an unknown backend and the Q-17 unsuffixed-twin branch before shipping.
 
 **The build prompt was changed to stop this recurring.** `docs/create_bird_model_prompt.v12.md`
 step 0 now says a from-scratch model goes into an existing multi-database repo as a new folder,
