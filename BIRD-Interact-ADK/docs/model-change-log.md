@@ -8012,3 +8012,19 @@ disappeared and the unassisted agent name-matched the Urgent Maintenance Require
 unassisted runs asked the closed question the description calls for. The 0.445 estimate is
 withdrawn; the clean number is the baseline 0.31 (n=1, store cold for this model). Repeat runs
 on one model with memory on measure the first pass, not the model - memory stays off for loops.
+
+**Clean n=1 (memory off) on the unsettled tasks, then iteration 3:** _3 0 (the POPULATION clause
+was read - the agent even focused Has Performance Record after the failed submit - and the
+filter never written), _5 0 (the closed ask fired but offered Urgent Maintenance Required as the
+alternative instead of the fault tier; the simulator answered what was asked), _8 P1 1 / P2 0
+(cost column is NULL). Clean reward 0.28 vs raw 0.163. Iteration 3: (a) a population twin
+verdict, Precision Degradation On Performance Record (149 Yes / 82 No / 769 empty), so the
+performance-record population is a filterable value rather than a sentence; (b) the Remaining
+Useful Life Days companion sentence names Fault Prediction Score Tier High as the only
+alternative in the closed ask and says not to offer the overdue verdict. Loop doc gained the
+rule that a pass counts only if the fix's mechanism fired in the trajectory (cf4beb1).
+Run (599f2d9, n=1, memory off, PATIENCE=3, $0.80): _5 1.0 - the agent asked exactly "days cutoff
+alone, or with Fault Prediction Score Tier High?", the simulator said both, first submit passed
+both phases; _3 P1 0.7 - the twin was projected on the first submit (17 rows), phase 2 stays at
+138 vs 137 (grain, cap). Both mechanisms fired unassisted. Clean per-task reward now 0.38
+(P1 6/10, P2 1/10) vs raw 0.163.
