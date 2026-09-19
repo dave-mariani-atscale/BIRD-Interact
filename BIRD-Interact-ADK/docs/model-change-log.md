@@ -8035,4 +8035,4 @@ Predictive Maintenance Urgency descriptions (`_flag_desc` gained a `lead` argume
 had closed one description and fired 1 time in 5 unassisted; _1 had been filed as
 agent-variance with this lever untried. Run (n=1, memory off, PATIENCE=3, $0.40): _1 1.0 both
 phases, first ask "Urgent Maintenance Required flag, or Predictive Maintenance Trigger?", the
-simulator chose the trigger. Clean per-task reward 0.48 (P1 7/10, P2 2/10) vs raw 0.163.
+simulator chose the trigger. Clean per-task reward 0.55 (P1 7/10, P2 2/10; 0.7*P1 + 0.3*P2) vs raw 0.163.
