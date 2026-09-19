@@ -321,3 +321,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Archeology Scan V12
+      solar_panel:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Solar Panel V12

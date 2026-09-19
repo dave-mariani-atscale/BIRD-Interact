@@ -8186,3 +8186,50 @@ schema, a missing model, an unknown backend and the Q-17 unsuffixed-twin branch 
 step 0 now says a from-scratch model goes into an existing multi-database repo as a new folder,
 and only starts a repo when there is none — and if the session cannot tell which, it asks before
 building rather than after.
+
+## 2026-09-19 — solar_panel v12 from-scratch model, and the four descriptions that were choosing for the caller (models f99bbbd, 8c99f5a, be2e9b3, b71b451)
+
+**Build.** A third database built from scratch with `docs/create_bird_model_prompt.v12.md`, in
+`diannewood/bird-models-v12`, folder `solar_panel/`, model "Solar Panel V12", catalog
+`bird_models_v12`, reached through the `solar_panel` domain of the `atscale_v12` backend in
+`config/environment_backends.yaml`, deployed to schema `bird_models_v12`. 5 datasets, 5
+dimensions, 174 attributes, 139 metrics, 18 calculations, 32 folders. **6 `build.sh` iterations
+to green.**
+
+**The Effective Power Output defect and fix (commit `8c99f5a`).** The bare `Effective Power
+Output` reading bound `P_gross` to the stored `power_now_w` alone. KB 16 names `System Power
+Loss Ratio` as its `children_knowledge`, and KB 13 defines that ratio's own denominator as the
+total power generated, `P_output + P_loss` — so the KB's own graph binds `P_gross` to that sum,
+not to `power_now_w` alone. On snapshot `PV945724` the warehouse stores 639.47 and 10.53, so
+gross is 650.00 and the corrected `P_eff` is 639.47, where the old reading gave 629.11. The old
+reading now ships as `Effective Power Output (Gross As Power Now)`. Found by ceiling test,
+derived from the KB and the warehouse alone, before any paid run. The pinned constants failed on
+the change, which is what they are for.
+
+**Four prescriptive descriptions, each choosing on the caller's behalf.** `Grounding Status`
+read "a question about grounding failing alone means this value", which cost `solar_panel_9`:
+it filtered 347 snapshots where KB 30 covers 790. `Plant` read "the column a listing of plants
+shows" and `Plant Code Of Snapshot` read "repeated so a per-snapshot listing can show the plant";
+together they cost `solar_panel_10`, which projected the code instead of routing the choice. The
+generated sentence on all nine `Plants With <flag>` metrics — "Filter Latest Snapshot Of Plant =
+'Yes' to judge each plant on its newest snapshot only" — cost `solar_panel_18`, which returned
+743 where gold wants 749. The last one is the one to watch for elsewhere: it was generated in a
+loop, so one line put a prescription on nine objects at once, and prose review caught three of
+the four descriptions above and missed this one until a canary dropped.
+
+**Results.** Baseline (model `8c99f5a`, n=1): P1 13/20, P2 9/20, reward 0.590. After three
+description-only iterations (`be2e9b3`, then a further fix to `Plant Code Of Snapshot`, then
+`b71b451`) fixing the four objects above: estimate P1 15/20, P2 10/20, reward 0.675 — against a
+re-graded raw baseline of 0.525 (lift 15.0 percentage points, 1.29x) and the tuned shared model's
+0.900. Benchmark spend $7.68 of a $25 cap across four runs.
+
+**Stale-cap finding.** `B-77` filed `solar_panel_10`, `_13` and `_16` on 2026-08-27 as tie-order
+and casing caps. All three ceiling-pass under the corrected grader, and `_13` and `_16` passed in
+the baseline with no model work at all. This is the second database in two days where this has
+happened — `archeology_scan`'s `_6` was the first. Every pre-correction tie-order and casing cap
+in the tracker should be re-checked before the next pass spends anything avoiding one of them.
+
+**Conventions carried forward.** The value pipeline: JSON `REAL` fields are read `::real` inside
+arithmetic, real display values are copied via `::text::numeric`, ages use the whole-year
+`AGE()` convention, and "since commissioning" rates are `NULL` before go-live on 445 of 998
+snapshots.
