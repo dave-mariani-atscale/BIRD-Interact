@@ -278,6 +278,11 @@ read any improvement. Then:
 - Never write to a `*_template` database. Gold executes against it, so a stray DML there
   corrupts the grading reference for every future run — this cost two tasks in every arm for
   a day before it was found.
+- **The grader does not change during a pass, or between passes, without Dianne saying so
+  explicitly.** A grader gap found while tuning (2026-09-18: `column_order_free` and
+  `ties_as_ties` never tried together, robot_fault_prediction_8 phase 2) is a cap row with the
+  offline evidence attached, not a lever. A pass that moves the model and the grader at once
+  cannot say which moved the score.
 
 ## The pass: one task at a time, to convergence
 
