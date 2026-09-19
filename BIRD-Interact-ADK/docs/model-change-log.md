@@ -8028,3 +8028,11 @@ alone, or with Fault Prediction Score Tier High?", the simulator said both, firs
 both phases; _3 P1 0.7 - the twin was projected on the first submit (17 rows), phase 2 stays at
 138 vs 137 (grain, cap). Both mechanisms fired unassisted. Clean per-task reward now 0.38
 (P1 6/10, P2 1/10) vs raw 0.163.
+
+**Iteration 4 (732a6d5):** the "two readings of maintenance urgency, ask before filtering"
+sentence now OPENS the Urgent Maintenance Required, Predictive Maintenance Trigger and
+Predictive Maintenance Urgency descriptions (`_flag_desc` gained a `lead` argument). Same text
+had closed one description and fired 1 time in 5 unassisted; _1 had been filed as
+agent-variance with this lever untried. Run (n=1, memory off, PATIENCE=3, $0.40): _1 1.0 both
+phases, first ask "Urgent Maintenance Required flag, or Predictive Maintenance Trigger?", the
+simulator chose the trigger. Clean per-task reward 0.48 (P1 7/10, P2 2/10) vs raw 0.163.
