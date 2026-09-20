@@ -8280,3 +8280,39 @@ path stayed unresponsive. Cost $0.52. So `0dbdb99`'s fix for `solar_panel_6` is 
 proven at the ceiling but never verified in a run. Process lesson: gating immediately before
 launch does not protect against E-14, because the deploy that triggers it precedes the gate and
 the JVM dies afterwards — re-gate a few minutes after deploying.
+
+## 2026-09-20 — solar_panel: the amount-vs-ratio pair routes its choice, and _6 converges (model 2fcba6e)
+
+**The defect.** `solar_panel_6` asks how much power the costliest plant loses internally. The
+population clause shipped earlier had landed exactly right — the agent screened on `System Power
+Loss Ratio IS NOT NULL`, took the latest snapshot per plant, and ranked by Operational
+Expenditure Index — and then projected `Power Loss W`, 30.85 watts, where the reference wants the
+ratio, 0.06.
+
+**Why naming a twin wasn't enough.** The two columns already named each other as an absolute
+amount against a dimensionless proportion, and that was not enough. Naming a twin is not routing
+a choice: where two objects answer one question, the name decides which one fires, and the
+question's words matched the watts. Both descriptions now put the same closed question to the
+user — absolute watts or proportion of generated power — and carry both figures for one snapshot
+so the ask can quote them.
+
+**Result.** `solar_panel_6` went 0 to 1.0 on both phases. The trajectory is worth recording
+because the simulator first replied "I'm not sure I understand your question", the agent re-asked
+offering explicit options, and got "expressed as a ratio - the power loss divided by the total
+power". That is the re-ask behaviour the build prompt predicts, observed working.
+
+**Fifth instance of the same defect class.** This is the fifth instance on this database of one
+defect class: a description choosing on the caller's behalf rather than routing the choice. The
+other four were `Grounding Status`, `Plant`, `Plant Code Of Snapshot`, and the generated sentence
+on all nine `Plants With <flag>` metrics. Across all five the ask fired 5 for 5 once the choice
+was routed.
+
+**Final numbers.** P1 17/20, P2 12/20, reward 0.775 against a re-graded raw 0.525 (lift 25.0
+percentage points, 1.48x) and the tuned shared model's 0.900. Total spend $11.85 of a $25 cap,
+including a $0.52 run voided by E-14. Remaining phase-1 zeros are `_2`, `_11` and `_15`, none of
+them recorded as a cap: the tuned arm passes `_11` and `_15` 3/3 and `_2` only 1/3. `solar_panel_10`
+is flaky at 4 of 5, its single failure being the simulator answering "None" twice to a question it
+answered in every other run.
+
+**Note on the withdrawn caps.** Two of the four wrongly-capped tasks converted once the caps were
+withdrawn (`_3` and `_6`), worth 8.5 percentage points of the final lift.
