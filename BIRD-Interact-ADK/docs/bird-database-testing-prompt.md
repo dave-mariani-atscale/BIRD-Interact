@@ -498,6 +498,31 @@ final deployed model, so the pass ends on one artifact under one grader against 
 Stop when the worklist has no task left in the loop or the database cap is reached,
 whichever is first.
 
+**Then propagate, as the last step and not before.** A pass produces findings all the way to its
+final iteration, so propagating in the middle guarantees the last ones are lost. Measured
+2026-09-19: the process changes from that session's first half reached all 21 kickoff files, and
+the three findings from its second half — ceiling-test-first, prescriptive descriptions, E-14 gate
+timing — reached **none** of them, because the propagation had already happened and nothing
+brought it back. The pass was declared closed with a third of its lessons stranded in one report.
+
+Make it mechanical rather than a resolution:
+
+1. **List every finding this pass produced**, from the baseline classification to the last
+   iteration, including the ones that cost nothing and the ones that turned out wrong.
+2. **For each, name where it landed** — `docs/create_bird_model_prompt.v12.md` for a modelling
+   rule, this document for a process or spend rule, `results/kickoff_*_v12.md` for something the
+   next database must do differently, the tracker for a defect or a cap — **or state that it
+   landed nowhere and why.** "It is in the pass report" is not landed: nobody reads a previous
+   database's report before starting the next one.
+3. **Audit with grep, not memory**: one distinctive phrase per finding, counted across all 21
+   kickoff files, printed as `n/21`. A finding that should be in every kickoff and is in three is
+   the normal failure and it is invisible without the count.
+4. **Corrections propagate too.** Where the pass proved an earlier rule wrong — a stale cap, a
+   mis-applied rule, a retired workaround — edit that rule where it lives. A wrong rule left
+   standing costs more than a missing one.
+
+Only then write the report's closing section, and say in it which findings propagated where.
+
 Then report from the worklist: each task's stop condition and price, predicted versus what
 happened, spend against the caps, and the lift on the intersection against the re-graded
 raw baseline, in percentage points with relative alongside.
