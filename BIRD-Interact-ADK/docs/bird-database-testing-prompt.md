@@ -318,6 +318,15 @@ read any improvement. Then:
 
 ### Operational gotchas, each of which has wasted a cycle
 
+- **A whole arm that finishes in seconds with every task at `error reward=0.0` is the Anthropic
+  workspace usage cap, not your model.** Four occurrences so far (2026-08-10, 08-20, 09-07,
+  09-20; A-70). `logs/system_agent.out` carries the `AnthropicException ... "You have reached
+  your specified workspace API usage limits"`, `results/llm_usage.jsonl` gains **zero** rows in
+  the run window, and the runner warns "No LLM usage rows for this run". The pre-run gate passes
+  immediately before, because the engine and the catalog are healthy - which is exactly what
+  makes it easy to misread as a catalog fault. Void the run; it is not a measurement and it costs
+  nothing. Everything that makes no LLM call still works, so a capped session's deliverable is
+  the ceiling table, the model and the cap list.
 - `setsid` does not exist on macOS, and a run launched from inside a backgrounded shell dies
   with its parent. Plain `nohup … &` from a foreground shell survives.
 - The runner **always** timestamps `--output` (`<stem>_YYYYmmdd_HHMMSS.json`). Glob for the
