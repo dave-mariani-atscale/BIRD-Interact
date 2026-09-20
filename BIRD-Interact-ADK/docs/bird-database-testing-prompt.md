@@ -287,6 +287,15 @@ Write a script per run, with a header stating what changed, which task it should
 which tasks are canaries — so a null result is readable and a regression is caught before you
 read any improvement. Then:
 
+- **Gate a few minutes AFTER deploying, not instantly.** `sml-cli atscale-deploy` can kill the
+  engine JVM (E-14), and it does so *after* returning `Deploy SUCCESSFUL`, so a gate run seconds
+  later passes and the run then dies under you. Measured 2026-09-19: a gate passed clean, the run
+  launched, and all three tasks burned their full 18-coin budget with **10-12 `list_models` calls
+  each** (one is normal) and two recorded a passing submission yet scored 0. Void it; do not read
+  it as a result. The fingerprint of this class is **budget exhaustion plus repeated metadata
+  calls**, and afterwards `gate_run.sh` reports `list_models errored`. Recovery is the engine's own
+  restart plus a redeploy; MCP sessions do not survive it (`ATSCALE_ENGINE_AUTH_PERSIST_SESSION=false`),
+  so a stale 401 on your own MCP client afterwards is expected and is not the harness's token.
 - `bash scripts/gate_run.sh` first, every time: services newer than the newest harness
   commit, catalog healthy (a working `run_query` is *not* evidence — metadata calls can be
   dead while queries work), template databases unmodified.
