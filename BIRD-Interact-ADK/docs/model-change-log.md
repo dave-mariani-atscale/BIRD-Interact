@@ -8316,3 +8316,75 @@ answered in every other run.
 
 **Note on the withdrawn caps.** Two of the four wrongly-capped tasks converted once the caps were
 withdrawn (`_3` and `_6`), worth 8.5 percentage points of the final lift.
+
+## 2026-09-20 — organ_transplant v12 from-scratch model (models e2cbd17)
+
+`diannewood/bird-models-v12`, folder `organ_transplant/`, model "Organ Transplant V12", catalog
+`bird_models_v12`, reached through the new `organ_transplant` domain of the `atscale_v12`
+backend in `config/environment_backends.yaml` (added in this commit; services restarted, since
+`shared/environment_backends.py` caches that file at import).
+
+**Shape.** The grain is the MATCH. `transplant_matching` (947) is the spine and the six
+match-keyed satellites fold into one wide `Match Detail` fact by LEFT JOIN; each covers a
+different subset — compatibility 870, data quality 859, risk 774, administrative 641,
+allocation 561, logistics 518 — so each ships a coverage flag and the `<Entity> On <Record>`
+rule applies: every satellite's own donor and recipient reference is published, because they
+disagree with the match's own on 3 to 13 rows each. `Donor Detail` (659) and `Recipient
+Detail` (787) fold their 1:0..1 satellites the same way. `Transplant Center Detail` (462) is
+grouped from `administrative_and_review`, the only table carrying a centre code.
+4 datasets, 4 dimensions / 246 attributes, 74 metrics, 7 calculations; 6 gate iterations to
+green; the dry run pins 28 constants and every one was right first time.
+
+**Withheld.** Three `domain_knowledge` entries are masked on a running Query task and each
+states the decision content its task turns on, so no object implements the rule: the
+antibody-mediated rejection classification (KB 51), the allocation priority hierarchy (KB 34)
+and the ideal-pairing definition (KB 31). Their inputs ship, each saying it is one input to a
+larger named rule whose complete definition the caller must ask for. The marginal-donor
+framework (KB 53) is masked and states no number for any of its three conditions — a
+half-defined bucket — so its components ship and no verdict does. The masked
+`calculation_knowledge` entries ship under their own names: cost-effectiveness ratio and
+patient urgency score are masked on running Query tasks, and size compatibility, renal
+function and composite allocation are masked only on Management tasks this backend does not
+run.
+
+**The stored-versus-recomputed sweep is the finding this build turns on.** For every KB
+formula whose value the warehouse may already store, `corr(stored, recomputed)` was measured
+before a description was written. Only Body Mass Index holds — r = 0.99999 on both donor and
+recipient — so the stored column ships alone and the recomputation is mentioned, not
+published. Every other pair correlates at essentially zero: HLA mismatch score 0.033, size
+compatibility -0.027, age compatibility -0.002, estimated GFR 0.059, surgical risk 0.029,
+readmission risk 0.075, expected graft survival -0.007, and the recorded cost per QALY against
+the estimated cost -0.062. Each of those ships as a stored reading carrying the bare name and
+a computed twin, both descriptions quoting both ranges and stating they are not
+interchangeable.
+
+**Two value-pipeline findings specific to this warehouse.**
+- `compatibility_metrics.hla_mis_count` is a `bigint`, so the KB's `1 - S_mismatch / 6` written
+  literally in Postgres is integer division and collapses the term to a flat 0.4 for every
+  count below 6. That is not a rounding difference: the two evaluations of the immunological
+  compatibility score differ on 635 of 870 matches. Both ship, the real quotient bare.
+- `compatibility_metrics.distance` stores every value in MILES and its column meaning says
+  KILOMETRES. The KB's logistical feasibility index divides 700 by a distance in kilometres, so
+  the index is 0.6584–70.9615 over the stored number and 0.5251–44.4575 over the conversion.
+  Both ship with a closed question.
+
+**A recorded score that is not a property of the thing it names.** `cntr_vol_val`,
+`cntr_out_val` and `cntr_exp_val` are documented as centre volume, outcomes and experience
+scores and are recorded per MATCH: of the 103 centres carrying more than one scored match,
+all 103 record a different value on each. So the KB's centre performance score has two honest
+readings — counted volume with a completed fraction, and the mean of the recorded scores — and
+neither is bare. Both attributes say the stored score varies within a centre.
+
+**Which HLA locus mismatched is not recoverable here.** The KB scores 0–6 across A, B and DR;
+the warehouse stores one antigen value per locus per party, so a recomputation can only reach
+0–3, and it reaches 2 on 16 matches and 3 on 619. Of the 129 matches the stored count calls a
+single mismatch, all 93 that carry both HLA records differ at all three loci. The three locus
+comparisons ship as flags and their descriptions lead with that contradiction rather than
+resolving it.
+
+**Reverted during the build, recorded because the reasoning was wrong.** A `standard
+deviation` metric failed `dimension_key_metric_audit.py` while `birdsml/keyalias.py` left it
+on the dimension-key column, and the first fix widened `keyalias.needs_alias` to mirror the
+audit's INFO set. That was treating a gate failure as evidence about the rule: the real defect
+was the method name, which SML spells `stddev_samp` and which `FATAL_PREFIXES` already covers.
+The shared-machinery change was reverted and the metric renamed.

@@ -325,3 +325,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Solar Panel V12
+      organ_transplant:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Organ Transplant V12
