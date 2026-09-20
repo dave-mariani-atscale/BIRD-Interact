@@ -8233,3 +8233,50 @@ in the tracker should be re-checked before the next pass spends anything avoidin
 arithmetic, real display values are copied via `::text::numeric`, ages use the whole-year
 `AGE()` convention, and "since commissioning" rates are `NULL` before go-live on 445 of 998
 snapshots.
+
+## 2026-09-19 (later) — solar_panel: two wrong caps corrected, a population sentence that named the wrong column, and a voided run (models 372b444, c0654f9, 0dbdb99)
+
+**Why the caps were revisited.** A per-task diff against the tuned shared model's verdicts in
+`results/bird_full_run_2026-09-06_atscale_n3/scoring/per_task_verdicts_by_run.json` showed it
+scoring 3/3 at phase 1 on `solar_panel_3`, `_6`, `_11` and `_15`, all four of which this pass had
+just recorded as capped. Four of the five phase-1 caps in the section above were wrong.
+
+**Model `372b444`.** Two objects, both previously withheld. The KB 10 as-stored twin
+(`Temperature-Corrected Performance (Coefficient As Stored)`) had been withheld citing the rule
+against shipping a dimensionally inconsistent twin — but that rule is about a formula over two
+lengths or two masses, a mismatch **between operands**, not one operand whose scale is ambiguous
+against its column, which the same rule ships as a twin. `PV945724` gives -161.87 as stored and
+672.78 converted; shipping the twin took `solar_panel_3` from 0 to 1.0 on both phases on the next
+run, with the simulator choosing the suppressed reading. The KB 11 multiplicand (`Total Annual
+Degradation Rate`) had been recorded "not computable" because KB 11's three multipliers are
+unstated — the rule is to publish the per-unit figure and say the multiplier is the caller's, and
+the build had published nothing at all.
+
+**Models `c0654f9` then `0dbdb99`.** The `Entity On Record` population clause for
+`solar_panel_6`. The route is top Operational Expenditure Index over the snapshots carrying a
+power reading, one row per plant, verified at zero cost. The first clause said "the power columns
+are present on 361 of 998" — but `Power Loss W` alone is non-null on 600, and it is `System Power
+Loss Ratio` that needs both readings and sits at 361. The agent screened on `Power Loss W` and a
+different plant won. A population sentence that does not name the exact column is not a
+population sentence. Both cost objects now name `System Power Loss Ratio IS NOT NULL` and give
+both coverage figures.
+
+**`solar_panel_11` is an open coverage finding, not a cap.** Every KB-derivable reading was
+enumerated (whole-year ADR alone 24.35, fractional alone 24.30, Major Module Degradation alone
+24.98, whole-year plus MMD 25.44, fractional plus MMD 25.72) against gold's 25.68. The model
+publishes all of them; none reaches it; searching further would be answer-fitting.
+
+**Final numbers.** P1 15/20, P2 11/20, reward 0.690 against a re-graded raw 0.525 — lift 16.5
+percentage points. `solar_panel_10` is flaky at 2/3, its one failure being the simulator
+answering "None" twice to a question it had previously answered. Total spend $10.10 of a $25
+cap.
+
+**E-14 occurrence.** Iteration 6 is **VOID**. `sml-cli atscale-deploy` killed the engine JVM
+under a run that had gated clean. Fingerprint: all three tasks burned the full 18 coins with
+10-12 `list_models` calls each where one is normal, only 3 submits, and two recorded a passing
+submission yet scored 0; `gate_run.sh` afterwards returned `list_models` errored, server closed
+the connection unexpectedly. The container auto-restarted after about 60 seconds but its metadata
+path stayed unresponsive. Cost $0.52. So `0dbdb99`'s fix for `solar_panel_6` is shipped and
+proven at the ceiling but never verified in a run. Process lesson: gating immediately before
+launch does not protect against E-14, because the deploy that triggers it precedes the gate and
+the JVM dies afterwards — re-gate a few minutes after deploying.
