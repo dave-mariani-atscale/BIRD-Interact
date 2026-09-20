@@ -319,7 +319,14 @@ read any improvement. Then:
 ### Operational gotchas, each of which has wasted a cycle
 
 - **A whole arm that finishes in seconds with every task at `error reward=0.0` is the Anthropic
-  workspace usage cap, not your model.** Four occurrences so far (2026-08-10, 08-20, 09-07,
+  workspace usage cap, not your model - and it is a DIFFERENT quota from the claude.ai
+  subscription this session runs on.** The benchmark bills `ANTHROPIC_API_KEY` from the ADK
+  `.env` to a console API workspace, so a healthy subscription usage page is not evidence
+  against the failure; on 2026-09-20 that looked like a contradiction and was not. Separate
+  the two in seconds by probing each key in `.env` with a 1-token `/v1/messages` call - the
+  configured key returned HTTP 400 with the cap message and a key commented out one line
+  above returned HTTP 200. Swapping keys moves the billing, so it is Dianne's call, and the
+  services must be restarted afterwards because they read the key at start.** Four occurrences so far (2026-08-10, 08-20, 09-07,
   09-20; A-70). `logs/system_agent.out` carries the `AnthropicException ... "You have reached
   your specified workspace API usage limits"`, `results/llm_usage.jsonl` gains **zero** rows in
   the run window, and the runner warns "No LLM usage rows for this run". The pre-run gate passes
