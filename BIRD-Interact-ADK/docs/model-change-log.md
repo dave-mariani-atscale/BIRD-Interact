@@ -8388,3 +8388,39 @@ on the dimension-key column, and the first fix widened `keyalias.needs_alias` to
 audit's INFO set. That was treating a gate failure as evidence about the rule: the real defect
 was the method name, which SML spells `stddev_samp` and which `FATAL_PREFIXES` already covers.
 The shared-machinery change was reverted and the metric renamed.
+
+## 2026-09-20 (later) — organ_transplant: the population ask, and the rank whose population is fixed (models aef4842, e92eed3)
+
+Two iterations after the baseline, both description-only, no object added and no formula changed.
+
+**`aef4842` — the population choice becomes an ask.** The baseline's dominant failure was one
+thing: the submission is too broad. `_6` returned 49 rows containing all 4 gold rows, `_16` 216
+containing all 34, `_1` 237 against 198, `_2` 29 against 15. In every case the narrowing flag was
+already published, and on `_6` the agent had `Has Risk Record` in its `focus_columns` output and
+did not use it. The shared-population rule was in the model description and on four averages —
+as a sentence, which is the 40-to-1 finding again. The six coverage flags and the Match level now
+LEAD with an explicit closed population question. Measured: `_1` went from 237 rows to gold's
+exact 198, and canary `_17` went 0.7 to 1.0.
+
+**`e92eed3` — a pre-built rank's population is fixed and a filter does not re-rank.** `_10` asked
+both questions this model wrote for it, used both answers, and still lost one row of five: the
+pending wait-rank ranks every recipient with a recorded wait, including those carrying no
+antibody score, so a listing showing that score gets a different winner for one organ. The
+verdict now says so and routes the narrower reading to a RANK window function over the filtered
+rows in a FROM-subquery — the route the ceiling test proved reaches an exact match.
+
+**Result, and the honest reading.** Close run n=1 on `e92eed3`: P1 3/19, P2 1/19, reward
+**0.1263** against the re-graded raw **0.0702** — lift **5.6 percentage points**, 1.80×. Total
+spend $15.10 of the $25 cap. The baseline and the close run have the SAME mean and a different
+composition (`_17` 0.7→1.0, `_22` 1.0→0.7), so 0.1263 is one measurement with roughly ±0.3 reward
+points of task-level churn. Both paid iterations fired their mechanism and **converted no task**
+— the standing prior holding again: a model fix removes a known-wrong answer and does not
+reliably produce a right one. Both changes are kept because they are correct, not because they
+scored.
+
+**Not model defects, recorded so the next pass does not re-diagnose them.** `_16` is
+simulator-bound (it supplied "age difference > 25 or renal < 40" for the masked marginal-donor
+rule this run; the tuned model passes it 1/3). `_7` recorded a **passing** submission mid-task
+and then replaced it with a failing one, and the harness grades the last. `_8` phase 2 needs
+`corr`, which the SQL front end rejects (E-11). `_11` has no stated weights and the tuned model
+fails it 0/3.
