@@ -8594,3 +8594,65 @@ run. The twin rules remain right — a caller cannot select a reading that is no
 but on a twin-heavy model their cost lands on variance, and a single close run cannot state a
 number. Propagated to `docs/create_bird_model_prompt.v12.md`,
 `docs/bird-database-testing-prompt.md` and all 21 kickoff files.
+
+## 2026-09-21 — polar_equipment, v12 from-scratch model (`diannewood/bird-models-v12`), spec authored by Fable
+
+Fourth database of the v12 build programme (`results/kickoff_04_polar_equipment_v12.md`), and the
+first under the revised tiering of 2026-09-21: the spec — every description, name, twin, ask and
+withholding decision — was authored by Fable; the warehouse measurement (`generator/facts.md`)
+and the build loop's mechanical fixes were Sonnet's. New folder `polar_equipment/`; catalog
+`bird_models_v12` unchanged; `config/environment_backends.yaml` gains a `polar_equipment` domain
+on `atscale_v12` pointing at **Polar Equipment V12**, which is what makes this a paired change.
+
+**Grain.** One fact, `Polar Equipment Detail`: one row per equipment (1000), every satellite
+LEFT JOINed. Every satellite keyed by equipment carries at most one row per equipment, and the two
+without an equipment key each reach one equipment through a unique link (WeatherAndStructure via
+`opmaint_link`, 859; ThermalSolarWindAndGrid via `batt_link`, 899 — its `comm_link` path agrees on
+all 850 it reaches). Coverage is a **nested chain** (cabin 346 ⊂ engine 467 ⊂ lighting 693 ⊂
+scientific 768 ⊂ communication 850 ⊂ maintenance 859 ⊂ battery 899 ⊂ transmission 976 ⊂ chassis
+= water 1000), so every intersection is the smaller set; one coverage flag per record and the
+rule leads the model description. Four `*_link` columns are null on every row and are not joined.
+
+**Station** has three readings that agree on every overlap (communication 850, cabin 346,
+weather-via-maintenance 859): coalesced `Station` bare, `Station On Communication Record` and
+`Station On Cabin Record` beside it, the choice routed as a closed question.
+
+**What the warehouse forced** (all in `generator/facts.md` or the probe over the dataset SQL):
+
+- Reliability index and the type-level safety index are stored 0–100 where their KB glosses say
+  0–1; ESI runs 49–142.5 and SER 27–100 as written while their classifications cut at 0.8/0.9.
+  Each ships a `(Fraction)` twin; every classification is judged on both readings
+  (`Energy Sustainability Classification` 663/236/0 vs `(ESI As Stored)` all Green; `Critical
+  Scientific Equipment Status` 30/222/516 vs `(As Stored)` all Fully Operational).
+- Vehicle speed is stored as text ending ` m/s` on 1000/1000 rows in a field documented km/h:
+  VPC, PTEC and Safe For Operation each ship a `(Speed Converted)` twin (7 vs 112 chassis above
+  the 0.6 cut; Safe For Operation Yes 5 vs 41). The two pressure fields end ` hPa` (documented
+  kPa); every unit-suffixed value ships parsed and `(As Recorded)`.
+- `waterQualityIdx` is BIGINT, so the KB's `water quality index / 100` integer-divides to 0 on
+  989/1000 rows. The exact reading is bare, `(Integer Division)` is the twin, `(Percent)` the
+  rendering twin.
+- Measured against an all-operands-widened evaluation, no KB score differs at 2 dp on more than
+  2 of 1000 rows, so **no exact-arithmetic twins ship** (facts.md's native-vs-widened counts were
+  computed in different shapes; the dataset's shapes were re-measured).
+- ORS and everything built on it reach −2990 because operation hours exceed the maintenance
+  cycle; CRI and BSCSI go negative above 1000 ms latency. Stated, not "fixed".
+- Extreme Weather Readiness Status (KB 50, as written with insulation NOT 'Good') is 'Not Ready'
+  on all 1000; Critical Equipment, Sustainable Polar Operations and Polar Vehicle Safe Operation are
+  Yes on 0 (the safety-index and environmental-impact terms fail for every type). Each says so.
+- KB 56 temperature zone is the zone of the equipment's own linked weather reading
+  (255/252/352; battery health 80.65/79.68/80.46). Each station's 40–60 readings span all three
+  zones, so a station-level zone is not a single value; the description says so and routes it.
+
+**Withheld.** Only KB 10 (EWR, deleted on `_2`) — signposted in the model description with its
+four published inputs. KB 49 (CEAR) is a child of 10 but its own definition names only published
+objects, so it ships (the insider_trading over-withholding lesson applied). KB 16 and KB 17 are
+half-defined (unnamed "appropriate conditions", "functioning" ventilation) and ship as components
+only; KB 41 ships as `Emergency Response Readiness (Evidenced Terms)` because no column records an
+emergency communication status.
+
+**Build.** Green at iteration 7 — 1 dataset, 1 degenerate dimension / 253 attributes, 116 metrics,
+5 calculations, 12 pins, 4 paired checks. The seven: G8 non-ASCII (Sonnet); five G4 names over 63
+chars, eight G5 sibling collisions, one G6 and two G12 (all Fable renames/rewordings); one
+line-broken twin name (G6); A8 three question wordings plus one KB name allowlisted
+(`leakage_allow.json`); A10 twice — the number 0.7 sits in KB 10's masked definition and also in
+KB 44/49's, so PTEC's and ECAC's descriptions now name those rules' cut-offs without the digit.

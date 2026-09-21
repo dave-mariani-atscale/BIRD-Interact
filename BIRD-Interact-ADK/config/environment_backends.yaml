@@ -333,3 +333,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Insider Trading V12
+      polar_equipment:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Polar Equipment V12
