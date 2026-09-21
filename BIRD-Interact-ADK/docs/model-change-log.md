@@ -8424,3 +8424,32 @@ rule this run; the tuned model passes it 1/3). `_7` recorded a **passing** submi
 and then replaced it with a failing one, and the harness grades the last. `_8` phase 2 needs
 `corr`, which the SQL front end rejects (E-11). `_11` has no stated weights and the tuned model
 fails it 0/3.
+
+## 2026-09-20 — organ_transplant (v12): min/max for DSS and PRA (`bird-models-v12` 5862064)
+
+Four measures added: `Minimum`/`Maximum Decision Support Score` and
+`Minimum`/`Maximum Recipient PRA Score`. 84 metrics → 88. No other object touched.
+
+**Why.** `organ_transplant_13` asks for a score split into 5 groups. Iteration 2 removed
+the invented quintile attributes and routed banding to an ask; in the disputed-5 re-run
+the agent duly asked, was told "equal-width ranges, not equal-sized groups", wrote valid
+Postgres for it, and the engine refused it with `column "t_27.dss" must appear in the
+GROUP BY clause`. Equal-width banding needs the population min and max, the window form
+of that is refused, and nothing in the model published the bounds. `Estimated Cost USD`
+already had a Minimum/Maximum pair — this fills the same gap for the two other scores a
+caller bands.
+
+Each description names the working shape (read the bounds in their own subquery and
+`CROSS JOIN` it to the row-level listing) and states that the window form fails in the
+planner. Proven at $0 before building, using the existing cost pair, and re-verified live
+after deploy: 5 equal-width buckets over 157 completed matches.
+
+Works around **E-16** (filed the same day): the guardrail that catches `MIN(x) OVER ()`
+on model scope does not fire on the same window one level down, and the bare error it
+falls through to names no route forward. Note `LEAST`/`GREATEST` are unsupported (E-11),
+so the bucket clamp is written as `CASE`.
+
+**Provenance.** No question text, gold SQL or other semantic model informed this. The need
+came from the task's own failure plus a $0 engine probe; min/max measures were already this
+model's own convention in seven places. Unmeasured for score — it is a correctness fix for
+a refusal, and no run has been spent on it.
