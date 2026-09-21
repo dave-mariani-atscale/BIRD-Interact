@@ -176,7 +176,10 @@ def add_section(ws, acc, per_census, nruns):
             start = c
             break
     if start is None:
-        start = ws.max_column + 2
+        last_used = max((c for c in range(1, ws.max_column + 1)
+                         if any(ws.cell(r, c).value is not None for r in range(1, NOTE))),
+                        default=ws.max_column)
+        start = last_used + 2
         ws.column_dimensions[GL(start - 1)].width = 2
     end_hdr = next((c for c in range(start + 1, ws.max_column + 1)
                     if ws.cell(4, c).value), ws.max_column + 1)

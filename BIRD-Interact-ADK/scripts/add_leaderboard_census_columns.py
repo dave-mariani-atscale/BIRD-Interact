@@ -128,7 +128,10 @@ def add_section(ws, census, label):
             start = c
             break
     if start is None:
-        start = ws.max_column + 2  # one separator column, as the other sections use
+        last_used = max((c for c in range(1, ws.max_column + 1)
+                         if any(ws.cell(r, c).value is not None for r in range(1, NOTE))),
+                        default=ws.max_column)
+        start = last_used + 2  # one separator column, as the other sections use
         ws.column_dimensions[GL(start - 1)].width = 2
     # Only this section's own row-4 merge. `min_col >= start` also caught the
     # section headers to the RIGHT of this one and left them unmerged, which is
