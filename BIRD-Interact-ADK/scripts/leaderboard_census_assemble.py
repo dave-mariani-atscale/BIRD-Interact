@@ -67,6 +67,9 @@ def main():
     ap.add_argument("--rev3", default=CENSUS + "census_rev3_final.json")
     ap.add_argument("--rev4", default=CENSUS + "census_rev4_final.json")
     ap.add_argument("--rev5", default=CENSUS + "census_rev5_final.json")
+    ap.add_argument("--revision", default="LB1",
+                    help="revision label stamped into the census file; bump it "
+                         "when re-assembling over a wider set of runs")
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-md")
     a = ap.parse_args()
@@ -158,7 +161,7 @@ def main():
             k[f"{cat}_residual_p1"] += 1
 
     out = {
-        "revision": "LB1",
+        "revision": a.revision,
         "regime": "leaderboard / upstream: none of the six comparison corrections",
         "runs_used": RUNS,
         "task_runs": sum(r["n"] for r in RUNS) if RUNS and "n" in RUNS[0] else None,
