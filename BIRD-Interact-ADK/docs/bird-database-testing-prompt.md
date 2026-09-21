@@ -29,19 +29,38 @@ repeat. The unit of work is a task, not an arm (§ The pass).
 - Correct your own earlier conclusions in one line and move on. A wrong finding left
   standing costs the next session more than it cost you.
 
-## Who does what — two model tiers, one session
+## Who does what — three model tiers, one test
 
-The session that runs this document is **Opus**. It owns the worklist, the caps, the
-tracker and every decision in the stop table. Everything mechanical is delegated downward; nothing is delegated upward:
+Revised 2026-09-21. From 2026-09-18 to 2026-09-20 the session running this document was
+Opus and it authored every spec; Dianne judged the resulting models measurably worse than
+the earlier Fable-authored ones, so Fable is back on the pieces that decide model quality and
+kept off everything else. The tier of a step is decided by one question: **does this step's
+output change the text or the objects of the model?** Yes — Fable. No — down to Sonnet or a
+script. Nothing is delegated upward, because there is nothing above Fable to delegate to.
 
-- **Down to Sonnet or a script, everything mechanical.** Reading a finished run is
-  `python scripts/loop_step.py <results.json> [task ...] --expect ask:<text> --expect
-  filter:<text>` — one screen per task (verdicts, coins, asks, every submitted WHERE with its
-  verdict, the gold_diff FINDING, and whether the named mechanism fired). Never read
-  `failing_sql.py` output, `gold_diff.py` output and the trajectory by hand when that
-  screen answers the question; it is ~1k tokens against ~20k. Sonnet subagents
-  (`Agent` with `model: sonnet`) run builds, gates, deploys, tracker and change-log writes,
-  and report the exit status and the one line that matters. They never decide anything.
+- **Fable — the session itself, hands-off — owns model quality.** `generator/spec.py` and
+  `sql_defs.py` in full: every description, name, twin, ask, coverage flag, withholding
+  decision and pinned constant, and every later edit to any of them. The ceiling sweep —
+  writing each task's query and reading its `gold_diff` FINDING, since the finding decides
+  what changes. The per-task diagnosis after `loop_step.py` — the lever, the counterfactual
+  test, the cap decision. The findings and corrections in the report. It reads only
+  summaries: `generator/facts.md`, the KB, the column meanings, the schema, the brief,
+  `loop_step.py` screens (one per task, ~1k tokens against ~20k for the raw files), and
+  one-line gate results. Never a raw run file, never a whole emitted YAML. **Fable is
+  minimised by reading less, never by handing a quality decision down.**
+- **Sonnet (`Agent` with `model: sonnet`) does everything whose output does not change the
+  model's text.** The measurement pass that writes `generator/facts.md` — column types and
+  where Postgres truncates, degenerate columns, `character(n)` columns, unit-suffixed text,
+  JSON keys at every nesting level, join cardinalities and orphan counts, `corr(stored,
+  recomputed)` for every KB formula the warehouse already stores, candidate column bindings
+  per KB term with live counts — numbers only, authoring nothing. The build loop: `build.sh`
+  until green, fixing only mechanical gates itself (pipe characters, a missing column, ASCII,
+  schema qualification, MDX brackets, join roles, orphans) and returning any gate that needs
+  a description or a name changed as one line for Fable. Deploy, `scripts/gate_run.sh`, run
+  scripts and launches, `llm_usage` summaries, sheet and change-log and kickoff writes, the
+  propagation grep audits. Reports are 20 lines or fewer and it never decides anything.
+- **Opus is not in this loop.** It authored the v12 specs of 2026-09-18..20 and those are the
+  comparison arm; a database is authored by one model tier end to end.
 - **Every subagent brief names the forbidden files by path, not the forbidden concept.**
   "You may not read gold SQL" is not an instruction a fresh context can follow — it does not
   know which file that is. Name `bird_interact_data.jsonl` and the denied keys (`sol_sql`,
@@ -52,8 +71,7 @@ tracker and every decision in the stop table. Everything mechanical is delegated
   "you may NOT read gold SQL" and pointed at `gold_diff.py`, and the subagent opened the raw
   JSONL, where `follow_up` carries phase-2 gold SQL. It disclosed this unprompted and marked
   which of its conclusions were tainted — which is the behaviour to want — but the whole
-  diagnosis then had to be discarded under the rule below. The extractor was not at fault: the
-  brief was verified clean, no denied key and no SQL-shaped value.
+  diagnosis then had to be discarded under the rule below (A-69).
 - **A contaminated diagnosis is discarded, not laundered.** When a session or subagent has seen
   gold for a task, nothing from that context may become a model object, however well-reasoned —
   `docs/create_bird_model_prompt.v12.md` puts it as "never folded back into the build", and the
@@ -61,24 +79,13 @@ tracker and every decision in the stop table. Everything mechanical is delegated
   Re-derive from a clean context if the change is genuinely rule-mandated, or cap the task. What
   you may keep is anything you re-verify yourself from the warehouse alone: a join cardinality,
   a row count, a key's uniqueness.
-- **Nothing is delegated upward. Fable is reserved** (2026-09-19). The week's Fable quota is
-  nearly spent and resets Thursday, so `model: fable` is not called by a session running this
-  document; if a database genuinely stalls, ask Dianne one closed question naming what is stuck
-  and what Opus and Sonnet have already tried, and let her decide. The two moments that used to
-  go up now resolve as follows. **The first draft of a model's `spec.py`** becomes a two-step
-  Opus job: a Sonnet subagent runs a measurement-only pass over the warehouse, the KB and the
-  column meanings and writes `generator/facts.md` (column types and where Postgres truncates,
-  degenerate columns, `character(n)` columns, unit-suffixed text columns, JSON profile keys at
-  every nesting level, join cardinalities and orphan counts, every KB formula the warehouse
-  already stores with `corr(stored, recomputed)`, candidate column bindings per KB term with live
-  counts) and authors nothing; Opus then writes the spec from those facts, because description
-  quality is what the build is for and it is the one thing that cannot be delegated downward.
-  **A task still failing after the cheap classification** — `loop_step.py` read, gold finding
-  classified, first lever tried — is Opus's to solve, with `gold_diff.py --sql` proving each
-  candidate lever sufficient at $0 before any spend. Measured 2026-09-19 on solar_panel: the
-  Fable spec draft cost 563k subagent tokens and 45 minutes to reach a green build over six
-  gate iterations, so the measurement half is the expensive half and it is the half Sonnet can
-  do.
+- **This tiering is a measured test.** Each Fable-authored pass records Fable's own token cost
+  from `/cost`, Sonnet tokens per delegation, and the model's reward as a share of the tuned
+  shared-repo model's reward on the same database, so the two authoring tiers can be compared
+  across databases. If the Fable quota runs out mid-pass, stop at the boundary and report rather
+  than finishing the spec on a lesser model. History, for the record: 2026-09-19 the Fable spec
+  draft of solar_panel cost 563k subagent tokens over six gate iterations, which is why the
+  measurement half was split off to Sonnet — that split stays; the authoring half goes back.
 
 Measurement is **n=1 per task with feedback memory off**, plus the mechanism check in
 step 1.4. n=1 is enough to see a mechanism fire or not; it is not enough to quote a rate,
@@ -92,6 +99,12 @@ Measured: **~$0.25 per task-run** on atscale, ~$0.20 on raw, Sonnet with caching
 of spend because the whole conversation is re-sent every turn, so cost scales with turns,
 not with answers.
 
+0. **Cost scales with RUNS, not with tasks, and the ceiling sweep is what makes runs small.**
+   Measured 2026-09-21 on polar_equipment: a **20**-task database closed for **$12.67** in four
+   runs (one 20-task baseline, then 9, 7 and 4 targeted tasks), against $16 and $11.29 for two
+   **10**-task databases done without a full sweep. Ten sweep rounds, every sufficiency proof
+   and every warehouse probe cost $0 and found four model gaps and one cap before a cent was
+   spent. Budget by runs when you plan a pass, and never quote a per-task figure as a total.
 1. **Do all $0 work first, in one batch.** Most questions never need a run.
 2. **Runs are per task, never per arm.** `--tasks <id>,<canaries> --repeat 2`, bought only
    after the fix is proven sufficient at $0 and only inside that task's cap (§ The pass).
@@ -148,6 +161,31 @@ submission, run it against the fixed model through `run_query`, and diff it agai
 row count, values, order. That answers "can the model now produce the right answer" with
 certainty, for nothing. Then decide if the run is worth it. This caught a
 correct-but-insufficient fix before any spend and isolated the one remaining condition.
+
+## Ask fired and answer correct are two different outcomes — count them apart
+
+Revised 2026-09-21. The build prompt's twin-plus-ask rule works and it has a ceiling that shows
+up as wasted iterations if you do not measure the two halves separately. On polar_equipment the
+ask was moved into the first sentence of five competing readings and then **fired on 4 of 4**
+remaining tasks over three runs, while converting **2 of 7** phases. Both conversions were
+tasks where the question itself settled the choice. On the other four the user simulator chose
+the reading the reference does not use, named two join paths in one sentence, asked for a
+combination no twin carried, or answered "this question is out of scope" — and on one of them
+the agent had spelled out in its own question that the option offered returns zero rows.
+
+So, in the worklist and in the report:
+
+- Record `ask fired` and `answer correct` as separate columns. A task where the ask fires and
+  the answer is wrong is a **simulator cap**, not a model gap, and it is a different row from a
+  reference cap: a reference cap means *do not spend*, a simulator cap means *the model is
+  already right and the next run may pass it*. Say which you mean.
+- Once the ask has fired and the answer decided it wrongly, stop writing description text. The
+  move that still works is structural — put the plain name on the reading the questions mean.
+  On polar_equipment that converted a task whose counts and averages already matched gold and
+  which lost on a label column alone.
+- A simulator that answers differently run to run makes these tasks flip. Three runs of
+  polar_equipment `_16` gave 0, 1.0, 0 with the model improving throughout. Do not read a
+  single flip as a regression, and check the $0 ceiling before you believe one.
 
 ## The three layers you can fix in
 

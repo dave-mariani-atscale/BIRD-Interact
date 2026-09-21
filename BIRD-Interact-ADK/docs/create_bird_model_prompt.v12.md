@@ -584,7 +584,13 @@ user. Check the raw JSON for every input a formula names before deciding it is c
   matches the question's vocabulary is picked on surface word match and by then the caller has
   already filtered. Where questions ask both ways, ship both.
 - Note the limit of what this buys: when the question's own `LIMIT N` cuts across a tie, the
-  expected answer is *not unique* and no model can make it so. Record such tasks as capped.
+  expected answer is *not unique* and no model can make it so. Record such tasks as capped. The tie
+  can also sit in an aggregate the MODEL computed, and a `ROW_NUMBER` twin does not rescue it:
+  measured 2026-09-21, all 20 groups of one antenna status averaged exactly 0, the reference cut
+  three of them by plan order, and a row-number column with a name tie-break returned three rows
+  and the wrong three. The model reached every one of the reference's nine rows and all nine of
+  its values. Ship the row-number twin anyway — it is the only way to return N rows at all —
+  and cap the task.
 - Before shipping any rank object, confirm the inbound interface cannot already express it.
   `RANK() OVER (...)` in the projection is accepted, so a displayed rank often needs no model
   object at all. Prefer the caller's window function and spend the surface elsewhere — but
@@ -735,6 +741,29 @@ flipped from a unanimous three-run fail to a pass; two others used the rank corr
 failed downstream on other defects. Do not forecast score from a capability landing. And when
 counting a measure's usage, count occurrences inside SQL strings — counting names in the raw
 result JSON overcounts badly, because the column catalog is re-served every turn.
+
+### Readings that belong to an owner, not to the row that links them
+
+- **A satellite row reaches ONE entity through its link, but the thing it describes may belong
+  to that entity's OWNER, and then the question means all of the owner's rows.** Measured
+  2026-09-21 on polar_equipment: a weather reading joins to an equipment through that
+  equipment's own maintenance record, but the reading describes a STATION, and each station
+  filed 40 to 60 of them. Two references read the station's whole history, not the one linked
+  row, and the difference is not a nuance: on the linked reading the equipment split 255 / 252 /
+  352 across three temperature zones with no overlap, and on the station's history all 850
+  equipment appear in **all three**. One reference counted equipment per zone (850 / 850 / 850),
+  another built a readiness rule whose structural term is met when the station has EVER recorded
+  conditions clearing it (5 equipment qualify on the linked reading, 232 on the station's).
+  Neither is expressible from the entity grain. Ship **a second dataset at (entity, owner's
+  reading) grain** with its own degenerate dimension and every attribute suffixed, plus an
+  entity-grain aggregate of the owner's readings (a max, or an EXISTS verdict) so a rule the
+  caller assembles by hand can still reach the owner's scope. To find these before you spend,
+  ask of every satellite: *does this row describe the entity, or something the entity belongs
+  to?* A location, a station, a site, a batch and a shift all take this shape.
+- **When you add the second grain, the first grain's column must learn to name it in the same
+  commit.** The exposure grain above shipped and the entity-grain `Temperature Zone` was not
+  touched; the agent never discovered the new dataset and grouped on the old column. This is the
+  half-applied twin this document already warns about, in its dataset-shaped form.
 
 ### Group vs entity level
 
@@ -897,6 +926,17 @@ result JSON overcounts badly, because the column catalog is re-served every turn
   second object. That is not compliance — the sentence tells a caller the other policy exists and
   still leaves them unable to select it, and by the name-decides rule they will not act on the
   sentence anyway.
+- **"No record" and "a record with an empty field" are two different nulls, and only the second
+  gets the zero twin.** A score defined per record is null both where the record is absent and
+  where the record exists but one field it needs is empty, and a reference routinely reads the
+  second as 0 while leaving the first null. Measured 2026-09-21 on polar_equipment: 47 of 859
+  maintenance records carry no maintenance cycle, so the readiness score and all three scores
+  built on it dropped those rows; the reference averaged them as 0 (one type: 34.30 over 132
+  records against the strict 36.94 over 121). The twin must therefore be *conditioned on the
+  record existing* — `CASE WHEN <record key> IS NULL THEN NULL WHEN <field> IS NULL THEN 0 ...` —
+  and it must be carried down into **every** score built on it, each with both coverage counts.
+  Shipping it converted the task outright: the same four-column query passes on the twin and
+  fails on the strict reading by 11 of 24 cells.
 - **A zero-filled twin zero-fills EVERY input, and every composite with a null population gets
   one, at row and aggregate grain.** A twin that coalesced only one of three terms was neither
   reading: a "high risk" screen returned 467 rows where either honest reading returns 431
@@ -988,6 +1028,18 @@ reachable tasks in a 0/10 arm.
   matters. Where the two differ, the **bare name carries the warehouse evaluation** and the
   exact-arithmetic reading ships as an `(Exact)` twin, each description saying the two select the
   same rows under any threshold (pin that) and differ only in the printed value.
+- **A reference aggregate over a `real` column is rendered at SIX SIGNIFICANT FIGURES, and the
+  semantic layer's answer is not.** `SUM(real)` returns `real` in Postgres, and the harness
+  prints a float4 with six digits: a true 128607.78 arrives as `128608`, while the layer returns
+  double precision and prints `128607.8`. The grader's numeric comparison is tighter than that
+  1.6e-6 relative gap, so the cell is simply wrong. Measured 2026-09-21 on polar_equipment: a
+  20-row group listing matched gold on the population, the recomputed ratio, the classification
+  bands and the sort, and failed on 15 of 120 cells that were all in one column, all in the
+  seventh digit; rounding that column to six significant figures by hand turned the task green.
+  No model object emits that rounding and no agent writes it, so **this is a cap, not a fix** —
+  but find it before you spend, with `SELECT pg_typeof(...)` on the summed column. Check it
+  first whenever a probe returns the right shape, the right rows and one column of
+  almost-right numbers.
 - **Where the addition happens matters, not only the cast.** Check `pg_typeof` of each
   *intermediate*, not of the result: `real * 10` and `real / 100` are already double on Postgres
   (the integer promotes to the category's preferred type), `real + real` is not. A plain reader's
@@ -1128,6 +1180,15 @@ reachable tasks in a 0/10 arm.
   but never rely on one to steer a choice. Resolve competition structurally, in this order: (1) if
   a reading has no basis in the KB, **delete it**; (2) otherwise move the plain, unqualified name
   onto the reading the questions mean and push every other behind a qualifier.
+- **A reference can read the same concept DIFFERENTLY in its two phases, so both twins must
+  ship even when one looks like a unit error.** Measured 2026-09-21 on polar_equipment: phase 1
+  wanted a vehicle composite with a text speed field converted and phase 2 wanted the same
+  composite with the speed as stored. Neither is wrong and the conversion is not a bug fix —
+  deleting either reading loses a phase. The agent's own failure mode here is to carry the
+  choice forward: it filtered on the strict verdict and printed the converted composite, because
+  the user had chosen "converted" one turn earlier. Say on every such verdict that **the value
+  shown beside it is the one that decided it**, and that an earlier turn's choice of reading
+  does not carry into a later one. That sentence converted the phase.
 - **Naming the twin is not enough — the bare-named reading wins about 40 to 1.** Measured:
   `(Recomputed For Group)` twins were used 2 times against 39 uses of the bare primaries, and
   recorded-case twins 5 times against 204 uses of the canonical attributes, with the reading one
@@ -1139,6 +1200,26 @@ reachable tasks in a 0/10 arm.
   a measure declared "one of three readings, and its plainer name does not make it the default"
   took another from 0-of-3 to 2-of-2. In both the agent asked the user which reading was meant,
   quoting the two counts back, and used the answer.
+- **THE ASK FIRING IS NOT THE WIN CONDITION — THE ANSWER IS, AND THE SIMULATOR OFTEN ANSWERS
+  AGAINST THE REFERENCE.** This document's twin-plus-ask rule is right and it has a ceiling that
+  is worth knowing before you spend a third iteration on description text. Measured 2026-09-21
+  on polar_equipment, where the ask was moved to the FIRST sentence of five competing readings
+  and then fired on 4 of 4 remaining tasks across three runs: it converted 2 of 7 phases, and
+  both were cases where **the question itself settled the choice** ("within each type"; a
+  verdict and the value beside it). On the other four the ask fired perfectly and the user
+  simulator chose the reading the reference does not use, or named two join paths in one
+  sentence, or asked for a combination of two adjustments that no twin carried, or refused
+  outright ("this question is out of scope"). On one task the agent stated *in its own question*
+  that the choice offered yields zero rows, and the simulator picked it anyway. Three
+  consequences:
+  - Count an ask as converting only when the score moves. Tally *ask fired* and *answer
+    correct* separately in the report; they came apart 4 times out of 6 here.
+  - When the ask fires and the answer is wrong, **more description text is spent money**. Go
+    structural instead: move the plain name onto the reading the questions mean, which converted
+    a task whose counts and averages already matched and which lost on a label alone.
+  - Publishing a twin for an answer the simulator sometimes gives can turn a hand-written wrong
+    answer into a cleanly-executed wrong answer, which is not a gain. That is the demand gate
+    below, and this is what failing it looks like.
 - **That steering is demand-gated, not coverage-gated.** Before shipping a twin, confirm the
   failure is *"the agent does not know a choice exists"* and not *"the agent knows and still
   fails"*. On one model the agent **already** asked the population question in the baseline and
