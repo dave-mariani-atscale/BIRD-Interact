@@ -8739,3 +8739,30 @@ shown beside a verdict is the one that decided it, and an earlier turn's choice 
 not carry into a later one.
 
 286 attributes, 135 metrics, 7 calculations; green on the first build. Models `d6f96ec`.
+
+### 2026-09-21, iteration 2 (Opus) — the ask fires; the answer decides
+
+Iteration 1 converted 2 of the 7 reachable phases (`_1` phase 1, `_10` phase 2), both cases
+where the *question itself* settled the choice. On the other four the new ask fired exactly as
+designed and the **user simulator's answer** is what failed: for `_11` it chose the equipment's
+own structural reading, on which the readiness rule is true for nobody; for `_18` it named the
+communication link and "the equipment's own reading" in one sentence and the agent applied half
+of it; for `_16` it asked for zero-filled wear *and* converted speed, a combination no published
+twin carried, so the agent hand-wrote the formula; for `_20` its station answer was ambiguous
+and the agent dropped the filter entirely (995 rows against 846, with all 846 expected rows
+present).
+
+More ask text cannot fix an answer. So this iteration makes the answers selectable and states
+what a degenerate choice returns: `PTEC (Wear Zero And Speed Converted)` and its composite now
+ship (467 chassis, 0 to 3.55); the coefficient's description opens with the knowledge base's own
+four-column report shape, which was already in the text and being ignored at the end of a
+paragraph; `Temperature Zone` states that an answer reaching the weather data *through* the
+station is the station-grain reading whatever else it says; `Station` states that pairing the
+coalesced station with one record's values returns 995 distinct water rows against the
+communication record's 846; `Active Equipment Unit Count` states that 22 of the 167 active
+equipment carry no reliability score, so it is not that average's population; and `Structural
+Safety Factor` states that the own-reading choice makes the readiness rule true for no equipment
+at all — a reading that returns nothing for every group discriminates nothing, and the caller
+should be told before it is run.
+
+288 attributes, 135 metrics; green on the first build. Models `9882a92`.
