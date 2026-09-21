@@ -187,6 +187,23 @@ So, in the worklist and in the report:
   polar_equipment `_16` gave 0, 1.0, 0 with the model improving throughout. Do not read a
   single flip as a regression, and check the $0 ceiling before you believe one.
 
+## When two estimates of a pass disagree, re-run the tasks the difference rests on
+
+Added 2026-09-21. A pass that iterates produces several runs against several model versions, so
+"latest per task" and "best observed per task" can differ, and neither has a repeat behind it.
+Do **not** average the two: they are two estimators computed over overlapping runs of different
+model versions, not two samples, and their mean has no interpretation.
+
+Instead, find the tasks the gap rests on and buy a repeat of just those, against the shipped
+model, with no model change. On polar_equipment the two estimates were 0.425 and 0.490 and the
+whole 0.065 sat on two tasks; re-running that pair cost **$0.73** and five minutes, both scored
+higher than their last figure, and the recorded estimate became the mean of the two runs on the
+shipped model for those two tasks and latest-per-task elsewhere. A full 20-task re-run would
+have cost $6.30 and an n=3 $19.
+
+Record which estimator you used and on which tasks — a reward figure whose construction is not
+stated cannot be compared with the next database's.
+
 ## The three layers you can fix in
 
 1. **Guidance** (`config/environment_backends.yaml`) — cheapest, no deploy, but **restart
