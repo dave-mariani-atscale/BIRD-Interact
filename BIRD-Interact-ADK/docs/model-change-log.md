@@ -8481,3 +8481,73 @@ because the ask it does raise is correct independently of score.
 `WIDTH_BUCKET`. It is reachable, and the three stacked causes were invented bands
 (`159e35d`), no published bounds plus an engine refusal (`5862064`, E-16), and the clamp
 (this change).
+
+---
+
+## 2026-09-20 — insider_trading, v12 from-scratch model (`diannewood/bird-models-v12` @ 58b21ce)
+
+Third database of the v12 build programme (`results/kickoff_03_insider_trading_v12.md`).
+New folder `insider_trading/` in the shared v12 repo; catalog `bird_models_v12` unchanged;
+`config/environment_backends.yaml` gains an `insider_trading` domain on `atscale_v12`
+pointing at the model label **Insider Trading V12**, which is what makes this commit a
+paired change rather than a model-only one.
+
+**Grain.** One fact, the transaction record (999). `market_conditions` and its six
+satellites — order behaviour, manipulation signals, sentiment analytics, corporate events,
+regulatory compliance, enforcement actions — are exact 1:1 bijections with it (999 rows,
+zero orphans in both directions), so a trade, a compliance case and an enforcement action
+are one row seen from different sides and nothing needs joining to pair them. That is the
+opposite of organ_transplant, whose six satellites covered six different subsets and where
+the intersection population was the whole story. `trade_records` (998) is the single
+coverage question and ships as `Has Trade Record`. 990 of the 995 traders carry exactly one
+transaction, so no averaged trader-grain twin of a per-transaction verdict was shipped —
+it would be distinguishable on 4 traders.
+
+**What the warehouse forced, each measured before it was written** (`generator/facts.md`):
+
+- `bal_turnover`'s documented meaning is the knowledge base's turnover formula word for
+  word, and the two correlate at **r = -0.008**, agreeing at two decimals on 2 of 998 rows
+  and selecting 955 against 89 above 0.5. Both readings ship, recorded bare.
+- The pattern-similarity operand is stored 0–100 where its own knowledge-base entry
+  declares 0–1. The tie is broken by the KB's *own* downstream cut-off, not by preference:
+  the low-anomaly screen at 0.1 selects 63 transactions on the converted reading and **0**
+  on the as-stored one. Converted is bare.
+- Account age is stored in whole days, so the recidivism denominator written over whole
+  numbers integer-divides and differs on **689 of 998** transactions at two decimals, and
+  moves the above-1.5 population from 111 to 135. Both conventions ship.
+- **12 of 23 `real` columns** print differently at two decimals depending on the cast path
+  (`round(col::text::numeric,2)` vs `round(col::double precision::numeric,2)`): vol_day 343,
+  pos_avg 177, x_freq 63, spreadTag 54, fp_rate 53, rot_imp 44, off_mkt 43, mkt_corr 38,
+  stuff_idx 34, model_conf 30, dark_use 27, abuse_prob 21. Each ships twice in the dataset —
+  the attribute reads `::text::numeric`, the metric reads the double — because a plain
+  reader *sees* the first and *averages* the second.
+- **Three knowledge-base cut-offs are unreachable in this data** and ship saying so rather
+  than silently: daily volume over 1,000,000 (live max 999,001.10), average cancellation
+  percentage over 0.5 (live max 0.299) and order modification intensity over 1.0 or 1.5
+  (live max 0.7076). Four verdicts are therefore `Yes` on nothing, which is the correct
+  answer and not a missing join.
+- The KB writes the announcement timings as `Pre-market` and `Intraday`; the stored values
+  are those words followed by ` hrs before`, so an equality test on the KB's own wording
+  matches **zero** rows. The flag is precomputed on the leading word.
+- `trade_records.snap_ts` is declared TIMESTAMP and holds no date at all — 598 of 598
+  recorded values are a bare `mm:ss.d` fragment. Every calendar-period question on this
+  database is data-capped, not model-capped.
+- `order_status_types` is unreachable: its only inbound FK is null on all 999 rows, so the
+  KB's order-type distribution has no binding here. Said in the model description rather
+  than shipped as a dimension that can never resolve.
+
+**Withheld.** Ids **12, 13 and 46** are deleted from the knowledge tool on running Query
+tasks (`_18`, `_19`, `M_9`), and **42, 43, 60, 62, 64, 65** each embed one of the three.
+None of the nine ships as a named object; every component of all nine does, each
+description opening with the closed question the caller has to put to the user. This is
+expected to cost tasks `_4`, `_5`, `_18`, `_19` and `M_9` at least an ask each.
+
+**Build.** Green at iteration 4 — 3 datasets, 3 dimensions / 255 attributes, 122 metrics,
+5 calculations, 15 pinned constants, A8 and A10 clean, `sml-cli validate` clean. The four
+iterations were: three pinned constants I had predicted wrong (the flag count for the
+financially-impactful case, the strict suspicion-index coverage, two relationship-network
+populations — all my arithmetic, none the model's); G3 name collisions between trader-grain
+rollup attributes and transaction metrics, G4 names over 63 characters, a G5 collision with
+`solar_panel` on `Documentation Status`, and a G12 question-wording hit on "repeat
+offenders" (which is also the KB's own phrase — reworded rather than allowlisted); and
+`sml-cli validate` rejecting a dataset whose name equals a dimension's.

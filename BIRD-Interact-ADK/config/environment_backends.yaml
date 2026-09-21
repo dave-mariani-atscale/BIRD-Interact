@@ -329,3 +329,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Organ Transplant V12
+      insider_trading:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Insider Trading V12
