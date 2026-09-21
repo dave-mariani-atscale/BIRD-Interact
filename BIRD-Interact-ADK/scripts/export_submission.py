@@ -224,6 +224,14 @@ def export(results_path: str, out_dir: str, data_path: str, validate: bool, meth
         "tasks": n,
         "tasks_by_category": dict(Counter(r["category"] for r in rows)),
         "missing_phase1_sql": sum(1 for r in rows if not r["subtask_1_predicted_sql"]),
+        # Tasks the runner could not complete at all. orchestrator/runner.py catches a
+        # per-task exception and records {"error": ..., "total_reward": 0}, which is
+        # then indistinguishable from a task that ran and scored zero. Counting them
+        # here puts the number in the artifact that travels with the submission, so a
+        # reader can tell "the agent got it wrong" from "the harness fell over".
+        "task_errors": sum(1 for r in (d.get("results") or []) if r.get("error")),
+        "task_error_ids": [r.get("task_id") or r.get("instance_id")
+                           for r in (d.get("results") or []) if r.get("error")][:20],
         "warnings": dict(warnings),
         "local": {
             "phase1_rate": sum(r["local_verdict"]["phase1_passed"] for r in rows) / n if n else 0,
