@@ -8656,3 +8656,48 @@ chars, eight G5 sibling collisions, one G6 and two G12 (all Fable renames/reword
 line-broken twin name (G6); A8 three question wordings plus one KB name allowlisted
 (`leakage_allow.json`); A10 twice — the number 0.7 sits in KB 10's masked definition and also in
 KB 44/49's, so PTEC's and ECAC's descriptions now name those rules' cut-offs without the digit.
+
+### 2026-09-21, iteration 0 (Opus) — the four gaps the $0 ceiling sweep found
+
+Dianne ran out of Fable credits after the first spec was deployed (`28d449b`) and moved the
+session to Opus, so from here the model's text is Opus-authored; the pass report marks the
+boundary. Nothing below came from an answer key: each gap was found by hand-writing a task's
+query against the deployed model and reading `scripts/gold_diff.py`'s finding, then confirming
+the shape against the warehouse with a Postgres probe.
+
+- **A weather reading reaches an equipment only through that equipment's own maintenance
+  record**, but a station files 40–60 readings and every equipment stationed there lived
+  through all of them. Two references read the station's whole history rather than the one
+  linked reading. New dataset **`Station Weather Exposure`** (43,475 rows, one per equipment ×
+  reading at its communication-record station, its own degenerate dimension, every attribute
+  suffixed `(Station Reading)`) — all 850 equipment appear in all three temperature zones there
+  against 255/252/352 with no overlap on the equipment grain, and the row-weighted battery
+  health is 80.12 / 80.55 / 80.54. Plus **`Extreme Weather Readiness Status (Any Station
+  Reading)`** on the fact: the published rule with its structural term satisfied by ANY reading
+  at the station — 'Extreme Weather Ready' on 22 equipment, 4 of them shelters, against 0 on the
+  equipment's own reading.
+- **47 maintenance records carry no maintenance cycle**, so the readiness score is null on them
+  and every score built on it drops the row. `(Missing Cycle As Zero)` twins now ship for the
+  readiness score (859 against 812) and for LSSR (728/694), LOSS (859/812) and CORI (850/804),
+  the LOSS twin with average, median, maximum, minimum and a range calculation. Each twin and
+  each bare name carries both counts and a closed question.
+- **A caller's window function runs before the query's grouping collapses duplicates**, so a
+  "worst N stations within an antenna status" question ranks the 26 communication units instead
+  of the 9 groups and cannot be fixed caller-side at all. New dataset **`Station Antenna Group`**
+  (60 rows = 20 stations × 3 antenna statuses) with the unit count, the group averages and
+  `Worst`/`Best Rank In Antenna Status` precomputed. Its averages' descriptions say that a
+  rollup averages averages.
+- **Within-type efficiency ranks** (`EER Rank (Within Type)` and its safety-rank difference)
+  were reachable only by hand. Type Safety Index is constant within a type, so every row ties at
+  safety rank 1 and the difference is the efficiency rank minus one; the description says so
+  rather than shipping a constant column.
+
+Also: `Renewable Energy Contribution (Pooled All Thermal)` beside the wind-recorded-only pooling
+(67.11 against 69.35 and the mean-of-ratios 68.25 — a reference reads the all-thermal form), and
+the reliability average now names the communication-record population a per-type breakdown of it
+actually covers.
+
+Build green at iteration 3 — 3 datasets, 3 dimensions / 284 attributes, 134 metrics, 7
+calculations, 17 pins, 4 paired checks. Sonnet's two mechanical fixes were a `||` concatenation
+tripping the pipe-character gate (D-01) and a metric using `count` where the emitter's
+dimension-key audit needs `count non-null`.
