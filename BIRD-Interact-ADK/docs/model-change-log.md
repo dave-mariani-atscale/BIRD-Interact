@@ -8701,3 +8701,12 @@ Build green at iteration 3 — 3 datasets, 3 dimensions / 284 attributes, 134 me
 calculations, 17 pins, 4 paired checks. Sonnet's two mechanical fixes were a `||` concatenation
 tripping the pipe-character gate (D-01) and a metric using `count` where the emitter's
 dimension-key audit needs `count non-null`.
+
+Two follow-ups the re-run of the sweep forced, same day (`2edb37f`): the temperature-zone label
+read `Mild Cold (>-20C)` where KB 56 defines that zone as external temperature **>= -20**, so the
+label now reads `>=-20C`; and `Station Group Worst Position In Antenna Status` (`ROW_NUMBER`, ties
+broken by station name) ships beside the RANK column, because every Error group's average
+stability is exactly 0 and the RANK convention returns twenty joint firsts — a request for the
+three lowest-performing stations cannot be cut on a rank column at all. The description says
+which of the tied groups the position convention returns is decided by name order and that
+nothing in the data settles it.
