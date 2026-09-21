@@ -307,6 +307,11 @@ read any improvement. Then:
   0.3029 before and after a 22-db model pass), so it is never re-run inside the loop.
   `--query-only` when you do run it, or the arms cover different task sets. **Compute lift
   on the intersection, never on arm totals.**
+- **Cost scales with the number of whole-arm RUNS, not with the task count.** Measured
+  2026-09-20: insider_trading's 21 tasks cost $0.24 per task-run, the same as the 10-task
+  databases, and its $18.70 total is explained by three whole-arm runs rather than by having
+  twice the tasks. A database needing one baseline and one close should land near $10-12
+  whatever its size; each extra arm is about $5.
 - **Whole-arm repeats belong on the raw baseline, once.** Measured: across repeats the
   semantic arm moved on 1 task of 19, raw on 7 of 19; 13 raw tasks were perfectly stable
   and six carried the whole spread. Budget n≥3 raw when establishing a baseline. Inside the
@@ -507,7 +512,17 @@ population as a value the agent can filter or project (robot_fault_prediction_3:
 sentences failed, one twin verdict landed first try). Four identical failing trajectories on
 robot_fault_prediction_1 were filed as variance the same day, with the lever untried.
 
-### 3. Once per database — close ($1–3)
+### 3. Once per database — close ($1–3, or a full arm at n≥2 on a twin-heavy model)
+
+**Budget the close run's second repeat from the start.** Measured 2026-09-20 on
+insider_trading: the close run scored 0.3190 where the baseline had scored 0.3857 on a model
+differing only in description text, and the second repeat came back 0.3381 - 5 of 21 tasks
+flipped between the two identical-model runs. One close run would have reported a regression
+that does not exist. Where the model publishes many competing readings, the agent's choice
+among them is resolved by the simulator and moves more score than the pass's edits do, so a
+single close run cannot state a number. The third arm cost $4.82 of an $18.70 pass and was
+the difference between a number and a guess.
+
 
 One run of every task whose model object you touched — targets and canaries — at n=1 on the
 final deployed model, so the pass ends on one artifact under one grader against one model.

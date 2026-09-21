@@ -107,6 +107,12 @@ verbatim to the raw arm on every task, and the semantic arm has no KB tool at al
   Withholding a non-deleted cutoff hands the raw arm a concept for one coin that the
   semantic arm cannot have at all. Measured: eight tasks that had failed at phase 1 in
   every run scored 5.7/8 once six such flags shipped.
+- **`extract_brief.py` drops `deleted_knowledge` by design** (it keeps `term`/`type`/`is_mask`
+  only), so the ids are not in the brief and a build that looks for them there finds none and
+  silently withholds nothing. Read them with a script that opens the JSONL and prints the
+  integers and nothing else — that is the one permitted touch of that file, and it is the
+  tool's own filter input rather than an answer. Verified 2026-09-20 on insider_trading,
+  where the brief showed `null` on all three masked entries and the real ids were 12, 13, 46.
 - Derive the withheld set mechanically from the brief's `deleted_knowledge` ids (the
   extractor may copy that field — it is the tool's own filter input, an integer, not an
   answer), closed over the KB's `children_knowledge` edges, since a concept depending on a
@@ -133,7 +139,18 @@ questions touch.
 
 **Still ship a withheld concept's components**, each description saying it is one input to
 a larger named concept and that the agent should ask the user for the complete definition —
-every condition and threshold — before filtering. Otherwise the agent anchors its
+every condition and threshold — before filtering. **And say in the MODEL description which
+published columns those components are, per withheld concept.** The components being
+published is not the same as their being findable: the gate that stops a description naming
+the withheld object also stops the agent reaching the inputs by searching the concept's
+name, and the agent cannot tell "withheld" from "I have not found it yet". Measured
+2026-09-20 on insider_trading: one task spent **10** `explore_columns` calls and another
+**9**, one of them searching for the literal string `withheld` and another for a phrase
+lifted out of a description, proving a negative no amount of searching could settle; a
+third asked the right question only after **11** searches. Listing each withheld concept's
+published inputs in the model description — which `list_models` serves once per task, so it
+costs no coins — took those three to 1, 0 and 4 calls and converted one of them. Say also
+that searching the concept's name again returns nothing, or the agent re-searches. Otherwise the agent anchors its
 clarifying question on the one component it found, gets a partial yes, and never learns the
 rest. Expect the firewall to cost tasks and do not buy them back: on one database every
 task that failed on every run of both backends turned on a withheld term, and no honest
@@ -861,6 +878,16 @@ result JSON overcounts badly, because the column catalog is re-served every turn
   either it or the generic count. Where you ship both, say in each description that the choice
   changes which groups clear any given minimum, give the live counts for both, and direct the
   caller to confirm which population the question means.
+- **A reading you exclude on data grounds still ships as an object the moment you name it in
+  a description.** Excluding a degenerate reading is legitimate — a definition that selects
+  every row discriminates nothing — but the instant the bare object's own text says "read
+  the other way, all 994 qualify", the caller has been told a reading exists and left unable
+  to select it, which is the half-applied twin this section already warns about. Measured
+  2026-09-20 on insider_trading: "linked to a corporate event" read as the event row
+  existing is true on all 999 rows, so the recorded-event reading was published bare and the
+  degenerate one only described. The reference used the degenerate reading; the agent asked
+  the right closed question and could not act on the answer. Publishing it as a named twin
+  converted the task on the next run. Either publish it or do not mention it.
 - **The missing-input policy is itself a reading, and needs its own object.** Where a formula's
   inputs are absent for some entities, ship both the strict version that excludes them and the
   zero/coalesce version that keeps them, named asymmetrically, each carrying its coverage count.
@@ -1119,6 +1146,17 @@ reachable tasks in a 0/10 arm.
   raise asking (2.3 to 2.0 per run) and shipping the twin produced **zero uses** across a full run
   despite appearing in the discovery response. A twin fixes a discovery problem; it does not fix a
   comprehension problem, and the two look identical in the gold SQL.
+- **GENERATE the sentence that names a twin; do not hand-write it per object.** The rule
+  above is the most valuable one in this section and the easiest to apply to four objects
+  and forget on ten. Measured 2026-09-20 on insider_trading: after a build whose spec was
+  written with this rule open, **12 of the 14 parsed/recorded pairs carried no reference to
+  their twin at all**, and prose review had found none of them — the omission is invisible
+  because each description reads fine on its own. It cost a task that returned gold's 246
+  rows in gold's order and failed on `42.77` against `'42.77 connection-point/ownership%'`.
+  Emit the clause from a pass over the attribute list, so a pair added later cannot miss it,
+  and audit the EMITTED YAML for pairs whose partner is unnamed rather than trusting the
+  spec source. Note what this did and did not buy: the pairs were all named on the next
+  build and the task still chose the bare reading, because steering is demand-gated.
 - **Fix the aggregate twin whenever you fix the attribute.** A row-grain measure was
   disambiguated and converted its task; the `Average …` metric built on it was left silent, so any
   question asking for an average still hit the undisclosed reading.
@@ -1583,6 +1621,13 @@ failure.
   hundred warnings from one mistake. It is a warning rather than an error, so `validate` still
   succeeds and the deploy still lands — which is exactly why it survives. Merge them into one
   dimension and theme with attribute folders.
+- **A dataset may not share a name with a dimension.** `sml-cli validate` fails with `The
+  "dataset" name "X" is not unique. The file dimensions/x.yml contains "dimension" with the
+  same name`, reported once from each side, and it is an ERROR rather than a warning so the
+  deploy is blocked. Naming the fact dataset for the entity and the degenerate dimension for
+  the same entity is the natural thing to do and hits this every time; suffix the dataset
+  (`<Entity> Detail`) and leave the dimension bare, since the dimension's name is what the
+  agent sees.
 - **A dimension over the model's only fact dataset must be `is_degenerate: true`.** Without it,
   `validate` fails with `The dimension '<name>' should be degenerative` — and the model file then
   *still* requires a `relationships:` key. Emit `relationships: []`; omitting it fails with `must
@@ -1783,6 +1828,15 @@ warehouse SQL for any semi-additive or window-based construct.
    being hidden key attributes, one per absorbed dimension, which is the point of the merge. State
    the expected removals up front so the diff has something to be checked against.
 
+**A ceiling sweep is cheap enough to ITERATE, and rounds two and three are where it pays.**
+Measured 2026-09-20 on insider_trading: round 1 of 21 hand-written queries reached 3 exact
+passes; rounds 2-5 - swapping in a published twin, dropping a null group, adding the column
+the finding named - took it to **11 of 21**, all at $0. Each round's FINDING says what to
+change next: `COLUMN COUNT` is the caller's projection and not a model gap, `ROW COUNT` with
+every expected row already present is a threshold the user has to supply, `VALUES` on the
+right shape is the population or the wrong twin. Stopping at round 1 reports a model as
+unable to reach tasks it reaches.
+
 **The ceiling test: hand-write the query against the deployed model and grade it.** One query
 answers the question a whole run cannot — *can* this be answered, or did the agent merely not find
 it? Take gold's shape, express it in the model's own columns with no budget and no discovery, run it
@@ -1855,6 +1909,17 @@ the start of the work rather than a failure.
   returning numerically identical values under self-invented labels. A day of model work and the
   run-to-run noise are the same size. Either use `--repeat` and compare means, or verify the fix by
   ceiling test and treat the run as a smoke test. Say which you did.
+- **A twin-heavy model is noisier than the figures below, and its own twins are the cause.**
+  Measured 2026-09-20 on insider_trading, a v12 build publishing competing readings wherever
+  the KB or the warehouse is genuinely ambiguous: **5 of 21 tasks flipped between two runs of
+  the IDENTICAL model**, and 7 between two runs differing only in description text. Each flip
+  traced to a different twin - the recorded turnover reading then the recomputed one, the
+  strict then the zero-filled reading, the two event-link readings. The agent resolves each
+  fork by asking a user simulator that answers differently run to run. The twin rules are
+  still right - a caller cannot select a reading that is not published - but the cost is
+  measurable and it lands on variance, not on the mean: budget n≥2 for the close run on any
+  model with more than a handful of twins, and do not read a per-task delta smaller than
+  about ±3 tasks as a result.
 - **n ≥ 3 per arm before believing any delta, and spend the repeats on the noisier arm.** A single
   run moves by roughly ±0.10 average reward from agent variance alone; the measured noise floor on
   one final configuration was sd 0.012–0.018. Variance is also *asymmetric*: on a 19-task set the

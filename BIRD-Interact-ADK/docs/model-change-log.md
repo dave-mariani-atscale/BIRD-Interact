@@ -8551,3 +8551,46 @@ rollup attributes and transaction metrics, G4 names over 63 characters, a G5 col
 `solar_panel` on `Documentation Status`, and a G12 question-wording hit on "repeat
 offenders" (which is also the KB's own phrase — reworded rather than allowlisted); and
 `sml-cli validate` rejecting a dataset whose name equals a dimension's.
+
+### insider_trading v12 — the two iterations, and what they measured
+
+**Iteration 1** (`the recorded twin is named from every parsed column, and the withheld
+concepts are signposted`). Baseline n=1 was P1 9/21, reward 0.3857 against raw 0.2270, with
+the budget exhausted on 20 of 21 tasks. Two model-side causes in the trajectories:
+
+- The bare parsed column never named its `(As Recorded)` twin — **12 of the 14 pairs**, and
+  prose review had found none of them. `_15` returned gold's 246 rows in gold's order and
+  failed on `42.77` against `'42.77 connection-point/ownership%'`. The sentence is now
+  **generated once per pair**, so a pair added later cannot miss it.
+- A withheld concept was invisible rather than absent: `_8` spent **10** `explore_columns`
+  calls and `M_9` **9** — one searching for the literal string `withheld` — proving a negative
+  no search could settle. The model description now names, per withheld composite, which
+  published columns are its inputs.
+
+Measured, $2.04: `_8` 10 → **1** discovery calls and 0 → 0.7; `M_9` 9 → **0**; `_4` 11 → **4**;
+four canaries held. The mechanism fired 4 of 4.
+
+**Iteration 2** (`publish the event-link reading the description already named; stop the
+health score being rebuilt by hand`). `M_9` had asked a clean two-option question and
+submitted the knowledge base's own conjunction over the recorded-event reading; the
+row-existence reading was **described in the bare object's own text and not published**,
+which is the half-applied twin the build prompt names. It now ships as `Event Driven Trader
+(Every Transaction Linked)`, 994 traders against 745. Separately, `_15` had ignored the
+published `Compliance Health Score` and rebuilt it over the whole-year recidivism twin
+(different on 689 of 998 rows) because the description asked for weights without saying the
+column already applies them.
+
+Measured, $1.83: `_15` stopped rebuilding the score (edit (b) fired) and still chose the
+parsed network strength; `M_9` converted to 1.0 on a later run. `_8` and `_16` dropped and
+**neither is a regression** — both picked a different twin on objects neither edit touched.
+
+**Close, n=2 on the final model: 0.3190 and 0.3381, mean 0.3286 against raw 0.2270 — 10.2
+percentage points, a 1.45× multiple. Total spend $18.70 of a $25 cap.**
+
+**The pass's main finding is about the twin rules themselves.** Five of 21 tasks flipped
+between two runs of the *identical* model, every flip traced to a different published twin,
+because the agent resolves each fork by asking a simulator that answers differently run to
+run. The twin rules remain right — a caller cannot select a reading that is not published —
+but on a twin-heavy model their cost lands on variance, and a single close run cannot state a
+number. Propagated to `docs/create_bird_model_prompt.v12.md`,
+`docs/bird-database-testing-prompt.md` and all 21 kickoff files.
