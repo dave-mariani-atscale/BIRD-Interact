@@ -8710,3 +8710,32 @@ stability is exactly 0 and the RANK convention returns twenty joint firsts — a
 three lowest-performing stations cannot be cut on a rank column at all. The description says
 which of the tied groups the position convention returns is decided by name order and that
 nothing in the data settles it.
+
+### 2026-09-21, iteration 1 (Opus) — the asks the baseline proved missing
+
+Baseline n=1 scored 0.390 against the 0.610 ceiling the sweep had established, and every one of
+the six predicted caps failed while nothing else failed by accident — so the whole 0.22 gap was
+seven phases the model could already reach. All seven had the same cause, read from
+`loop_step.py`: the twin existed, the agent saw it in its own `focus_columns` result, and picked
+the sibling whose *name* matched the question's wording. The ask was in the description and it
+was not in the first sentence.
+
+So the ask now leads: `Temperature Zone` opens with the two-grain choice and names the station
+exposure grain with both count sets; `EER Rank (All Equipment)` opens with the population choice;
+`Polar Transportation Efficiency Coefficient` opens with its three readings and their coverage;
+`Structural Safety Factor` opens with the one-reading-versus-station choice. Two descriptions
+that *chose for the caller* were converted to closed questions — `Equipment Type Name` no longer
+states that "vehicles" means the type (167 of type Vehicle against 1000 carrying a chassis
+record and a vehicle score), and `Water Quality Classification` now says the water record's nine
+figures make "the water data" an open column list.
+
+Three new objects, each because a description alone could not carry the reading:
+`Structural Safety Factor (Best Station Reading)` (the highest factor among the 40–60 readings
+the equipment's station filed — 232 equipment clear the extreme-weather cut-off there against 5
+on the equipment's own reading), `Active Unit Count With Reliability Indicator` (the population
+the reliability average is actually taken over, 804, against `Equipment Unit Count`'s every
+equipment in the group), and the pairing rule on the two vehicle-safety verdicts: the composite
+shown beside a verdict is the one that decided it, and an earlier turn's choice of reading does
+not carry into a later one.
+
+286 attributes, 135 metrics, 7 calculations; green on the first build. Models `d6f96ec`.
