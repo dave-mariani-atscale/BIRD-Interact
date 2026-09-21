@@ -8782,3 +8782,14 @@ never opened it, so it now leads `Water Quality Classification`, which the agent
 in its own question that the own-reading choice yields 0 ready shelters, and the user simulator
 refused the question once and then named a fourth join path that does not exist in the
 warehouse. That is a simulator cap, not a model gap, and it is recorded as one.
+
+### 2026-09-21, closing repeat (no model change)
+
+`_14` and `_16` were the only two tasks on which the pass's two estimates disagreed, and
+neither had ever been measured twice against the shipped model. One 2-task run on `e80a397`
+($0.73, gate re-passed first, no object touched) returned `_14` 1.0 and `_16` 0.7, both above
+their iteration-3 figures. The recorded estimate is **0.450** — the mean of the two runs on the
+shipped model for those two tasks and the latest result everywhere else — against raw 0.070,
+a lift of 38.0 pp and 0.87 of the tuned shared-repo model. Latest-per-task alone gives 0.475
+and best-observed 0.490; the spread is two tasks wide and is the measurement, not the model.
+Total for the database: **$13.40** over 42 task-runs.
