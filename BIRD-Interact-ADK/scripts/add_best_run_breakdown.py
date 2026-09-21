@@ -34,7 +34,7 @@ from openpyxl.utils import get_column_letter as GL
 
 DRIVE_XLSX = ("/Users/davidmariani/Library/CloudStorage/GoogleDrive-dave@atscale.com/"
               "Shared drives/Product/Benchmark/BIRD Benchmark/Results/"
-              "BIRD Results 22db — 2026-09-01 (atscale n=3, Semantic Memory shapes, engine pr9967).xlsx")
+              "BIRD Results (atscale n=3, memory=shapes, mcp=feedback-memory-combined, engine=pr9967).xlsx")
 REV5 = ("/Users/davidmariani/workspace/atscale/bird-atscale-models/census/"
         "census_rev5_final.json")
 RESULTS = Path("results")

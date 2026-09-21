@@ -39,7 +39,7 @@ from openpyxl.utils import get_column_letter as GL
 
 DRIVE_XLSX = ("/Users/davidmariani/Library/CloudStorage/GoogleDrive-dave@atscale.com/"
               "Shared drives/Product/Benchmark/BIRD Benchmark/Results/"
-              "BIRD Results 22db — 2026-09-01 (atscale n=3, Semantic Memory shapes, engine pr9967).xlsx")
+              "BIRD Results (atscale n=3, memory=shapes, mcp=feedback-memory-combined, engine=pr9967).xlsx")
 FIRST, LAST, ALL, NOTE = 6, 27, 28, 30
 NAVY, BLUE = "FF1F3864", "FFBDD7EE"
 FMT = "+0%;-0%"

@@ -49,7 +49,7 @@ from openpyxl.utils import get_column_letter as GL
 
 DRIVE_XLSX = ("/Users/davidmariani/Library/CloudStorage/GoogleDrive-dave@atscale.com/"
               "Shared drives/Product/Benchmark/BIRD Benchmark/Results/"
-              "BIRD Results 22db — 2026-09-01 (atscale n=3, Semantic Memory shapes, engine pr9967).xlsx")
+              "BIRD Results (atscale n=3, memory=shapes, mcp=feedback-memory-combined, engine=pr9967).xlsx")
 REV5 = ("/Users/davidmariani/workspace/atscale/bird-atscale-models/census/"
         "census_rev5_final.json")
 RESULTS = "results"
@@ -180,7 +180,11 @@ def add_section(ws, acc, per_census, nruns):
         ws.column_dimensions[GL(start - 1)].width = 2
     for rng in [r for r in ws.merged_cells.ranges if r.min_row == 4 and r.min_col >= start]:
         ws.unmerge_cells(str(rng))
-    for c in range(start, ws.max_column + 2):
+    # Bounded by the next section header, so a section to the right of this one
+    # (the cost block, say) is not wiped when this one is rebuilt.
+    end_clear = next((c for c in range(start + 1, ws.max_column + 1)
+                      if ws.cell(4, c).value), ws.max_column + 2)
+    for c in range(start, end_clear):
         for r in range(4, NOTE):
             ws.cell(r, c).value = None
 

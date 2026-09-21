@@ -49,18 +49,18 @@ from openpyxl.utils import get_column_letter as GL
 
 DRIVE_XLSX = ("/Users/davidmariani/Library/CloudStorage/GoogleDrive-dave@atscale.com/"
               "Shared drives/Product/Benchmark/BIRD Benchmark/Results/"
-              "BIRD Results 22db — 2026-09-01 (atscale n=3, Semantic Memory shapes, engine pr9967).xlsx")
+              "BIRD Results (atscale n=3, memory=shapes, mcp=feedback-memory-combined, engine=pr9967).xlsx")
 FIRST, LAST, ALL, BEST, NOTE = 6, 27, 28, 29, 30
 NAVY, LILAC, BAND = "FF1F3864", "FFD9D2E9", "FFFFF2CC"
 PCT = "0.0%"
 
 HOW_TO_READ = (
-    " CENSUS-ADJUSTED (added 2026-09-16, census revision LB1, "
+    " CENSUS-ADJUSTED (added 2026-09-16, census revision {rev} over {runs} leaderboard-mode runs, "
     "docs/LEADERBOARD_TASK_CENSUS.md). UNWINNABLE Qs are Query tasks that no correct answer can win under the "
     "leaderboard protocol - a verified gold defect, an answer that depends on the query plan, or gold output "
     "(text casing, column order, row order without an ordering cue) that upstream's exact comparison demands and "
     "nothing in the question, knowledge base or simulator discloses. Every one of them also has ZERO passes across "
-    "all 15 leaderboard-mode runs recorded to date, both arms and four agent models, so the count is a floor, not a "
+    "every leaderboard-mode run recorded to date, both arms and every agent model, so the count is a floor, not a "
     "claim. ADJUSTED % divides the same passes by the winnable tasks only; it is the pass rate over the part of the "
     "benchmark that can be won, and it is NOT comparable to the board's published Success Rate, which keeps every "
     "task in the denominator. The blended adjusted figures take only Query unwinnables out of the 600-task "
@@ -110,6 +110,8 @@ def headers(ws):
 
 
 def add_section(ws, census, label):
+    rev = census.get("revision", "LB1")
+    nruns = len(census.get("runs_used") or [])
     H = headers(ws)
     need = ["Database", "Query Qs", "All Qs", "Query P1 %", "Query P2 %",
             "Success Rate (P1)", "Blended P2 %"]
@@ -130,8 +132,14 @@ def add_section(ws, census, label):
         ws.column_dimensions[GL(start - 1)].width = 2
     for rng in [r for r in ws.merged_cells.ranges if r.min_row == 4 and r.min_col >= start]:
         ws.unmerge_cells(str(rng))
-    for c in range(start, ws.max_column + 2):
-        for r in range(4, NOTE):
+    # Clear rows 4..ALL only. Row 29 (BEST SINGLE RUN) carries this section's
+    # adjusted rates for the quoted run, written by add_best_run_breakdown.py as
+    # formulas over the ALL row - wiping them here left row 29 blank every time
+    # the census was re-assembled.
+    end_clear = next((c for c in range(start + 1, ws.max_column + 1)
+                      if ws.cell(4, c).value), ws.max_column + 2)
+    for c in range(start, end_clear):
+        for r in range(4, ALL + 1):
             ws.cell(r, c).value = None
 
     cols, c = {}, start
@@ -158,7 +166,8 @@ def add_section(ws, census, label):
     end = c - 1
 
     cell = ws.cell(4, start)
-    cell.value = "CENSUS-ADJUSTED - UNWINNABLE IN LEADERBOARD MODE (revision LB1)"
+    cell.value = (f"CENSUS-ADJUSTED - UNWINNABLE IN LEADERBOARD MODE "
+                  f"(revision {rev}, {nruns} runs)")
     style(cell, fill=LILAC, bold=True, color=NAVY, center=True, wrap=True)
     ws.merge_cells(start_row=4, start_column=start, end_row=4, end_column=end)
     for _, (letter, head, _f) in cols.items():
@@ -201,7 +210,8 @@ def add_section(ws, census, label):
             if fmt:
                 ws[f"{letter}{r}"].number_format = fmt
 
-    upsert_note(ws, MARKER, HOW_TO_READ, next_markers=(" LIFT IS QUERY-ONLY",))
+    upsert_note(ws, MARKER, HOW_TO_READ.format(rev=rev, runs=nruns),
+                next_markers=(" LIFT IS QUERY-ONLY",))
     ws.row_dimensions[NOTE].height = 150
     return end - start + 1
 

@@ -48,7 +48,7 @@ from orchestrator.ainteract import calculate_initial_budget  # noqa: E402
 
 DRIVE_XLSX = ("/Users/davidmariani/Library/CloudStorage/GoogleDrive-dave@atscale.com/"
               "Shared drives/Product/Benchmark/BIRD Benchmark/Results/"
-              "BIRD Results 22db — 2026-09-01 (atscale n=3, Semantic Memory shapes, engine pr9967).xlsx")
+              "BIRD Results (atscale n=3, memory=shapes, mcp=feedback-memory-combined, engine=pr9967).xlsx")
 DATA = "bird-interact-full/bird_interact_data.jsonl"
 DB_ROW_ORDER = [
     "archeology_scan", "exchange_traded_funds", "solar_panel", "households",
