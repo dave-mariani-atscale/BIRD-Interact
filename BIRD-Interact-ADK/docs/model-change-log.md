@@ -8453,3 +8453,31 @@ so the bucket clamp is written as `CASE`.
 came from the task's own failure plus a $0 engine probe; min/max measures were already this
 model's own convention in seven places. Unmeasured for score — it is a correctness fix for
 a refusal, and no run has been spent on it.
+
+## 2026-09-20 — organ_transplant (v12): BAND_ASK (`bird-models-v12` ef60db1)
+
+One shared clause, `BAND_ASK`, leading the descriptions of `Minimum Decision Support
+Score` and `Minimum Recipient PRA Score`. No object added or removed.
+
+**Why.** After the min/max measures the remaining `_13` gap was the top band: the agent
+clamps the maximum value into band N, the expected answer does not. Measured at $0 —
+clamped returns 5 rows and fails, the unclamped textbook formula returns 6 and matches
+every cell in order.
+
+**Not hardcoded.** Returning N+1 rows for a request for N bands is a genuine ambiguity;
+the standing rule is that a quirk in the expected answer is a cap row, never a lever. So
+the clause states the property of the formula — `FLOOR((v-min)/((max-min)/N))+1` puts the
+single maximum-value row in a band of its own — says folding it in is a choice rather
+than a correction, and asks it as a closed question. It also separates equal-WIDTH from
+equal-COUNT. Both halves are defensible without reference to any expected answer.
+
+**Measured, n=1, $0.27. Half fired, no conversion.** The equal-width/equal-count half
+worked: the agent asked and the simulator confirmed equal-width. The top-band half was
+not asked — the agent spent its second question on bucket labels instead — and it
+clamped anyway. `_13` stays 0. **Stalled**, per the stop table; the change is kept
+because the ask it does raise is correct independently of score.
+
+**`_13` is no longer a cap row.** B-82 corrected: it was listed as reference-capped via
+`WIDTH_BUCKET`. It is reachable, and the three stacked causes were invented bands
+(`159e35d`), no published bounds plus an engine refusal (`5862064`, E-16), and the clamp
+(this change).
