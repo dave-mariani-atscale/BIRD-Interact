@@ -8766,3 +8766,19 @@ at all — a reading that returns nothing for every group discriminates nothing,
 should be told before it is run.
 
 288 attributes, 135 metrics; green on the first build. Models `9882a92`.
+
+### 2026-09-21, iteration 3 (Opus) — the plain name goes on the reading the questions mean
+
+Iteration 2 converted `_16` (both phases). On `_18` the ask fired *and* the simulator answered
+correctly: the agent used the station-exposure grain and got every count and every average
+right, and lost on the label column alone, because it picked the bare-word twin over the ranged
+one. That is the name-decides rule rather than another description, so the two names swapped —
+KB 56 defines each zone **by its range**, so `Station Reading Temperature Zone` now carries
+`'Extreme Cold (<-40C)'` and the bare words became `Station Reading Temperature Zone (Bare
+Label)`. On `_20` the population-intersection rule was on the `Station` attribute and the agent
+never opened it, so it now leads `Water Quality Classification`, which the agent does focus on.
+
+`_11` was not touched again: across three runs the ask fired every time, the agent spelled out
+in its own question that the own-reading choice yields 0 ready shelters, and the user simulator
+refused the question once and then named a fourth join path that does not exist in the
+warehouse. That is a simulator cap, not a model gap, and it is recorded as one.
