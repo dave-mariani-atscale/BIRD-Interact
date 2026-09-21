@@ -178,7 +178,10 @@ def add_section(ws, acc, per_census, nruns):
     if start is None:
         start = ws.max_column + 2
         ws.column_dimensions[GL(start - 1)].width = 2
-    for rng in [r for r in ws.merged_cells.ranges if r.min_row == 4 and r.min_col >= start]:
+    end_hdr = next((c for c in range(start + 1, ws.max_column + 1)
+                    if ws.cell(4, c).value), ws.max_column + 1)
+    for rng in [r for r in ws.merged_cells.ranges
+                if r.min_row == 4 and start <= r.min_col < end_hdr]:
         ws.unmerge_cells(str(rng))
     # Bounded by the next section header, so a section to the right of this one
     # (the cost block, say) is not wiped when this one is rebuilt.

@@ -130,7 +130,13 @@ def add_section(ws, census, label):
     if start is None:
         start = ws.max_column + 2  # one separator column, as the other sections use
         ws.column_dimensions[GL(start - 1)].width = 2
-    for rng in [r for r in ws.merged_cells.ranges if r.min_row == 4 and r.min_col >= start]:
+    # Only this section's own row-4 merge. `min_col >= start` also caught the
+    # section headers to the RIGHT of this one and left them unmerged, which is
+    # how the corrected-regime and cost banners lost their formatting.
+    end_hdr = next((c for c in range(start + 1, ws.max_column + 1)
+                    if ws.cell(4, c).value), ws.max_column + 1)
+    for rng in [r for r in ws.merged_cells.ranges
+                if r.min_row == 4 and start <= r.min_col < end_hdr]:
         ws.unmerge_cells(str(rng))
     # Clear rows 4..ALL only. Row 29 (BEST SINGLE RUN) carries this section's
     # adjusted rates for the quoted run, written by add_best_run_breakdown.py as
