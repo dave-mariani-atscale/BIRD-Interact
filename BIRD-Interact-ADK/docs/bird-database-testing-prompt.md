@@ -31,47 +31,77 @@ repeat. The unit of work is a task, not an arm (§ The pass).
 
 ## Who does what — three model tiers, one test
 
-Revised 2026-09-21. From 2026-09-18 to 2026-09-20 the session running this document was
-Opus and it authored every spec; Dianne judged the resulting models measurably worse than
-the earlier Fable-authored ones, so Fable is back on the pieces that decide model quality and
-kept off everything else. The tier of a step is decided by one question: **does this step's
-output change the text or the objects of the model?** Yes — Fable. No — down to Sonnet or a
-script. Nothing is delegated upward, because there is nothing above Fable to delegate to.
+Revised 2026-09-22. Two arms have run: 2026-09-18..20 the session was Opus and authored the
+specs, and Dianne judged those models measurably worse than the Fable-authored ones; 2026-09-21
+the session was Fable end to end, and the weekly Fable quota ran out at request 72 of the
+fourth database. Measured from the Claude Code transcripts at list price, a session run on
+Fable costs $55–66 per database (robot_fault_prediction: 273 requests, 400k output tokens, 72M
+cache-read tokens, $55) against a Fable allowance worth about $125 a week — two databases a
+week. Most of that was not design: it was Fable paying ~3k thinking tokens per turn to run
+`grep`, read gate output, iterate sweep rounds and rewrite files it had already written.
 
-- **Fable — the session itself, hands-off — owns model quality.** `generator/spec.py` and
-  `sql_defs.py` in full: every description, name, twin, ask, coverage flag, withholding
-  decision and pinned constant, and every later edit to any of them. The ceiling sweep —
-  writing each task's query and reading its `gold_diff` FINDING, since the finding decides
-  what changes. The per-task diagnosis after `loop_step.py` — the lever, the counterfactual
-  test, the cap decision. The findings and corrections in the report. It reads only
-  summaries: `generator/facts.md`, the KB, the column meanings, the schema, the brief,
-  `loop_step.py` screens (one per task, ~1k tokens against ~20k for the raw files), and
-  one-line gate results. Never a raw run file, never a whole emitted YAML. **Fable is
-  minimised by reading less, never by handing a quality decision down.**
-- **Sonnet (`Agent` with `model: sonnet`) does everything whose output does not change the
-  model's text.** The measurement pass that writes `generator/facts.md` — column types and
+So the tier of a step is decided by one question: **does this step DESIGN the model — decide
+which objects exist, what a description says, what is withheld, what a twin or an ask is?**
+Yes — Fable, called in. **Does it apply a decided change, run the process, or classify a
+result?** Opus, the session. **Does it produce a number, run a build, deploy, or move text
+between files?** Sonnet.
+
+- **Fable (`Agent` with `model: fable`, fresh context) — at most three calls per database.**
+  - **F1, the spec.** One call authors `generator/spec.py` and `sql_defs.py` in full — every
+    description, name, twin, ask, coverage flag, withholding decision and pinned constant —
+    from a packet Opus assembles as paths, not content: `generator/facts.md`, the KB, the
+    column meanings, the schema, `<model>/brief/task_brief.json`, the withheld KB ids as
+    integers (Opus prints them; `extract_brief.py` drops them), the
+    `docs/create_bird_model_prompt.v12.md` sections from `## Modeling rules` through
+    `## Engine constraints`, and one existing v12 `spec.py` as the format reference.
+  - **F2, the design review.** After the ceiling sweep, one call carrying every finding that
+    needs a NEW object, twin, dataset grain, withholding change or ask wording — a numbered
+    list with each task's FINDING line and the live counts — which Fable answers with `Edit`s
+    to the spec. Findings Opus can apply without a design decision never reach this list.
+  - **F3, iteration levers.** At most one call, after the baseline diagnosis, for the levers
+    that need the same kind of decision, batched across tasks. Skipped when the batch is empty.
+  - In every call: read only the packet paths and the spec sections being edited (`grep -n`,
+    `sed -n` — never a whole `spec.py`); `Write` a file at most once, `Edit` it thereafter;
+    at most 15 tool calls; no build, no `gold_diff`, no deploy; report in 20 lines or fewer.
+    A gate that needs a shorter name, ASCII, a dropped digit or an allowlisted KB name is not a
+    Fable call. If a Fable call fails on quota, stop at that boundary, write the handoff and
+    report; the spec is never authored on Opus.
+- **Opus — the session itself, hands-off — runs the pass and applies decided changes.** It
+  assembles the F1 packet; fixes wording gates mechanically (shorten, ASCII, drop the digit,
+  allowlist — never change what a description means; anything more goes on the F2 list); runs
+  the ceiling sweep — writes each task's SQL, iterates rounds two to five, reads each FINDING
+  and classifies it (caller projection / threshold / population / wrong twin / missing object)
+  — and applies the edits that need no design: a wrong count in prose, a missing twin-name
+  clause under the existing rule, a coverage flag that already exists. It owns the per-task
+  diagnosis after `loop_step.py` (lever, counterfactual test, cap decision), the worklist,
+  caps, report, findings and their propagation. It reads only summaries: `facts.md`, the KB,
+  `loop_step.py` screens (~1k tokens against ~20k for the raw files), one-line gate results;
+  never a raw run file, never a whole emitted YAML. Opus context is billed too — batch shell
+  commands, never re-read after editing, and see `docs/fable-token-efficiency-plan.md` for
+  the context-cap measures.
+- **Sonnet (`Agent` with `model: sonnet`) does everything whose output is a number or a
+  mechanical step.** The measurement pass that writes `generator/facts.md` — column types and
   where Postgres truncates, degenerate columns, `character(n)` columns, unit-suffixed text,
   JSON keys at every nesting level, join cardinalities and orphan counts, `corr(stored,
   recomputed)` for every KB formula the warehouse already stores, candidate column bindings
   per KB term with live counts — numbers only, authoring nothing. The build loop: `build.sh`
   until green, fixing only mechanical gates itself (pipe characters, a missing column, ASCII,
   schema qualification, MDX brackets, join roles, orphans) and returning any gate that needs
-  a description or a name changed as one line for Fable. Deploy, `scripts/gate_run.sh`, run
+  a description or a name changed as one line for Opus. Deploy, `scripts/gate_run.sh`, run
   scripts and launches, `llm_usage` summaries, sheet and change-log and kickoff writes, the
   propagation grep audits. Reports are 20 lines or fewer and it never decides anything.
-- **Opus is not in this loop.** It authored the v12 specs of 2026-09-18..20 and those are the
-  comparison arm; a database is authored by one model tier end to end.
 - **Every subagent brief names the forbidden files by path, not the forbidden concept.**
   "You may not read gold SQL" is not an instruction a fresh context can follow — it does not
   know which file that is. Name `bird_interact_data.jsonl` and the denied keys (`sol_sql`,
   `follow_up.sol_sql`, `sql_snippet`, `test_cases`, `conditions`, `preprocess_sql`,
-  `clean_up_sqls`) in **every** delegation that touches diagnosis, and say that the brief at
-  `<model>/brief/task_brief.json` is the only task data it may open. Measured 2026-09-19: the
-  build brief carried the prohibition by path and was honoured; the *diagnosis* brief said only
-  "you may NOT read gold SQL" and pointed at `gold_diff.py`, and the subagent opened the raw
-  JSONL, where `follow_up` carries phase-2 gold SQL. It disclosed this unprompted and marked
-  which of its conclusions were tainted — which is the behaviour to want — but the whole
-  diagnosis then had to be discarded under the rule below (A-69).
+  `clean_up_sqls`) in **every** Fable or Sonnet delegation that touches the model or a
+  diagnosis, and say that the brief at `<model>/brief/task_brief.json` is the only task data
+  it may open. Measured 2026-09-19: the build brief carried the prohibition by path and was
+  honoured; the *diagnosis* brief said only "you may NOT read gold SQL" and pointed at
+  `gold_diff.py`, and the subagent opened the raw JSONL, where `follow_up` carries phase-2
+  gold SQL. It disclosed this unprompted and marked which of its conclusions were tainted —
+  which is the behaviour to want — but the whole diagnosis then had to be discarded under the
+  rule below (A-69).
 - **A contaminated diagnosis is discarded, not laundered.** When a session or subagent has seen
   gold for a task, nothing from that context may become a model object, however well-reasoned —
   `docs/create_bird_model_prompt.v12.md` puts it as "never folded back into the build", and the
@@ -79,13 +109,16 @@ script. Nothing is delegated upward, because there is nothing above Fable to del
   Re-derive from a clean context if the change is genuinely rule-mandated, or cap the task. What
   you may keep is anything you re-verify yourself from the warehouse alone: a join cardinality,
   a row count, a key's uniqueness.
-- **This tiering is a measured test.** Each Fable-authored pass records Fable's own token cost
-  from `/cost`, Sonnet tokens per delegation, and the model's reward as a share of the tuned
-  shared-repo model's reward on the same database, so the two authoring tiers can be compared
-  across databases. If the Fable quota runs out mid-pass, stop at the boundary and report rather
-  than finishing the spec on a lesser model. History, for the record: 2026-09-19 the Fable spec
-  draft of solar_panel cost 563k subagent tokens over six gate iterations, which is why the
-  measurement half was split off to Sonnet — that split stays; the authoring half goes back.
+- **This tiering is a measured test.** At the end of every pass run
+  `python3 scripts/session_cost.py --session` — it reads this session's transcript and its
+  subagents' and prints tokens and list-price dollars per model, which is the figure the
+  kickoffs used to ask for from `/cost` (a CLI command no session can invoke; the field was
+  blank in every report). Put that table in the report beside `v12 reward / tuned reward`.
+  Budget: Fable at most ~150k output and ~15M cache-read tokens per database (≈$20 at list),
+  against $55–66 when the whole session ran on Fable. Exceeding it is a finding to report, not
+  a target to meet by skipping F2. History: 2026-09-19 the Fable spec draft of solar_panel cost
+  563k subagent tokens over six gate iterations because it ran the build loop itself — that is
+  why F1 runs no build and Sonnet's loop follows it.
 
 Measurement is **n=1 per task with feedback memory off**, plus the mechanism check in
 step 1.4. n=1 is enough to see a mechanism fire or not; it is not enough to quote a rate,

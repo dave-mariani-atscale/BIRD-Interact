@@ -20,6 +20,11 @@ not, the run would have been wasted. No LLM calls, no benchmark tokens.
     PYTHONPATH=. .venv-adk/bin/python scripts/gold_diff.py \
         --task exchange_traded_funds_7 --sql "SELECT ..."
 
+    # a whole ceiling-sweep round in one call: {instance_id: sql} or
+    # {instance_id: {"sql": ..., "phase": 2}}; prints ONE line per task and writes the
+    # full reports to <queries>.report.txt, so a 20-task round costs one screen
+    PYTHONPATH=. .venv-adk/bin/python scripts/gold_diff.py --sweep round1.json
+
 WHAT IT WILL NOT PRINT: gold SQL, in any form — not the text, not a fragment, not a
 paraphrase of its construction. Column labels and a capped sample of differing cell
 VALUES are printed, because a value diff is not a value diff without them, and the
@@ -400,6 +405,36 @@ def report(instance_id, task, phase, sql, submission_note, backend):
     return "\n".join(lines)
 
 
+def sweep(path, default_phase, backend, tasks):
+    """One line per task; full reports go to <path>.report.txt, not to the screen."""
+    spec = json.load(open(path))
+    if isinstance(spec, list):                       # [[label, task, sql], ...] also accepted
+        spec = {row[-2]: {"sql": row[-1], "label": row[0]} for row in spec}
+    out_path = path + ".report.txt"
+    full, table = [], []
+    for iid, q in spec.items():
+        sql = q["sql"] if isinstance(q, dict) else q
+        phase = q.get("phase", default_phase) if isinstance(q, dict) else default_phase
+        task = tasks.get(iid)
+        if not task:
+            rep = f"=== {iid} ===\nREFUSED: not in {settings.data_path}"
+        else:
+            rep = report(iid, task, phase, sql, "submission: from --sweep file", backend)
+        full.append(rep + "\n")
+        verdict = next((l.split(":", 1)[1].split()[0] for l in rep.splitlines()
+                        if l.startswith("grader verdict:")), "—")
+        shape = next((l.replace("shape: ", "").replace("predicted ", "").replace(", expected ", " vs ")
+                      for l in rep.splitlines() if l.startswith("shape:")), "")
+        finding = next((l for l in rep.splitlines() if l.startswith("FINDING:")
+                        or l.startswith("REFUSED:") or l.startswith("HARNESS")), "")
+        table.append(f"{iid} | P{phase} | {verdict} | {shape} | {finding[:110]}")
+    open(out_path, "w").write("\n".join(full))
+    print(f"task | phase | verdict | shape (pred vs gold) | finding      full reports: {out_path}")
+    print("\n".join(table))
+    n_pass = sum(1 for r in table if "| PASS |" in r)
+    print(f"{n_pass}/{len(table)} PASS")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -410,8 +445,14 @@ def main():
     ap.add_argument("--phase", type=int, default=1, choices=(1, 2))
     ap.add_argument("--backend", choices=("atscale", "raw"),
                     help="default: the results file's backend, else atscale")
+    ap.add_argument("--sweep", metavar="QUERIES_JSON",
+                    help="grade every {instance_id: sql} in the file; one line per task")
     a = ap.parse_args()
 
+    if a.sweep:
+        print("Gold SQL is not printed by this tool, ever; sampled values are DIAGNOSIS ONLY.\n")
+        sweep(a.sweep, a.phase, a.backend or "atscale", load_tasks())
+        return 0
     ids = list(a.instance_ids) + ([a.task] if a.task else [])
     if not ids:
         ap.error("name at least one instance_id")
