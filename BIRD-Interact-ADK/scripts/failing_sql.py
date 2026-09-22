@@ -6,9 +6,18 @@ Usage:  python scripts/failing_sql.py <results.json> [instance_id ...]
 The iteration loop this serves is "read the submitted SQL for every failing
 task, then fix the model / MCP / guidance" — so the default is failures only,
 and each task prints in the order the evidence is needed: the question, the tool
-calls that errored, then each phase's submission beside its gold.
+calls that errored, then each phase's submission.
 
-No LLM calls, no queries. Reads the results file only.
+NO GOLD. Not the SQL, and not the `sql_snippet` on each declared ambiguity, which
+is a verbatim fragment of gold and is a masked threshold whenever `is_mask` is
+set. What differs from gold is `scripts/gold_diff.py`'s job — it reads gold so
+that you do not, and returns a description rather than the answer key. Each task
+here ends with the exact command for it.
+
+The two stay separate deliberately. This is a file reader: no database, no
+services, no LLM, so it runs on any results file at any time. gold_diff needs
+Postgres, and a live MCP server for the atscale arm. Folding the diff in here
+would make the cheap first pass depend on services being up.
 """
 import json, sys, os
 
@@ -29,14 +38,6 @@ tasks = {}
 for line in open(settings.data_path):
     d = json.loads(line)
     tasks[d["instance_id"]] = d
-
-
-def gold_of(td, phase):
-    """Gold SQL for a phase. Phase 2 lives under the follow_up object."""
-    if phase == 1:
-        return td.get("sol_sql") or td.get("gold_sql") or ""
-    fu = td.get("follow_up") or {}
-    return fu.get("sol_sql") or fu.get("gold_sql") or ""
 
 
 def text(v, n=1200):
@@ -67,8 +68,9 @@ for r in sorted(res["results"], key=lambda r: r["instance_id"]):
     print("conditions:", td.get("conditions"), " output_type:", td.get("output_type"))
     amb = (td.get("user_query_ambiguity") or {}).get("critical_ambiguity") or []
     for a in amb:
-        print(f"  ambiguity[{'MASKED' if a.get('is_mask') else 'open'}] {a.get('term')!r}"
-              f" -> {str(a.get('sql_snippet'))[:160]}")
+        # The term alone says an ask was warranted, which is what this pass is for.
+        # Its `sql_snippet` is gold, so it is not printed here.
+        print(f"  ambiguity[{'MASKED' if a.get('is_mask') else 'open'}] {a.get('term')!r}")
     fu = td.get("follow_up") or {}
     if fu:
         print("Q2:", text(fu.get("query", ""), 700))
@@ -87,19 +89,29 @@ for r in sorted(res["results"], key=lambda r: r["instance_id"]):
             print(f"  [{tool}] {args}\n     -> {got}")
 
     phase = 1
+    phases_seen = []
     for t in r["tool_trajectory"]:
         if t.get("tool") != "submit_sql":
             continue
         sql = (t.get("args") or {}).get("sql", "")
         verdict = str(t.get("result", ""))
+        if phase not in phases_seen:
+            phases_seen.append(phase)
         print(f"\n-- SUBMITTED phase {phase} --\n{text(sql, 2500)}")
         print(f"-- verdict: {text(verdict, 400)}")
-        print(f"\n-- GOLD phase {phase} --\n{text(gold_of(td, phase), 2500)}")
         # Advance only on a PASS. A phase can be submitted several times, and
         # counting attempts printed the second phase-1 try beside phase-2 gold.
         if "Phase 1 correct" in verdict:
             phase = 2
 
+    # gold_diff grades the LAST submission of a phase, which is the one graded
+    # above; an earlier attempt printed here is history, not the thing to diff.
+    for p in phases_seen:
+        print(f"\n-- what differs from gold, phase {p} --")
+        print(f"   PYTHONPATH=. .venv-adk/bin/python scripts/gold_diff.py \\\n"
+              f"       --results {PATH} {iid} --phase {p}")
+
     if r["has_follow_up"] and phase == 1:
-        print("\n(no submission at all)")
+        # Phase 1 never passed, so phase 2 was never reached - not "no submission".
+        print("\n(phase 1 never passed; no phase-2 submission exists)")
     print()
