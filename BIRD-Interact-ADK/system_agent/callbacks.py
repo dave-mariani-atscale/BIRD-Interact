@@ -89,11 +89,20 @@ _QUERY_ID_RE = re.compile(
     r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
 
 
+#: Set TRAJECTORY_FULL_RESULTS=true to record every tool response IN FULL in the
+#: trajectory instead of the 2000-character preview. Off by default: a full-arm run
+#: with it on writes results files several times larger. It exists for instrumentation
+#: runs that need to see exactly what a tool returned to the agent (2026-09-22).
+_FULL_RESULTS = os.getenv("TRAJECTORY_FULL_RESULTS", "").strip().lower() in ("1", "true", "yes")
+
+
 def _preview(value: Any, limit: int = 2000) -> Any:
     if isinstance(value, (dict, list)):
         text = json.dumps(value, ensure_ascii=False)
     else:
         text = str(value)
+    if _FULL_RESULTS:
+        return text
     return text[:limit] + "...<truncated>" if len(text) > limit else text
 
 
