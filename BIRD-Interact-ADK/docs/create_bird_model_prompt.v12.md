@@ -973,6 +973,19 @@ result JSON overcounts badly, because the column catalog is re-served every turn
   defensible, they differ by a factor of eighteen, and only the second is recoverable from the
   first — so ship `… (Staffed Events Only)` with its own count, name it in the bare flag's
   description with both counts, and route the population to the user.
+- **Emit the "otherwise" branch from a GENERATED pass over the whole verdict list, and count the
+  nulls on every flag before you ship.** The rule above is right and it is applied to the four
+  flags you are thinking about and forgotten on the other seventeen, because each flag reads
+  correctly on its own and no gate counts its nulls. Measured 2026-09-22 on virtual_idol: a build
+  that had already applied it twice shipped **17 of 21** verdict flags null on the majority of the
+  population - `Loyal Achiever` Yes on 4, No on 60 and **null on 914** of 972 fans; `Platform
+  Promoter` 4 / 35 / 933; `Event Enthusiast` 114 / 3 / 863. What it cost, in one trajectory: the
+  agent asked the user which reading of a segment to use, was told, wrote exactly the right query
+  with `= 'No'` for "the other fans", and got **zero rows** off a flag that was null on 741 of 821
+  rows at that grain. The agent did everything right and the model could not answer. So: drive the
+  bare flag and its `(<Record> Record Only)` strict twin from one table of (flag, condition,
+  record) and have the generator emit both, and add a build gate that fails when a published
+  Yes/No attribute is null on more rows than it is non-null. Prose review cannot see this class.
 - **A CASE formula's "otherwise" branch covers the entity that has no satellite row.** A score of
   3 / 2 / "1 otherwise" over a security profile's two columns met 440 of 870 profiles with no
   security record; the build scored them null, so a top-5 by sensitivity showing the score beside
@@ -1040,6 +1053,17 @@ reachable tasks in a 0/10 arm.
   but find it before you spend, with `SELECT pg_typeof(...)` on the summed column. Check it
   first whenever a probe returns the right shape, the right rows and one column of
   almost-right numbers.
+- **Integer division is a FAMILY, not a special case: run `pg_typeof` over every KB ratio, not
+  the ones that look like counts.** Measured 2026-09-22 on virtual_idol, where four of the
+  knowledge base's ratios are integer quotients at the warehouse's own types and the measurement
+  pass caught only two of them: Achievement Density and Loyalty Progression Rate disagree with the
+  numeric reading on 63/64 and 62/64 rows, and Chattiness Score and Follower-to-Following Ratio -
+  both reading a JSON leaf cast to `bigint` over a `smallint` - on **787 of 821** and **182 of
+  185**. The downstream populations move with them: Engaged Lurker is 32 interactions on the
+  numeric reading and 70 on the native one. The two ratios in the same model that need NO twin are
+  the ones with a `real` operand, because a `real` promotes the integer and the quotient is
+  already `double precision`. So the test is mechanical and per formula: cast each operand to its
+  declared type, `pg_typeof` the quotient, and count the rows where the two roundings differ.
 - **Where the addition happens matters, not only the cast.** Check `pg_typeof` of each
   *intermediate*, not of the result: `real * 10` and `real / 100` are already double on Postgres
   (the integer promotes to the category's preferred type), `real + real` is not. A plain reader's
@@ -1200,6 +1224,16 @@ reachable tasks in a 0/10 arm.
   a measure declared "one of three readings, and its plainer name does not make it the default"
   took another from 0-of-3 to 2-of-2. In both the agent asked the user which reading was meant,
   quoting the two counts back, and used the answer.
+- **An ask that fires where the agent was already right LOSES the task, and that is measurable.**
+  The ask-budget rule says a needless trigger subtracts a coin; this is worse. Measured 2026-09-22
+  on virtual_idol: a task passed the baseline because the agent wrote the strict reading of a
+  concept unprompted. A twin was then published for the other reading with the recommended closed
+  question naming both counts - and on the next run the agent asked exactly that question, the
+  simulator answered **"neither of those definitions is quite right"** and invented a third reading,
+  and the task went **0.7 to 0**. Publishing the twin was right; attaching the ask to it was not.
+  So before adding a closed question to a bare object, check whether the baseline already gets that
+  object right, and if it does, publish the twin **without** the ask - the reading stays selectable
+  by name, which is what the caller needed.
 - **THE ASK FIRING IS NOT THE WIN CONDITION — THE ANSWER IS, AND THE SIMULATOR OFTEN ANSWERS
   AGAINST THE REFERENCE.** This document's twin-plus-ask rule is right and it has a ceiling that
   is worth knowing before you spend a third iteration on description text. Measured 2026-09-21
@@ -1447,6 +1481,13 @@ reachable tasks in a 0/10 arm.
     failures as evidence for a blanket "masked terms are never publishable" rule, applied it to six
     terms and shipped, needlessly removing four the documented policy permits. **A gate failure
     tells you *that* something is wrong, never *what the rule is*.**
+  - **Stating a vocabulary collision in the question's own words is itself a leak, so state it in
+    the KB's words.** Measured 2026-09-22: two KB concepts legitimately answered one everyday
+    phrase and the natural sentence - "both answer the everyday phrase '<phrase>'" - quoted the
+    task question verbatim and failed the gate, correctly. The collision still has to be published;
+    write it from each concept's own KB definition ("a fan who consumes a large amount of content
+    but participates minimally in social chat" against "low financial value with low support load")
+    and let the reader match the phrase themselves.
   - **A term a task question quotes verbatim is not publishable either.** It trips the
     question-leakage gate, and rightly: the phrase's provenance may be the KB, but nothing in the
     published text distinguishes it from a description written off the question. Where such a term
@@ -1588,6 +1629,14 @@ failure.
   every figure computed from one. Nothing errors and the values stay plausible to the last
   surviving digit. Read such columns as double, and re-probe the emitted declarations against
   `information_schema` in a generator gate.
+- **A generated column name can exceed Postgres's 63-byte identifier limit, which truncates with
+  only a NOTICE.** When the twin suffix is generated rather than hand-written, a long stem plus a
+  long qualifier goes over silently: measured 2026-09-22,
+  `interaction_fan_is_community_influencer_exact_retention_record_only` is 67 characters, so the
+  warehouse created it truncated while the dataset declared the full name and the build failed on
+  "column not in dataset" - which reads as a generator bug and is a Postgres limit. Assert the
+  length of every emitted column name in the generator, and shorten the qualifier rather than the
+  concept.
 - **Never use `|` in derived SQL** (D-01). The engine re-parses and re-emits derived-dataset SQL,
   and a `'|'` string literal does not survive the round trip: every query touching the dataset dies
   with a raw warehouse `syntax error at or near "'|'"`. Other literals in the same SQL (`'$'`,

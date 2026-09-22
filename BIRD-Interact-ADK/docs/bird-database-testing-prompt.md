@@ -166,6 +166,16 @@ not with answers.
 | `scripts/clause_fidelity.py` | battery: inbound vs dispatched, dropped clauses |
 | `scripts/regrade_sweep.py` | re-score recorded submissions under the current grader (`regrade_flags.py` no longer exists) |
 | `scripts/gold_diff.py` | model vs gold: row count, columns, values, order, rounding — without showing you gold |
+
+Two things about `--sweep` that cost a cycle each on 2026-09-22, both still true:
+
+- **It leaks one Postgres connection per task**, so a sweep of more than `pg_maxconn` tasks (the
+  default is **5**) dies partway with `PoolError: connection pool exhausted` — a 19-task sweep
+  cannot run out of the box. `PG_MAXCONN=40 PYTHONPATH=. .venv-adk/bin/python scripts/gold_diff.py
+  --sweep …` works around it.
+- **The model must be schema-qualified in the query** — `FROM "<schema>"."<Model Name>"`. A bare
+  model name is refused with an R10 error, and every task in the sweep file fails identically,
+  which reads like a broken model rather than a broken query.
 | MCP `run_query` + Postgres on `<db>_template` | anything gold_diff does not answer |
 | `scripts/failing_sql.py <results.json>` | every query the agent wrote, its verdict, and the asks it made |
 | `--mode oracle`, `orchestrator.test_harness` | plumbing checks with zero LLM calls |
@@ -328,6 +338,14 @@ Actual cases, each of which produced a confident false claim first:
 **When a pattern-match disagrees with the data, suspect the pattern.** Parse structure with
 `sqlglot` rather than matching text, and hand-verify ~10 classifications before trusting any
 rate.
+
+### 5b. A ceiling sweep is a lower bound on the model, not an upper bound on the agent
+
+Measured 2026-09-22 on virtual_idol: nine sweep rounds established that 8 of 19 tasks were
+reachable, and the baseline then passed a task that was **not** in that set — the agent found a
+query for `_16` that reached all four of its rows where my hand-written one reached three. Use the
+sweep to prove a fix sufficient and to find model gaps; do not quote it as the model's ceiling, and
+do not treat a task the sweep could not reach as capped.
 
 ### 6. Ask-triggers compete for a fixed budget
 
@@ -569,7 +587,10 @@ One iteration is:
    not show. The question is whether the finding is the
    same class as last iteration or a new one — a new one means the fix landed and the next
    constraint up the stack is now binding; the same one means the lever does not reach.
-   **A pass counts only if the trajectory shows the fix's mechanism firing** — the ask you
+   `loop_step.py` labels a submission `PASS` when the trajectory entry carries no `passed`
+   key — which is what an **execution error** looks like. Measured 2026-09-22: two of one task's
+   four submissions were reported as passes and both had failed the engine's own validator. Read
+   the `result` text before believing a `PASS` line. **A pass counts only if the trajectory shows the fix's mechanism firing** — the ask you
    wrote was asked (with the alternatives you named), the filter you described was written,
    the twin you added was projected. A pass with zero asks, or one that copies a prior
    answer (`adk_events` text like "matches the certified exemplar"), is not evidence for the

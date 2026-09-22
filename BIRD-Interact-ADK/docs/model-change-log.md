@@ -6969,6 +6969,50 @@ Event Enthusiasts have no interaction (corrected to 26 and 110 in both the pin a
 
 Emitted YAML audited for imperative prescriptions across all 122 files: none.
 
+## virtual_idol V12 - 2026-09-22 iterations 1 to 3
+
+Three iterations after the baseline, all on `diannewood/bird-models-v12` @ main.
+
+**Iteration 1 - every knowledge-base verdict answers No, not null.** The baseline showed what the
+omission costs: on `_10` the agent asked which Community Influencer reading to use, was told the
+exact one, wrote the right query with `= 'No'` for "the other fans in the session" and got zero
+rows, because that flag was Yes on 29, No on 51 and NULL on 741 of 821 interactions. Seventeen of
+the twenty-one verdict flags had the same hole - `Loyal Achiever` was Yes on 4, No on 60 and null
+on 914 of 972 fans. The "otherwise" branch rule had been applied to two flags and forgotten on
+nineteen. The treatment is now generated from one table of (flag, condition, record) driving both
+the SQL and the spec, emitting the bare flag two-valued over the whole population and a
+`(<Record> Record Only)` strict twin: 36 twins. Also renamed the raw `achiev_stats` column to
+`Influence Score (Loyalty Record)` so the everyday phrase lands on the KB composite `Community
+Influence Index`, which the agent had passed over on name match twice.
+
+**Iteration 2 - the singular member label and two concepts of a quiet fan.** Reaching the support
+record through the interaction pointer rather than the preferences chain moves the Promoters'
+merchandise-affinity average from 0.26 over 4 fans to 0.27 over 3 - the dual-FK disagreement
+`generator/facts.md` measured on 4 of 39 support rows; both paths were already published and what
+was missing was a singular label to print. Engaged Lurker and Fan Segments' `Quiet Majority` now
+name each other with their populations. Note the constraint: the everyday phrase that collides is
+a task question's own wording and the leakage gate refuses it, so the collision is stated in each
+concept's KB definition instead.
+
+**Iteration 3 - put the plain name on the reading, and stop asking.** Both changes follow the same
+measured rule. `NPS Score Tier` now carries the singular member label bare, because the value on a
+fan's row is that one fan's tier, and the KB's plural category names ship as `(KB Category Names)`
+- the run showed the agent asking which form to print and the simulator answering "either works
+fine, just pick one", so the name had to decide. And the `Negative Fan` closed question is
+withdrawn while both readings stay published: the ask converted the task at the ceiling and lost
+it in the run, because the agent asked exactly the question the description poses and the simulator
+answered "neither of those definitions is quite right" and invented a third reading. The task went
+0.7 to 0. An ask-trigger that fires where the agent is already right is not merely a wasted coin.
+
+Two build facts worth carrying. A generated column name
+(`interaction_fan_is_community_influencer_exact_retention_record_only`, 67 characters) exceeds
+Postgres's 63-byte identifier limit, which truncates with only a NOTICE and surfaces as
+"column not in dataset"; that one strict twin is published on the membership island instead. And
+the pinned constants earned their keep twice - once when flipping the bare Follower-to-Following
+Ratio to the warehouse's integer division moved Community Influencer from 27 fans to 26, and again
+when the singular NPS labels made the tier pins read zero. Both times three descriptions were
+quoting the old number.
+
 ## virtual_idol - 2026-08-28 pass
 
 **Starting point.** Arm runs 820/824/825 scored 0.074 / 0.237 / 0.289 against raw 0.158 (19 Query
