@@ -337,3 +337,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Polar Equipment V12
+      virtual_idol:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Virtual Idol V12

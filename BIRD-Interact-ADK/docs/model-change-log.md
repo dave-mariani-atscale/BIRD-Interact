@@ -6913,6 +6913,62 @@ Wasted asks gone: zero 'Not enrolled' asks, zero tie-order asks, zero zone-vs-re
 taking this pass's last observation per task instead: 4.7/21 = 0.224, +17.6 pp. Full n>=3 arm plus a
 raw re-run are owed before the sheet score moves; run file `scripts/tasks_household_0828.txt`.
 
+## virtual_idol V12 - 2026-09-22 from-scratch build
+
+New model `Virtual Idol V12` in `diannewood/bird-models-v12/virtual_idol` (commit 19b4676),
+published in catalog `bird_models_v12`, reached by the `atscale_v12` backend's new
+`virtual_idol` domain. Built from the knowledge base and the warehouse alone under
+`docs/create_bird_model_prompt.v12.md`; the shared-repo model of the same database was not
+read. 2 datasets, 2 dimensions, 331 attributes, 110 metrics, 6 calculations, 28 folders.
+
+**Why the model has two unjoined islands.** This schema is a strictly narrowing chain, not a
+star: 972 fans, 821 interactions over 797 of them, 659 memberships over 645, then engagement
+555, commerce 356, social 185, events 117, loyalty 64, retention 52. Every knowledge-base
+formula is therefore computable over a different fan population. `Fan Membership Detail`
+(986 rows, one per fan per membership) and `Fan Interaction Detail` (821 rows) are published
+as separate degenerate-dimension islands, and the fan-grain verdicts a question needs on the
+interaction side are denormalised onto it as 40 `Interaction Fan ...` attributes rather than
+reached by a join - which is what makes a gift total break down by marketing preference at
+all (the cross-fact refusal recorded as M-37 against the shared-repo model).
+
+**Which pointer a dataset follows is a modelling decision here, not a detail.** `engagement`
+carries a pointer to an interaction and a pointer to a membership, and on 27 of its 555 rows
+those resolve to *different* fans; `moderationandcompliance` disagrees on 4 of 25 and
+`supportandfeedback` on 4 of 39. The membership island follows the membership pointer
+throughout and the interaction island the interaction pointer, and three `... Matches Member
+Fan` flags publish the disagreement counts so a caller can select either population.
+
+**Integer division is the value-pipeline story on this database.** Four knowledge-base ratios
+are integer quotients at the warehouse's own types. KB8 Achievement Density and KB13 Loyalty
+Progression Rate differ from the numeric reading on 63/64 and 62/64 rows; KB2 Chattiness
+Score on 787/821 and KB5 Follower-to-Following Ratio on 182/185 (measured 2026-09-22, recorded
+in `generator/facts.md` section 16). Both readings ship, the native one bare with an `(Exact)`
+twin, because the reference is a plain SQL reader. KB0 FMI and KB1 CCI need no twin - a `real`
+operand promotes the integer and they are already `double precision`.
+
+**Nothing is withheld.** All four `deleted_knowledge` ids (19 Whale Fan, 50 Fan Segments, 52,
+53) are deleted on Management tasks only, which the semantic backends do not run, so
+`utilities/masked_threshold_gate.py` reports them inert and Whale Fan's `FMI > 20` and the Fan
+Segments quadrants ship under the knowledge base's own names with its own numbers.
+
+Other conventions: nine case-noise categoricals ship case-folded bare with an `(As Stored)`
+twin (raw distinct runs 2-5x the folded distinct); the twelve unit-suffixed text columns and
+the four text date columns - which are in four *different* formats - ship parsed bare with an
+`(As Recorded)` twin; `engagement.eng_rate` is the one `real` column where the float32 boundary
+flips the two-decimal rounding (23 of 555 rows), so it carries a display copy.
+
+Build: 6 iterations to green. Five gate failures needed a decision rather than a mechanical
+fix and were taken in-session: four labels published as both an attribute and a metric (the
+per-fan rollups took the `Fan ...` prefix, the interaction-grain metrics kept the bare name,
+per the entity-grain-copy rule); two dimension names wrongly listed in the spec's own
+`RESERVED_ENTITY_WORDS`; a description carrying the question's phrase `best fans`, reworded to
+the knowledge base's own wording for KB32; a description quoting a task question's six-word run,
+reworded onto the model's own column names; and a pinned constant asserting model-wide fan
+counts against the interaction grain, where 1 of the 27 Community Influencers and 4 of the 114
+Event Enthusiasts have no interaction (corrected to 26 and 110 in both the pin and the prose).
+
+Emitted YAML audited for imperative prescriptions across all 122 files: none.
+
 ## virtual_idol - 2026-08-28 pass
 
 **Starting point.** Arm runs 820/824/825 scored 0.074 / 0.237 / 0.289 against raw 0.158 (19 Query
