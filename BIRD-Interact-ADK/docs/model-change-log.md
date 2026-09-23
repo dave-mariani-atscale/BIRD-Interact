@@ -8948,3 +8948,67 @@ numeral attribution in the masked-threshold NUMBER detector, each because the ga
 on what the documented policy already requires. The change lives in
 `diannewood/bird-models-v12/utilities/birdsml` and affects every model in that repo the next
 time it is regenerated.
+
+## disaster_relief V12 - 2026-09-23 from-scratch build
+
+New top-level folder in `diannewood/bird-models-v12`, deployed into the shared
+`bird_models_v12` catalog as **Disaster Relief V12**, with a `disaster_relief` domain added to the
+`atscale_v12` backend in `config/environment_backends.yaml` in this same commit. No new repo and
+no new catalog. Spec authored in one Fable call from the measurement pass, the KB, the column
+meanings, the schema and the task brief; built by the shared `utilities/birdsml` emitter.
+
+**Why the model is shaped the way it is.** The spine is the **disaster event** (1000 rows), not
+the operation (231). Every satellite is 1:1 or 1:0..1 with `disasterevents`, and four of them also
+carry an operation reference covering 967, 800, 201 and 57 disasters. `transportation`, `supplies`
+and `environmentandhealth` carry no operation reference at all, so any per-operation figure built
+from their columns needs a bridge. This is the database the build prompt's `<Entity> On <Record>`
+rule was derived from, and the measurement sharpens it: for `beneficiariesandassessments` and
+`coordinationandevaluation` the operation reference is not operation-grain either — 212 of 231 and
+227 of 231 operations have rows spanning more than one distinct disaster. So the coalesced
+`Responding Operation ID` is bare and each satellite's reference ships beside it with its own
+count, the two wide ones saying plainly that an aggregate over them spans many disasters.
+Verified before shipping: of the 800 disasters carrying two or more of the four references,
+**none disagree** — they are denormalised copies, so the split is about population only.
+
+**Integer division, and a correction to the measurement pass.** KB9 `Medical Support Ratio` is
+`bigint / bigint` at the declared types and evaluates to exactly 0 on all 33 non-null rows against
+a true range of 0.0057-0.176, which makes KB21 `Mass Casualty Incident`'s `MSR < 0.01` branch
+always true. KB0 collapses 950 of 1000 rows the same way. The design turn then caught that **KB55
+`Medical Staff Ratio` is the same shape and the measurement pass had reported only its widened
+reading** — re-probed and confirmed bigint, 0 on all 57 rows. Both readings of all four ratios
+ship as asymmetric twins, the decimal reading bare, `(Integer Division)` qualified, carried down
+into MCI, PHRS and Public Health Emergency.
+
+**Thresholds that select nothing, shipped anyway.** KB30 `Major Disaster` (DSI 500,000-2,000,000
+against a live maximum of 71,364), KB31 `Overwhelmed Logistical Hub` (HSI > 1,000,000 against
+~35,682) and KB56 `Hub Overload` (> 1.5 against 1.456) each select 0 rows. Each flag ships with
+"0 of N qualify" in its first sentence, because an agent that rebuilds an empty rule by hand
+spends its budget doubting the result. `Major Disaster` and `Catastrophic Disaster` (DSI > 15,000,
+505 of 1000) answer overlapping everyday wording, so both descriptions and both count metrics lead
+with the collision.
+
+**KB enumerations that are incomplete against their own column.** KB41 `Hazard Severity Levels`
+names Level 1, 3 and 5 while `haz_level` stores Severity-1 through Severity-5 — the two unnamed
+levels are 399 of 1000 rows. KB48 `Data Quality Value` describes a 0-100 scale while the column
+stores {1,2,3,4,5}, and KB15 `CQI` multiplies it by 20, which is the 1-5 scale; the discrepancy is
+stated with both live figures and routed to the caller rather than silently resolved.
+
+**Answer-key firewall.** Seven KB ids are deleted on Query tasks (3, 6, 9, 14, 15, 16, 25). Six are
+`calculation_knowledge` — KB-named formulas with no masked number — and ship under their own names
+under the firewall's own rule. Only id 25 `Logistical Gridlock` is withheld; its two component
+columns ship with the ask-for-the-complete-definition sentence and the model description signposts
+which published columns they are. Ids 18 and 23 are deleted on Management tasks only and are inert
+on a Query-only backend. Census: id 25 is used by exactly one Query task, `_9`, which is also the
+task that deletes it, so **the firewall forfeits zero task-uses on this database**.
+
+**Build.** 2 iterations to green. 3 datasets, 3 dimensions, 320 attributes, 87 metrics, 3
+calculations, 32 folders with the largest at 23 objects. `sml-cli validate` clean, 1 warning (the
+generic SML-version notice). Mechanical gate fixes only, no wording decision required: four
+`unique_name`s over 63 characters shortened at the qualifier, five sibling-namespace collisions
+prefixed for the entity, and two dangling-reference false positives.
+
+**Workaround worth noting for the next model in this repo:** `birdsml.ENGINE_NOTES` itself trips
+the G6 dangling-reference gate on its `CAST(NULL AS VARCHAR)` example, whose nested parentheses
+read to the gate as a pointer to a published object. `exchange_traded_funds` worked around it with
+a local reword and this model had to do the same, which means the defect is in the shared constant
+and should be fixed there rather than in a third generator.
