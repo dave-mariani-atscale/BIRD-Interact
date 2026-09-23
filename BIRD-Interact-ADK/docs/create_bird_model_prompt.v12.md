@@ -1555,6 +1555,17 @@ Many of the rules above multiply object count.
 - Withholding peripheral columns that no question touches is legitimate and preferred over shipping
   them for completeness. Record which ones and why, in the spec, next to the exclusion — a silent
   omission is indistinguishable from an oversight later.
+- **A twin whose QUALIFIER sounds authoritative out-competes the bare name, and the bare name was
+  the point.** The naming rules say to move the plain name onto the reading the questions mean and
+  push the other behind a qualifier - but the qualifier is also a name, and some qualifiers read as
+  a recommendation. Measured 2026-09-22 on virtual_idol: the reference prints a singular member
+  label, so the singular was moved onto the bare `NPS Score Tier` and the knowledge base's plural
+  forms were parked as `NPS Score Tier (KB Category Names)`. The agent then selected the twin on
+  both submissions - the qualifier says "these are the knowledge base's own names", which reads as
+  the authoritative choice - and lost the task on the label after getting the population, the ratio
+  and the route right. Name a parked reading for what NARROWS it (`(Recorded Only)`,
+  `(Support Record Only)`, `(Per Membership)`), never for what endorses it: `(KB …)`, `(Official …)`,
+  `(Standard …)`, `(Canonical …)` and `(Exact)` all invite the pick you are trying to avoid.
 - **An added object must earn its place twice: once by being in the KB, once by not shadowing a
   neighbour.** Object count is not the only cost — *vocabulary collision* is. A legitimate KB
   concept can out-compete the concept a question needs when the two share words, and the added one
