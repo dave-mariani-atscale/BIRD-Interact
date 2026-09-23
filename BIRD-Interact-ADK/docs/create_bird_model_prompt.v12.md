@@ -121,6 +121,12 @@ verbatim to the raw arm on every task, and the semantic arm has no KB tool at al
   generator gate; wire it into the build rather than auditing by hand. It can legitimately
   report an entry as **inert** — masked only on a task category this backend does not run,
   and therefore published at no measurement cost.
+- **Masking is per TASK; the model is one artifact. Census the cost before building.** A cutoff
+  deleted on one Query task is gone from the model on *all* of them, while the raw arm still looks
+  it up for a coin elsewhere: on exchange_traded_funds, four task-uses forfeited to protect three.
+  Count, per withheld id, the Query tasks that USE it against those that DELETE it, and report the
+  difference as a ceiling on the arm. Do not close it by publishing — that leaks on the task where
+  the entry is deleted.
 - Read `deleted_knowledge` per task before deciding. A name that resembles a deleted entry
   is not the test: one database deletes a "High Fidelity Mesh" entry on one task, so it and
   everything depending on it stay withheld; another has a deleted rule and a non-deleted
@@ -593,8 +599,16 @@ user. Check the raw JSON for every input a formula names before deciding it is c
   and cap the task.
 - Before shipping any rank object, confirm the inbound interface cannot already express it.
   `RANK() OVER (...)` in the projection is accepted, so a displayed rank often needs no model
-  object at all. Prefer the caller's window function and spend the surface elsewhere — but
-  read the group-context rules below before concluding a rank is expressible caller-side.
+  object at all — but read the next bullet before acting on that, and read the group-context
+  rules below before concluding a rank is expressible caller-side.
+- **"The caller can write it" is not "the caller writes it": ship a rank for every score a
+  superlative in the task set reaches for.** A-01 measured `RANK()` written **0 times in 5 runs**
+  of a task whose reference projects one. A rank over a published score needs no answer key and is
+  found by `explore_columns`; a window function the caller must think of is found by nothing.
+  Know the limit before spending surface on it: a pre-built rank's population is fixed before the
+  caller's filter, so it cannot answer a *within-filter* rank. Measured 2026-09-23 on
+  exchange_traded_funds, eight such ranks converted **nothing** — what may carry is the rank
+  description's caller-side escape (`RANK()` in a FROM-subquery over the filtered rows).
 - **A precomputed rank bucket gets a whole-population twin with nulls last.** A quartile
   materialised over the 564 entities carrying a score (141 per bucket) is not what "group
   every user into four buckets" means for all 670; a plain `NTILE(4) OVER (ORDER BY score)`
@@ -1088,6 +1102,12 @@ reachable tasks in a 0/10 arm.
   sum over thousands of rows amplifies float32 noise past the second decimal** — the "the grader
   normalises float32 noise" finding under After acceptance holds for row-level values and fails
   for these.
+- **The opposite can hold too: a jsonb leaf read as EXACT DECIMAL.** jsonb stores numbers as
+  `numeric`, so `::numeric` is sometimes the faithful read. Measured: `(0.1 - 0.0076)/0.3 + 0.007`
+  is `0.315` exactly and `0.31499997` in float32, which the grader's HALF_UP turns into `0.32`
+  against `0.31`. It moved 2 of 1011 rows on one formula and 0 on three others, so decide **per
+  formula** — a model-wide switch risks every already-exact task. Both rules are measurements, not
+  principles: count the rows where the two roundings differ and follow the count.
 - **A `real` column published for display carries the decimal Postgres itself prints, not the
   IEEE widening.** A stored `real` 0.755 reaches every SQL client as the text `0.755` (Postgres
   prints the shortest round-tripping string) and the reference is graded from that; the engine
@@ -1254,6 +1274,13 @@ reachable tasks in a 0/10 arm.
   - Publishing a twin for an answer the simulator sometimes gives can turn a hand-written wrong
     answer into a cleanly-executed wrong answer, which is not a gain. That is the demand gate
     below, and this is what failing it looks like.
+- **Count ask clauses against the coin budget, and count both sides the same way before believing
+  a comparison.** Each trigger costs about two coins: on exchange_traded_funds 11-12 of 19 tasks
+  exhausted their coins every run, one of them after ten `ask_user` calls and having been given the
+  right answer. Grep the emitted YAML and name what each ask displaces. Beware the comparison: a
+  loose grep for "the user" read 32 here against a tuned model's 24, and a strict grep for the
+  trigger forms put both at **16** — the gap did not exist. Drop an ask where the baseline shows
+  the agent already right; that is per-object evidence, not a headcount against another model.
 - **That steering is demand-gated, not coverage-gated.** Before shipping a twin, confirm the
   failure is *"the agent does not know a choice exists"* and not *"the agent knows and still
   fails"*. On one model the agent **already** asked the population question in the baseline and
@@ -1881,6 +1908,12 @@ failure.
   Hand-triage gets it right once and then someone rewords it next time; the exemption gets it right
   permanently, and what remains flagged is genuine question phrasing (colloquialisms, or an
   `Answers '<question>'` clause).
+- **A build gate can fail on exactly what this document requires, and then the fix belongs in the
+  gate.** Three did in one build: the leakage gate flagged a knowledge-base entry's own name, the
+  withheld-name gate flagged the firewall signpost the firewall section mandates, and the
+  masked-threshold NUMBER detector fired on an unmasked concept's numeral corroborated only by that
+  warehouse's entity noun. All three were fixed in the shared gate, not by rewording a correct
+  description. **A gate failure tells you *that* something is wrong, never *what the rule is*.**
 - Before validate/deploy, dry-run every derived dataset's SQL directly against the warehouse (row
   count, declared grain is unique, every declared column resolves, plus a hand-recomputed spot
   value). This catches same-level alias references and formula transpositions that no SML layer

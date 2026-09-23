@@ -120,6 +120,15 @@ between files?** Sonnet.
   563k subagent tokens over six gate iterations because it ran the build loop itself — that is
   why F1 runs no build and Sonnet's loop follows it.
 
+**Correction, measured 2026-09-23 on exchange_traded_funds.** The tiering was adopted because an
+all-Fable session cost $55–66 per database. The first full pass under it cost **$59.88** — Opus
+$44.97 over 222 requests and 73.2M cache-read tokens, Fable $11.54 over three calls, Sonnet $3.37 —
+inside that same range. The money moved to Opus, which now runs the sweep, the diagnosis and the
+process; it did not go away. What the tiering demonstrably buys is Fable **quota**, 28 requests
+against a weekly allowance the all-Fable sessions exhausted at the fourth database. That justifies
+the split on its own, but it is not a cost saving and a kickoff implying one is wrong. To make
+sessions cheaper, attack Opus's own context, not which model authors the spec.
+
 Measurement is **n=1 per task with feedback memory off**, plus the mechanism check in
 step 1.4. n=1 is enough to see a mechanism fire or not; it is not enough to quote a rate,
 so the report says "fired 1/1" and the sheet number waits for the close run. Buy a second
@@ -138,6 +147,10 @@ not with answers.
    **10**-task databases done without a full sweep. Ten sweep rounds, every sufficiency proof
    and every warehouse probe cost $0 and found four model gaps and one cap before a cent was
    spent. Budget by runs when you plan a pass, and never quote a per-task figure as a total.
+   Measured 2026-09-22 on exchange_traded_funds: a **19**-task database closed for **$13.82**
+   across six runs — a 19-task baseline, a 7-task repair of the tasks the interference above
+   destroyed, two targeted runs of 6 and 5 tasks, a 19-task close run and a 2-task repeat —
+   against a $25 cap, and the sweep is what kept the targeted runs to 5 and 6 tasks.
 1. **Do all $0 work first, in one batch.** Most questions never need a run.
 2. **Runs are per task, never per arm.** `--tasks <id>,<canaries> --repeat 2`, bought only
    after the fix is proven sufficient at $0 and only inside that task's cap (§ The pass).
@@ -176,6 +189,18 @@ Two things about `--sweep` that cost a cycle each on 2026-09-22, both still true
 - **The model must be schema-qualified in the query** — `FROM "<schema>"."<Model Name>"`. A bare
   model name is refused with an R10 error, and every task in the sweep file fails identically,
   which reads like a broken model rather than a broken query.
+**"Free" means free of LLM cost, not free of interference — and the run interferes with itself.**
+Every tool below that reaches gold opens `<db>_template`, and `gold_diff --sweep` leaks one
+connection per task. The harness clones that same template with `createdb` per task, and `createdb`
+fails outright if *any* session is connected. Measured on exchange_traded_funds: **7 of 19 tasks**
+lost when a sweep ran beside a baseline, and **1 of 7** lost with no sweep running, at
+`--concurrency 3`, the log naming the two sibling tasks that held it. Two rules follow. Do the free
+work before the run, never beside it. And read a task returning with **no `instance_id`** as a
+harness loss to re-run, not as a zero — it is invisible in the results JSON and the cause appears
+only in `logs/db_environment.out`. All 15 recorded occurrences are on exchange_traded_funds, whose
+gold queries hold the template longest (tracker E-03); on a database with that profile, run at
+`--concurrency 1`.
+
 | MCP `run_query` + Postgres on `<db>_template` | anything gold_diff does not answer |
 | `scripts/failing_sql.py <results.json>` | every query the agent wrote, its verdict, and the asks it made |
 | `--mode oracle`, `orchestrator.test_harness` | plumbing checks with zero LLM calls |
@@ -230,6 +255,17 @@ So, in the worklist and in the report:
   polar_equipment `_16` gave 0, 1.0, 0 with the model improving throughout. Do not read a
   single flip as a regression, and check the $0 ceiling before you believe one.
 
+## Net the firewall out before comparing against a tuned model
+
+Added 2026-09-23. The tuned models in `AtScaleInc/bird-atscale-models` do **not** observe the
+answer-key firewall, so a v12 arm compared against one is not compared on modelling craft alone. On
+exchange_traded_funds the tuned model publishes **five of the seven withheld cutoffs** as
+precomputed flags, and one description states the resulting screen's population. The gross per-task
+gap was 4.6 reward points and **2.3 of them sat on tasks decided by a published withheld cutoff**;
+the rest was craft, and the craft half is the half worth working on. So quote the craft gap beside
+the headline and say which tasks turn on a withheld cutoff — otherwise the arm looks worse than it
+is and the next pass chases tasks no honest model reaches.
+
 ## When two estimates of a pass disagree, re-run the tasks the difference rests on
 
 Added 2026-09-21. A pass that iterates produces several runs against several model versions, so
@@ -266,7 +302,11 @@ two, and today's most common real cause was neither: it was the user simulator.
 The SQL an agent writes is **not** what runs. The engine rewrites it, and several rewrites
 are silent — a clause dropped or inverted, a plausible result, no error. Known so far
 (re-probe on your build): `OFFSET` ignored entirely; NULL ordering inverted vs Postgres and
-un-overridable; a `UNION` touching the model returning zero rows without dispatching; a
+un-overridable; a top-level `UNION ALL` over the model **works** — it dispatches and grades, and a listing
+`UNION ALL` a one-row summary is a working shape (corrected 2026-09-23; the old entry here said it
+returned zero rows). What does not work: a `UNION` inside a subquery, CTE or `WHERE`; a bare `NULL`
+literal in a branch, which needs `CAST(NULL AS VARCHAR)`; and the branch **order**, which the engine
+re-sorts and no `ORDER BY` can restore (E-17). Also: a
 grain-forcing derived table that drops the entity key and re-groups on the value tuple.
 
 **A negative result is valuable** — "the engine dispatched exactly what the agent wrote"

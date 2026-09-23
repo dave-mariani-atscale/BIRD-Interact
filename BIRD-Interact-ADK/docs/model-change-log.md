@@ -8909,3 +8909,42 @@ all of which are Management-task output written onto the live and template
 `exchange_traded_funds` databases rather than source data (tracker row B-99). The exclusion is
 deliberate, not incidental: those objects are answer-shaped for the Management tasks in this
 database's own task set, and a model that read them would be reading the answer key.
+
+Iteration 1: the bare Appraisal Ratio and Active Management Footprint were a unit error, not a
+competing reading. The KB writes `1 - R-Squared`, and this warehouse stores R-Squared on a
+0-100 scale, so the literal reading subtracted a percentage from 1 and took the square root of
+a negative number; it selected 5 funds where the reference selects 72. The converted reading
+now carries the bare name, and the literal twins were deleted rather than parked, since there
+was no competing reading to preserve. Separately, `Positive Active Manager Value Share Of
+Scored Funds (Percent)` was dividing by the 1507 funds that carry a risk record instead of the
+1011 that carry an Active Manager Value; its denominator is now a new `Funds With Active
+Manager Value Count` measure scoped to the funds that actually have one. And Active Manager
+Value alone moved to exact-decimal arithmetic over the jsonb leaves, because jsonb stores
+numbers as `numeric` and two rows of the 1011 rounded differently at two decimals under
+floating-point division — the other formulas were measured at zero rows of disagreement and
+left as they were.
+
+Iteration 2: `Funds With 1-Year Return Count` shipped so a count shown beside the median counts
+the same funds — the median is over the 1917 funds that carry a one-year return, not all 2310.
+The `Appraisal Ratio` and `Active Management Footprint` descriptions now state KB 68's own
+thresholds of 0.2 and 0.5 directly, which were never withheld — only the High-Conviction cutoff
+is — because the agent had been filtering `> 0` on a number the knowledge base states outright.
+And `Strategy Type` now leads with routing to the knowledge-base concept instead of disclaiming
+it in its second sentence, because asked how many value funds there are the agent had filtered
+the stored style label six times with no ask at all.
+
+Iteration 3: three facts about the SQL interface were added to the model description's engine
+notes — `COUNT(*)` is refused because a semantic model has no row count of its own, `SUM` or
+`COUNT` over a dimension attribute returns one row per member instead of a total, and
+`ORDER BY ... DESC` places NULLs first, the reverse of Postgres. Two canaries had gone to zero
+with entirely correct filters and cutoffs purely on the first two of those. This converted 5 of
+5 tasks in one run and was the strongest lever of the pass.
+
+Outcome: baseline 0.3368, final 0.534, raw 0.2947, tuned shared model 0.7105.
+
+Three shared build gates were also changed during this build: a knowledge-base-verbatim
+exemption for the question-leakage gate, a signpost-owner list for the withheld-name gate, and
+numeral attribution in the masked-threshold NUMBER detector, each because the gate was failing
+on what the documented policy already requires. The change lives in
+`diannewood/bird-models-v12/utilities/birdsml` and affects every model in that repo the next
+time it is regenerated.
