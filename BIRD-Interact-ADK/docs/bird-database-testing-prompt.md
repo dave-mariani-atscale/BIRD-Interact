@@ -46,7 +46,7 @@ Yes — Fable, called in. **Does it apply a decided change, run the process, or 
 result?** Opus, the session. **Does it produce a number, run a build, deploy, or move text
 between files?** Sonnet.
 
-- **Fable (`Agent` with `model: fable`, fresh context) — at most three calls per database.**
+- **Fable (`Agent` with `model: fable`, fresh context) — at most four calls per database.**
   - **F1, the spec.** One call authors `generator/spec.py` and `sql_defs.py` in full — every
     description, name, twin, ask, coverage flag, withholding decision and pinned constant —
     from a packet Opus assembles as paths, not content: `generator/facts.md`, the KB, the
@@ -60,6 +60,14 @@ between files?** Sonnet.
     to the spec. Findings Opus can apply without a design decision never reach this list.
   - **F3, iteration levers.** At most one call, after the baseline diagnosis, for the levers
     that need the same kind of decision, batched across tasks. Skipped when the batch is empty.
+  - **F4, turn economy.** One call whose brief is to SHORTEN THE PATH, never to add a reading.
+    Added 2026-09-23, because the measurement says this is where the remaining score is: on
+    exchange_traded_funds **7 of the 12 failing tasks were reachable at the $0 ceiling and had run
+    out of coins**, so the model could already answer them and the agent never arrived. Give Fable
+    the trajectories of the tasks that died with coins at zero and ask it to cut what they read
+    before reaching the answer — descriptions that bury the deciding sentence, asks that fire where
+    the agent was already right, near-duplicate readings it has to sift. Budget allows it: three
+    calls used $11.54 of the ~$20 per-database allowance.
   - In every call: read only the packet paths and the spec sections being edited (`grep -n`,
     `sed -n` — never a whole `spec.py`); `Write` a file at most once, `Edit` it thereafter;
     at most 15 tool calls; no build, no `gold_diff`, no deploy; report in 20 lines or fewer.
@@ -68,11 +76,13 @@ between files?** Sonnet.
     report; the spec is never authored on Opus.
 - **Opus — the session itself, hands-off — runs the pass and applies decided changes.** It
   assembles the F1 packet; fixes wording gates mechanically (shorten, ASCII, drop the digit,
-  allowlist — never change what a description means; anything more goes on the F2 list); runs
-  the ceiling sweep — writes each task's SQL, iterates rounds two to five, reads each FINDING
-  and classifies it (caller projection / threshold / population / wrong twin / missing object)
-  — and applies the edits that need no design: a wrong count in prose, a missing twin-name
-  clause under the existing rule, a coverage flag that already exists. It owns the per-task
+  allowlist — never change what a description means; anything more goes on the F2 list); writes
+  the ceiling sweep's FIRST round and classifies every FINDING (caller projection / threshold /
+  population / wrong twin / missing object), then hands rounds two onward to Sonnet against the
+  decision table below and applies the edits that need no design: a wrong count in prose, a
+  missing twin-name clause under the existing rule, a coverage flag that already exists.
+  Revised 2026-09-23: Opus running every sweep round itself was 75% of a pass's session cost
+  ($44.97 over 222 requests), and rounds two onward are a lookup, not a judgement. It owns the per-task
   diagnosis after `loop_step.py` (lever, counterfactual test, cap decision), the worklist,
   caps, report, findings and their propagation. It reads only summaries: `facts.md`, the KB,
   `loop_step.py` screens (~1k tokens against ~20k for the raw files), one-line gate results;
@@ -84,12 +94,25 @@ between files?** Sonnet.
   where Postgres truncates, degenerate columns, `character(n)` columns, unit-suffixed text,
   JSON keys at every nesting level, join cardinalities and orphan counts, `corr(stored,
   recomputed)` for every KB formula the warehouse already stores, candidate column bindings
-  per KB term with live counts — numbers only, authoring nothing. The build loop: `build.sh`
+  per KB term with live counts, and — added 2026-09-23 — **every KB formula evaluated over the
+  live data with its range, null count and a flag for any NaN, negative or out-of-range result**.
+  That last one is cheap and catches a whole class before the spec is written: an Appraisal Ratio
+  defined as `alpha / (volatility * sqrt(1 - R-squared))` over an R-squared stored 0-100 is the
+  square root of a negative on nearly every row, which a range line shows at once and which
+  otherwise costs three sweep rounds to find. Numbers only, authoring nothing. The build loop: `build.sh`
   until green, fixing only mechanical gates itself (pipe characters, a missing column, ASCII,
   schema qualification, MDX brackets, join roles, orphans) and returning any gate that needs
-  a description or a name changed as one line for Opus. Deploy, `scripts/gate_run.sh`, run
-  scripts and launches, `llm_usage` summaries, sheet and change-log and kickoff writes, the
-  propagation grep audits. Reports are 20 lines or fewer and it never decides anything.
+  a description or a name changed as one line for Opus — **all of them in ONE list, not one per
+  turn**, since a gate loop that bounces a single wording fix at a time burns an Opus turn each
+  time. **Ceiling-sweep rounds two onward**, against this table: `COLUMN COUNT` → change the
+  projection to the count and order gold names; `ROW COUNT` with every expected row already
+  present → a threshold the question does not state, so try the caller-supplied value; `ROW ORDER`
+  → an ORDER BY defect; `VALUES` on the right shape → the population or the wrong twin, so swap
+  the published twin or restrict to the coverage flag; `VALUES ROUNDING` → a cast. Escalate to
+  Opus only a finding that needs an object the model does not publish. Deploy,
+  `scripts/gate_run.sh`, run scripts and launches, `llm_usage` summaries, sheet and change-log and
+  kickoff writes, the propagation grep audits. Reports are 20 lines or fewer and it never decides
+  anything.
 - **Every subagent brief names the forbidden files by path, not the forbidden concept.**
   "You may not read gold SQL" is not an instruction a fresh context can follow — it does not
   know which file that is. Name `bird_interact_data.jsonl` and the denied keys (`sol_sql`,
@@ -541,6 +564,15 @@ to learn it, and the next pass diagnoses the same tasks again from fresh traject
 Instead, take each fixable task to a stop condition before touching the next, with the price
 of each task and of the database capped before you start.
 
+**Buy a 3-task BUDGET PROBE after the build and before the baseline (~$0.75).** Added
+2026-09-23. The ceiling sweep tells you what the model can reach; it tells you nothing about
+whether the agent can reach it inside its coins, and that is what decides the score — on
+exchange_traded_funds **7 of the 12 failing tasks were reachable at the $0 ceiling and out of
+coins**, and this was only visible after a full 19-task baseline had been paid for. Run three
+tasks of mixed shape and read `budget_remaining` and the `explore_columns` count, not the score.
+If tasks are landing at zero coins, the model is too wide or its deciding sentences are too deep,
+and both are far cheaper to fix before the baseline than after it.
+
 ### 0. Once per database — baseline and worklist ($0 when a baseline exists)
 
 1. Baseline: any existing run for this db, re-graded with `scripts/regrade_sweep.py` so it
@@ -673,10 +705,18 @@ single close run cannot state a number. The third arm cost $4.82 of an $18.70 pa
 the difference between a number and a guess.
 
 
-One run of every task whose model object you touched — targets and canaries — at n=1 on the
-final deployed model, so the pass ends on one artifact under one grader against one model.
-Stop when the worklist has no task left in the loop or the database cap is reached,
-whichever is first.
+One run of every task whose model object you touched — targets and canaries — on the final
+deployed model, so the pass ends on one artifact under one grader against one model. Stop when
+the worklist has no task left in the loop or the database cap is reached, whichever is first.
+
+**Run the close at n>=2, not n=1 (~+$5).** Revised 2026-09-23, and it is the difference between
+a number and a guess. A 19-task arm at n=1 carries roughly +/-2-3 tasks of agent variance, about
++/-0.10 of reward, so it cannot distinguish a real 0.05 gain from nothing — and the programme's
+whole question is whether a from-scratch model matches a tuned one, a gap of that size. Measured:
+`exchange_traded_funds_17` scored 0 and then 1.0 on an IDENTICAL model, and 5 of 21 insider_trading
+tasks flipped between two identical-model runs. Where the budget will not stretch to a full n=2,
+spend the repeat on the tasks the estimate rests on (the section above) and say in the report which
+tasks carry a repeat and which do not.
 
 **Then propagate, as the last step and not before.** A pass produces findings all the way to its
 final iteration, so propagating in the middle guarantees the last ones are lost. Measured

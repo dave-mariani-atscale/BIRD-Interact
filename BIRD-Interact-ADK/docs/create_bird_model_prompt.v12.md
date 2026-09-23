@@ -1860,6 +1860,14 @@ failure.
 - A deterministic, re-runnable generator script (spec → emitter). Changes are made by editing the
   spec and re-running, never by hand-editing emitted YAML — any identity that must survive (model
   name, catalog) belongs in the generator as a parameter, or regeneration silently reverts it.
+- **The engine's own SQL rules go in the model description, from the shared constant.**
+  `birdsml.ENGINE_NOTES` carries them and gate G27 refuses a model whose description does not
+  cover them. They are facts about the interface, identical for every database, and they were the
+  strongest single lever measured in a pass: three of them converted **5 of 5** tasks in one run,
+  two of which had gone to zero holding the right filters and the right cutoffs and losing on
+  `COUNT(*)` and on `SUM` over a dimension attribute. `list_models` serves the model description
+  once per task, so they cost no coins. Extend the constant when a run shows the agent paying to
+  discover a new one; do not delete an entry without re-probing it live.
 - **Put the rule in the shared emitter, not in each generator.** Where a repo has grown a common
   build package — emitter, gates, type probe, dry-run harness — a model's generator should be a
   five-line driver, and a rule learned on one model belongs in the shared half where every model
