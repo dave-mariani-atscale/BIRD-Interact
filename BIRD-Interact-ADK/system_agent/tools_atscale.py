@@ -35,6 +35,7 @@ from shared.mcp_client import (
     MCPEndpoint,
     MCPToolError,
     TaskSessionMCPClient,
+    breaker,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,15 +93,25 @@ async def _call(tool_name: str, arguments: dict, tool_context: Optional[ToolCont
     caching). Flag off keeps the historical per-call behavior so control runs
     stay comparable.
     """
+    # The breaker: consecutive infrastructure failures (connection refused, pgwire
+    # auth rejected, MCP 401/500) across the process trip it, after which this
+    # raises instead of returning text, so a dead semantic layer ends the run as
+    # task errors rather than as a normal-looking run scored 17 (see mcp_client).
+    breaker.gate(tool_name)
     try:
         task_id = tool_context.state.get("task_id", "") if tool_context else ""
         if feedback.enabled() and task_id:
-            return await _task_client().acall_tool(task_id, tool_name, arguments)
-        return await _mcp_client().acall_tool(tool_name, arguments)
+            result = await _task_client().acall_tool(task_id, tool_name, arguments)
+        else:
+            result = await _mcp_client().acall_tool(tool_name, arguments)
     except (MCPClientError, MCPToolError) as e:
+        breaker.record_failure(e)
         return f"Error calling {tool_name}: {e}"
     except Exception as e:
+        breaker.record_failure(e)
         return f"Error calling {tool_name}: {type(e).__name__}: {e}"
+    breaker.record_success()
+    return result
 
 
 # ── Semantic-layer discovery/query tools ──

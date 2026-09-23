@@ -51,6 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, ".")
 from shared.config import settings  # noqa: E402
+from shared.mcp_client import is_infra_failure  # noqa: E402
 
 TEAM = "AtScale"
 METHOD_DEFAULT = "AtScale Semantic Layer"
@@ -180,6 +181,13 @@ def export(results_path: str, out_dir: str, data_path: str, validate: bool, meth
     sim_model = d.get("user_sim_model") or "unknown"
     warnings = Counter()
     rows = []
+    # Tool calls the semantic layer could not serve at all - connection refused,
+    # pgwire "Invalid authorization", MCP 500 - as opposed to queries it rejected.
+    # The agent sees these as text and retries, so a dead layer leaves task_errors at
+    # 0 and this count in the thousands (5,758 across 374 tasks on 2026-09-23). It
+    # travels in the summary so replay_report can void the run on it.
+    infra_failures = 0
+    tasks_with_infra = 0
     if not d.get("leaderboard_mode"):
         print("WARNING: this results file was NOT produced in leaderboard mode - it carries corrected grading "
               "and/or a customised simulator and is not submission-grade. Exporting anyway for inspection.")
@@ -189,6 +197,14 @@ def export(results_path: str, out_dir: str, data_path: str, validate: bool, meth
         notes: list = []
         if r.get("error"):
             notes.append(f"task errored in the run: {str(r['error'])[:200]}")
+        hits = sum(1 for tc in (r.get("tool_trajectory") or [])
+                   if str(tc.get("result") or "").startswith("Error calling")
+                   and is_infra_failure(tc.get("result")))
+        if hits:
+            infra_failures += hits
+            tasks_with_infra += 1
+            # Count before the colon: the warnings Counter keys on the text after it.
+            notes.append(f"MCP infrastructure failures ({hits} tool calls): the semantic layer could not serve them")
         sql1, sql2, info = pick_sql(r, notes)
         for n in notes:
             warnings[n.split(":")[1].strip()[:60] if ":" in n else n[:60]] += 1
@@ -232,6 +248,11 @@ def export(results_path: str, out_dir: str, data_path: str, validate: bool, meth
         "task_errors": sum(1 for r in (d.get("results") or []) if r.get("error")),
         "task_error_ids": [r.get("task_id") or r.get("instance_id")
                            for r in (d.get("results") or []) if r.get("error")][:20],
+        # Tool calls that failed for infrastructure reasons (see the loop above). A
+        # healthy run has a handful at most; hundreds mean the layer was down and the
+        # score measures that, not the agent.
+        "mcp_infra_failures": infra_failures,
+        "tasks_with_mcp_infra_failures": tasks_with_infra,
         "warnings": dict(warnings),
         "local": {
             "phase1_rate": sum(r["local_verdict"]["phase1_passed"] for r in rows) / n if n else 0,

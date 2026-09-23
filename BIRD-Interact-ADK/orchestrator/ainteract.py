@@ -23,6 +23,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import settings
+from shared.mcp_client import SemanticLayerUnavailable, breaker
 from shared.output_paths import timestamped_output_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -126,6 +127,18 @@ async def run_single_task(task_data: dict) -> Dict[str, Any]:
     category = task_data.get("category", "Query")
     logger.info("Starting task: %s (db: %s, %s, backend %s)", instance_id, db_name, category, backend)
     start_time = time.time()
+
+    # A semantic-layer task must not START while the layer is known to be down: the
+    # breaker in shared/mcp_client.py trips after 30 consecutive connection/auth
+    # failures. Raising here makes the runner record a task error immediately instead
+    # of spending 20 minutes of LLM budget on a task whose every tool call will fail
+    # and whose "normal" completion would hide the outage. Management tasks route to
+    # raw Postgres and are unaffected. One task per probe interval is let through so
+    # a recovered layer closes the breaker again.
+    if backend != "raw" and breaker.tripped and not breaker.probe_due():
+        raise SemanticLayerUnavailable(
+            f"semantic layer unavailable ({breaker.consecutive} consecutive MCP/engine failures, "
+            f"last: {breaker.last_error[:160]}); not starting {instance_id}")
 
     await init_task_on_services(instance_id, task_data, backend)
 

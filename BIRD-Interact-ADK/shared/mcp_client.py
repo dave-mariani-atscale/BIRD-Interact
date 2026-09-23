@@ -311,3 +311,112 @@ class TaskSessionMCPClient:
             if result.get("isError"):
                 raise MCPToolError(text or f"tool {name} reported an error")
             return text
+
+
+# ── Infrastructure circuit breaker ───────────────────────────────────────────
+#
+# A tool failure is normally the agent's problem: the wrapper in
+# system_agent/tools_atscale.py hands it back as text and the agent decides what
+# to do. That is right for a bad query and catastrophic for a dead semantic layer.
+# On 2026-09-22 and again on 2026-09-23 the engine started rejecting every MCP
+# connection ten hours into a three-run sweep (a Keycloak client-session bound on the
+# engine client). Every metadata call came back as "Error calling list_models:
+# connection failed ... FATAL: Invalid authorization", the agent retried until its
+# budget was gone (up to 23 list_models calls per task), submitted SQL it had never
+# validated, and the run completed "normally": task_errors 0, score 17 against an
+# expected 53, and nothing in any log at a level anyone reads. 5,758 failures across
+# 374 tasks, none of them an error.
+#
+# This breaker exists so that can never happen silently again. It counts CONSECUTIVE
+# infrastructure failures - connection refused, pgwire auth rejected, MCP 401/500 -
+# across the whole process. A query the engine rejects for being wrong does not count;
+# one success resets the count. After BREAKER_TRIP_AFTER in a row the layer is
+# declared unavailable: further calls raise SemanticLayerUnavailable instead of
+# returning text, orchestrator/ainteract.py refuses to start new tasks, the runner
+# records each as a task error, and the run ends within minutes with task_errors in
+# the hundreds - which replay_report voids. A transient outage (an engine restart
+# takes ~1-2 minutes) is not the end of the sweep: one probe call per
+# BREAKER_PROBE_INTERVAL_S is let through, and a success closes the breaker again.
+
+INFRA_MARKERS = (
+    "connection failed",                      # psycopg: could not reach / auth rejected
+    "connection to server at",                # psycopg OperationalError text
+    "Invalid authorization",                  # the engine's pgwire rejection
+    "failed to create request prerequisites",  # MCP: token exchange / DSN failed
+    "could not connect to MCP server",        # httpx ConnectError (MCPClientError)
+    "rejected the request with HTTP",         # MCP 401/403 (MCPClientError)
+    "MCP transport error",
+    "MCP server at",                          # MCPClientError HTTP 5xx wording
+)
+BREAKER_TRIP_AFTER = 30
+BREAKER_PROBE_INTERVAL_S = 60.0
+
+
+class SemanticLayerUnavailable(RuntimeError):
+    """The semantic layer has failed BREAKER_TRIP_AFTER consecutive calls; the run
+    must not continue as if those were the agent's mistakes."""
+
+
+def is_infra_failure(exc_or_text: object) -> bool:
+    s = str(exc_or_text)
+    return any(m in s for m in INFRA_MARKERS)
+
+
+class _Breaker:
+    def __init__(self) -> None:
+        self.consecutive = 0
+        self.total = 0
+        self.tripped_at: float | None = None
+        self.last_probe_at = 0.0
+        self.last_error = ""
+
+    @property
+    def tripped(self) -> bool:
+        return self.tripped_at is not None
+
+    def probe_due(self) -> bool:
+        import time
+        return self.tripped and (time.time() - self.last_probe_at) >= BREAKER_PROBE_INTERVAL_S
+
+    def gate(self, what: str) -> None:
+        """Raise unless the layer is believed up, or it is time for a probe."""
+        import time
+        if not self.tripped:
+            return
+        if self.probe_due():
+            self.last_probe_at = time.time()
+            return  # this one call is the probe
+        raise SemanticLayerUnavailable(
+            f"semantic layer unavailable: {self.consecutive} consecutive MCP/engine connection or "
+            f"auth failures (last: {self.last_error[:160]}); refusing {what} until a probe succeeds"
+        )
+
+    def record_success(self) -> None:
+        import logging
+        if self.tripped:
+            logging.getLogger(__name__).critical(
+                "semantic layer is back after %d consecutive failures; breaker closed", self.consecutive)
+        self.consecutive = 0
+        self.tripped_at = None
+
+    def record_failure(self, exc: object) -> None:
+        import logging
+        import time
+        if not is_infra_failure(exc):
+            return
+        self.consecutive += 1
+        self.total += 1
+        self.last_error = str(exc)
+        if self.consecutive >= BREAKER_TRIP_AFTER and not self.tripped:
+            self.tripped_at = time.time()
+            self.last_probe_at = self.tripped_at
+            logging.getLogger(__name__).critical(
+                "SEMANTIC LAYER UNAVAILABLE: %d consecutive MCP/engine connection or auth failures. "
+                "Last: %s. New tasks will error until a probe succeeds (one per %.0fs). If this holds, "
+                "the run is void - check the engine (docker logs ... engine | grep -i 'JWT auth'), the "
+                "MCP server, and whether the harness token / Keycloak client session has expired "
+                "(bird-atscale-models verification docs/OPEN-ITEMS.md R4-01).",
+                self.consecutive, self.last_error[:300], BREAKER_PROBE_INTERVAL_S)
+
+
+breaker = _Breaker()
