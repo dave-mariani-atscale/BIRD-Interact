@@ -99,7 +99,14 @@ between files?** Sonnet.
   That last one is cheap and catches a whole class before the spec is written: an Appraisal Ratio
   defined as `alpha / (volatility * sqrt(1 - R-squared))` over an R-squared stored 0-100 is the
   square root of a negative on nearly every row, which a range line shows at once and which
-  otherwise costs three sweep rounds to find. Numbers only, authoring nothing. The build loop: `build.sh`
+  otherwise costs three sweep rounds to find. **The integer-division check must be a mechanical
+  sweep over EVERY ratio, not a judgement about which ones look like counts** — measured
+  2026-09-23 on disaster_relief, the pass ran `pg_typeof` on three ratios, caught all three, and
+  reported the *widened* reading for a fourth of identical `bigint / bigint` shape that collapses
+  to 0 on all 57 of its rows. The design turn caught it from the KB text; the measurement pass is
+  where it should have been caught. Emit one row per formula with the native type, the native
+  range and the widened range side by side, so a collapse is visible without anyone deciding to
+  look for it. Numbers only, authoring nothing. The build loop: `build.sh`
   until green, fixing only mechanical gates itself (pipe characters, a missing column, ASCII,
   schema qualification, MDX brackets, join roles, orphans) and returning any gate that needs
   a description or a name changed as one line for Opus — **all of them in ONE list, not one per
@@ -573,6 +580,17 @@ tasks of mixed shape and read `budget_remaining` and the `explore_columns` count
 If tasks are landing at zero coins, the model is too wide or its deciding sentences are too deep,
 and both are far cheaper to fix before the baseline than after it.
 
+**It discriminates in both directions, which is the argument for buying it.** Measured 2026-09-23
+on disaster_relief, a 329-attribute model across 32 folders: the probe said the opposite of ETF's.
+Discovery cost about **2.5 coins per task** — one `list_models`, one `explore_columns` (zero on one
+task), one `focus_columns` — and the agent found the right objects first try, on one task returning
+all three readings of a concept by name in its opening `focus_columns`. No submission was refused.
+So the model was not too wide, the remaining score was naming and population, and the next design
+call was redirected away from surface reduction. Same ~$1 instrument, opposite conclusion — do not
+buy it expecting to confirm the previous database's answer. Two cautions: read the per-tool figures
+as **coin cost, not call counts** (§ 1.4), and note it cost **$1.23** here rather than $0.75,
+because a task that spends its whole budget costs nearer the $0.48 never-pass rate.
+
 ### 0. Once per database — baseline and worklist ($0 when a baseline exists)
 
 1. Baseline: any existing run for this db, re-graded with `scripts/regrade_sweep.py` so it
@@ -599,6 +617,18 @@ and both are far cheaper to fix before the baseline than after it.
       results under the tuned models. Any task another model passes is reachable, full stop.
       Read the **verdicts only**: opening the other model's objects contaminates a from-scratch
       build, and that trade is Dianne's to make, not yours to drift into.
+
+      **When this check can falsify nothing, the ceiling sweep is the only falsifier left, and it
+      works.** Measured 2026-09-23 on disaster_relief: the census's six "unsolvable" tiers were
+      *exactly* the six tasks the tuned model never passes, so the verdict diff killed none of
+      them — and the $0 sweep then killed **three**, including a T1 `UNSOLVABLE-GOLD` marked
+      `[verified]` with `conf: high`. All three turned on **a population the model had not
+      published**, which is a model gap wearing a cap's clothing. A census tier is a hypothesis,
+      not a cap; census rev4 has now been wrong on three separate databases.
+
+      Note also that the census's `why` text quotes gold — a SELECT list and a masked cutoff on
+      the row read here. Read the **tier field only**; if a `why` reaches you, say so in the
+      report and re-derive anything it touches from the KB before shipping it.
    b. **Name the rule that makes it unreachable and re-read that rule.** Both 09-19 mis-cappings
       were a rule applied to the wrong shape — the dimensional-inconsistency rule stretched over
       a percent-versus-fraction twin, and "the caller supplies the constant" read as "publish
@@ -662,7 +692,14 @@ One iteration is:
    `loop_step.py` labels a submission `PASS` when the trajectory entry carries no `passed`
    key — which is what an **execution error** looks like. Measured 2026-09-22: two of one task's
    four submissions were reported as passes and both had failed the engine's own validator. Read
-   the `result` text before believing a `PASS` line. **A pass counts only if the trajectory shows the fix's mechanism firing** — the ask you
+   the `result` text before believing a `PASS` line.
+
+   **Second `loop_step.py` trap, measured 2026-09-23: the per-tool figures on its header line are
+   COIN COST, not call counts.** `submit_sql=6` is two submissions at three coins each, not six
+   submissions; `focus_columns=0.5` is one call. Misreading it inverts the diagnosis — "the agent
+   is in a retry storm, cut its options" against "the agent is behaving well and simply runs out
+   of coins", which point at opposite fixes. Count entries in the results JSON's
+   `tool_trajectory` when you need call counts, and read the header line as a budget breakdown. **A pass counts only if the trajectory shows the fix's mechanism firing** — the ask you
    wrote was asked (with the alternatives you named), the filter you described was written,
    the twin you added was projected. A pass with zero asks, or one that copies a prior
    answer (`adk_events` text like "matches the certified exemplar"), is not evidence for the

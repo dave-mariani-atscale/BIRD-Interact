@@ -9012,3 +9012,59 @@ the G6 dangling-reference gate on its `CAST(NULL AS VARCHAR)` example, whose nes
 read to the gate as a pointer to a published object. `exchange_traded_funds` worked around it with
 a local reword and this model had to do the same, which means the defect is in the shared constant
 and should be fixed there rather than in a third generator.
+
+## disaster_relief V12 - 2026-09-23 iterations and close
+
+The design review that followed the from-scratch build added three missing-population readings —
+each covering a KB reading that had shipped without stating what population it ran over — and all
+three converted at the $0 ceiling sweep, taking the reachable ceiling from 6/12 to 9/12.
+
+Hub Strain Index was moved from its strict reading to a bare-name reading because the task wording
+says "list the hubs," and the strict reading came back null on 93 of the 405 distribution hubs —
+too much of the population to answer a listing question under a reading that drops most of it.
+
+A population sentence was then generated across six record families and prepended to every
+knowledge-base reading, including ones that already led with their own twin-choosing clause. That
+displaced the twin clause on `disaster_relief_8`, which regressed from passing to failing in three
+consecutive runs (a deterministic loss, confirmed across both halves of an n=2 close, not variance)
+even though the population sentence itself converted nothing measurable. The placement was fixed —
+trail the sentence after the twin clause for any reading that belongs to a twin group, lead with it
+only for readings with no twin group — but the fix did not recover `disaster_relief_8`: four
+canaries held at 1.0 and the target still chose the bare reading, so the task is being left as a
+structural cap rather than spending further description text on it.
+
+Three engine facts were added to `birdsml.ENGINE_NOTES` after each cost a submission on this
+database: AVG over a dimension attribute is refused by the planner (and, corrected from an earlier
+claim, so is MIN/MAX — treat every aggregate over a dimension attribute as suspect and use the
+FROM-subquery form); sorting by a column the query neither projects nor groups by is refused
+outright; and ROUND to fixed decimals needs `CAST(x AS numeric(18,4))`, since a bare
+`CAST(x AS numeric)` is refused for missing precision and scale. Separately, the parenthesised
+`CAST(NULL AS VARCHAR)` example inside `birdsml.ENGINE_NOTES` itself was tripping the G6
+dangling-reference gate; both `exchange_traded_funds` and this model had worked around it with a
+local `.replace()` in their own `generator/spec.py`, and that was the wrong place to carry a defect
+in a shared constant. The wording was fixed once in `engine_notes.py` and the now-redundant local
+replace removed from `disaster_relief/generator/spec.py`; the emitted model is byte-identical to
+the pre-fix build, so no redeploy was needed.
+
+Commits: `1d63bba`, `80eb053`, `85bd47c`, `6bc9a78`, `d297105`, `9d40dc2`, `0cd58ca`.
+
+## disaster_relief V12 - 2026-09-23 bare-name move in the Public Health Risk Score family
+
+The prior entry left `disaster_relief_8` as a structural cap after a population-sentence placement
+fix failed to recover it. A further iteration found the actual cause was the bare NAME, not the
+sentence placement: the bare reading of Public Health Risk Score was the strict one, and the strict
+reading is null on 12 of its 20 rows — a reading undefined on 60% of its own population cannot be
+the default. The bare name was moved onto the injured-zero reading instead.
+
+`(Unstaffed As Zero)` was left untouched — it answers a different question and the move does not
+change it.
+
+The bare reading's measured range is now quoted in the model: **-73.46 to 96.41, mean 64.93, 10 of
+20 rows above 70**, negative where medical personnel outnumber casualties plus injured.
+
+Commit `7695720`. Result: `disaster_relief_8` 0.0 -> 0.7, all four canaries held at 1.0.
+
+**One residual inconsistency, not fixed in this pass:** the `(Integer Division)` variants in this
+same family still compute off the strict 8-row ratio while their generated clause claims "same
+formula at bigint types" — the clause text and the object it describes have drifted apart and
+should be reconciled the next time this family is touched.

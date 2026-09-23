@@ -1299,6 +1299,27 @@ reachable tasks in a 0/10 arm.
   and audit the EMITTED YAML for pairs whose partner is unnamed rather than trusting the
   spec source. Note what this did and did not buy: the pairs were all named on the next
   build and the task still chose the bare reading, because steering is demand-gated.
+- **A generated sentence PREPENDED to a twinned reading displaces the clause that chooses
+  between the twins, and the displacement costs the task.** The rule above says to generate
+  repeated clauses from a pass; this is the trap in doing so. Measured 2026-09-23 on
+  disaster_relief: a population sentence ("null on the 980 of 1000 disasters with no
+  environment record …") was generated onto the first position of every knowledge-base
+  reading, including readings that already led with the clause naming their twins. The agent
+  reads top-down and picks on what it reads first: a task that had passed phase 1 selecting
+  `Public Health Risk Score (Unrecorded Injured As Zero)` switched to the bare strict reading
+  and failed, in **three consecutive runs including both halves of an n=2 close** — a
+  deterministic loss, not variance. The population sentence converted nothing measurable in
+  the same window. So the placement rule: **a reading that belongs to a twin group is chosen
+  by its twin clause, so a generated population or provenance sentence TRAILS it; a reading
+  with no twin group to choose within has its population as the deciding fact, so the sentence
+  LEADS.** Decide placement per object from whether a twin group exists, not globally, and be
+  aware that a generated pass applies your choice to every object at once — which is what
+  makes it worth getting right and expensive to get wrong.
+- **Restoring the placement is not the same as recovering the task.** The same measurement:
+  the ordering was fixed, four canaries held at 1.0, and the target still selected the bare
+  reading and still failed. Once the agent has been observed choosing the bare name twice,
+  the remaining lever is structural — move the plain name onto the reading the questions mean
+  — and more description text is spent money.
 - **Fix the aggregate twin whenever you fix the attribute.** A row-grain measure was
   disambiguated and converted its task; the `Average …` metric built on it was left silent, so any
   question asking for an average still hit the undisclosed reading.
@@ -1659,7 +1680,25 @@ failure.
   and `COUNT(DISTINCT …)` are correct; `AVG` fails the planner with `assertion failed: We already
   handled attribute values`; and `COUNT(<attribute>)` returned a row whose value was `null` — a
   count cannot be null under any semantics, which is the clearest available proof that nothing is
-  being aggregated. Consequence for modeling: any per-entity figure a question might average or
+  being aggregated. **Correction, measured 2026-09-23 on disaster_relief: `MIN` over a dimension
+  attribute is NOT universally safe.** `MIN("Affected Area")` in a scope reading the model directly
+  was refused with the same shape of message as `AVG` — *"aggregates the dimension attribute … in a
+  scope that reads the model directly, which fails in the engine planner. Select the attribute at
+  row grain in a FROM-subquery and aggregate outside it."* So the safe statement is that **any**
+  aggregate over a dimension attribute read directly from the model is suspect: `SUM`/`COUNT`
+  silently return members, `AVG` and `MIN` are refused outright, and the FROM-subquery form is the
+  route for all of them. Re-probe on your build rather than trusting the older `MIN`/`MAX` claim.
+- **Three engine facts the agent pays coins to rediscover, now carried in `birdsml.ENGINE_NOTES`**
+  (added 2026-09-23 after each cost a submission on disaster_relief): `AVG` over a dimension
+  attribute is refused by the planner and needs the FROM-subquery form; **sorting by a column the
+  query neither projects nor groups by is refused outright** with a message saying to add it to the
+  select list; and **`ROUND` to fixed decimals goes through a numeric cast that must carry precision
+  and scale** — a bare `CAST(x AS numeric)` is refused with *"Numeric values are only accepted with
+  specified precision and scale"*, so `CAST(x AS numeric(18,4))` is the working form and its result
+  returns as a string. The note demonstrably lands: on the next run the agent wrote the
+  precision-and-scale form unprompted and the submission was accepted. Every one of these was
+  already documented in this section and absent from the constant the agent actually reads — which
+  is the gap worth closing, because a rule in prose here reaches nobody at query time. Consequence for modeling: any per-entity figure a question might average or
   total must be published as a **measure**, not only as an attribute, or it is unreachable.
 - **`real::numeric` truncates to six significant digits, silently** (M-31). Postgres converts
   `float4` via `float4out` at `FLT_DIG=6`, so 321804.16 becomes 321804. A derived dataset casting
