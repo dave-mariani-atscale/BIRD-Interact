@@ -8893,3 +8893,19 @@ shipped model for those two tasks and the latest result everywhere else — agai
 a lift of 38.0 pp and 0.87 of the tuned shared-repo model. Latest-per-task alone gives 0.475
 and best-observed 0.490; the spread is two tasks wide and is the measurement, not the model.
 Total for the database: **$13.40** over 42 task-runs.
+
+## exchange_traded_funds V12 - 2026-09-22 from-scratch build
+
+New model `Exchange Traded Funds V12` in a new `exchange_traded_funds/` folder in
+`diannewood/bird-models-v12` (uncommitted at time of writing), published in catalog
+`bird_models_v12`, reached by the `atscale_v12` backend's new `exchange_traded_funds` domain
+in `config/environment_backends.yaml`. Built from scratch with the v12 build prompt alone.
+
+The model deliberately reads only the 15 tables declared in `exchange_traded_funds_schema.txt`
+and the jsonb leaves, never their flattened scalar twins. This excludes six tables —
+`annual_returns_archive`, `daily_golden_cross_leaders`, `family_sector_focus`,
+`family_risk_summary`, `closet_indexer_summary`, `style_drift_log` — and `funds.rrei_score`,
+all of which are Management-task output written onto the live and template
+`exchange_traded_funds` databases rather than source data (tracker row B-99). The exclusion is
+deliberate, not incidental: those objects are answer-shaped for the Management tasks in this
+database's own task set, and a model that read them would be reading the answer key.

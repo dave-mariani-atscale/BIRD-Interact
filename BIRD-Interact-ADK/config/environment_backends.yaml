@@ -341,3 +341,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Virtual Idol V12
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Exchange Traded Funds V12
