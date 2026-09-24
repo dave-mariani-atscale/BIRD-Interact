@@ -1315,6 +1315,25 @@ reachable tasks in a 0/10 arm.
   LEADS.** Decide placement per object from whether a twin group exists, not globally, and be
   aware that a generated pass applies your choice to every object at once — which is what
   makes it worth getting right and expensive to get wrong.
+- **The bare-name move is per family, and a $0 regression sweep decides it before deploying.**
+  Measured 2026-09-24 on fake_account: across two runs the agent took the bare strict composite on
+  five tasks whose questions address every account, so the plain name moved onto the zero-filled
+  reading of every KB composite. It converted two tasks in both phases (CAS per platform, an ARS
+  screen) - and the regression sweep showed it made four other phases unreachable by name, on the
+  two families where zero-filling an input inverts its meaning: `0.3 * (1 - trust)` with trust read
+  as 0 adds the full 0.3 and inflates the Security Risk Score, and a listing of every account's
+  evasion index wants the unscored ones null. Move the name family by family, re-run every passing
+  ceiling query first, and revert the families it breaks.
+- **A generated "when grouped by <column>" clause on a metric chooses the grouping for the caller.**
+  "the typical value per platform when grouped by Platform Code" sat on ~85 generated metric
+  descriptions; a task asking "on each platform" grouped by the 471-value code where the 4-value
+  kind was meant, while the kind's own description was correct and read. Name no grouping column
+  in generated metric text; say "grouped by any column".
+- **A KB entry's NAME can carry a condition its definition omits, and the name is what questions
+  use.** KB "Dormant Bot" is defined as status = 'Dormant' (169 accounts) while the name says bot;
+  "how many bot accounts are dormant" means Bot form AND Dormant (49). Put the plain name on the
+  reading that satisfies every word of the name and publish the definition-only reading as a
+  qualified twin with both counts.
 - **Restoring the placement is not the same as recovering the task.** The same measurement:
   the ordering was fixed, four canaries held at 1.0, and the target still selected the bare
   reading and still failed. Once the agent has been observed choosing the bare name twice,
@@ -1756,6 +1775,10 @@ failure.
   widest-reaching failure of one sweep: 20 occurrences across seven of eight databases, plus 20
   submissions that died without receiving a grade. Put the `ORDER BY` **and its `LIMIT`** inside the
   derived table that projects the sort column, and leave the outer `SELECT` with no `ORDER BY`.
+- **Projecting only a CAST or ROUND of a column does not count as projecting it for ORDER BY.**
+  `SELECT id, CAST(x AS numeric(18,4)) ... ORDER BY x` is refused "Cannot sort by [x]: the query
+  does not group by it"; ordering by the expression's alias is accepted (verified live 2026-09-24).
+  Two fake_account tasks were refused on it in one run; now in `birdsml.ENGINE_NOTES`.
 - **A two-argument window function fails in the planner** — `LAG(col, 1)` raises `requirement
   failed: A SameTypeWindowFunction always takes exactly one argument`. Single-argument window calls
   plan normally, so lag/lead *with an explicit offset* must be precomputed.

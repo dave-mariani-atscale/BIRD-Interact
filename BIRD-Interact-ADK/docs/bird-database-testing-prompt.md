@@ -68,6 +68,10 @@ between files?** Sonnet.
     before reaching the answer — descriptions that bury the deciding sentence, asks that fire where
     the agent was already right, near-duplicate readings it has to sift. Budget allows it: three
     calls used $11.54 of the ~$20 per-database allowance.
+  - **Calls can be combined.** Measured 2026-09-24 on fake_account: F3 and F4 went in one call
+    (asks 18 to 3, a structural rename, median metrics) and the fourth call was spent on the
+    bare-name move the runs then asked for. Batch design turns whenever the evidence is ready at
+    the same boundary; the cap is four calls, not four phases.
   - In every call: read only the packet paths and the spec sections being edited (`grep -n`,
     `sed -n` — never a whole `spec.py`); `Write` a file at most once, `Edit` it thereafter;
     at most 15 tool calls; no build, no `gold_diff`, no deploy; report in 20 lines or fewer.
@@ -515,6 +519,17 @@ read any improvement. Then:
   makes it easy to misread as a catalog fault. Void the run; it is not a measurement and it costs
   nothing. Everything that makes no LLM call still works, so a capped session's deliverable is
   the ceiling table, the model and the cap list.
+- **The session shell can export `FEEDBACK_MEMORY=true`, and an exported variable beats the ADK
+  `.env`.** Measured 2026-09-24 on fake_account: `.env` said false, the services and the runner
+  inherited `true` from the shell, and the probe's results header recorded
+  `deviations.feedback_memory: true`. Export `FEEDBACK_MEMORY=false` in every run script and before
+  `scripts/start_services.sh`, and read `deviations.feedback_memory` in the results header (loop_step
+  prints it as `memory=`) before reading a run as a measurement.
+- **The engine returns a cached result for byte-identical SQL across a redeploy (E-18).** Measured
+  2026-09-24: after a redeploy the same ceiling query returned the previous model's rows, and one
+  added space returned the new ones. `gold_diff` and the agent share that path, so a sweep or a run
+  after a redeploy can grade the new model on the old model's answers. Restart the engine container
+  after a deploy that changes what an existing name returns, then gate, before any sweep or run.
 - `setsid` does not exist on macOS, and a run launched from inside a backgrounded shell dies
   with its parent. Plain `nohup … &` from a foreground shell survives.
 - The runner **always** timestamps `--output` (`<stem>_YYYYmmdd_HHMMSS.json`). Glob for the
