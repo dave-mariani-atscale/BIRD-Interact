@@ -9068,3 +9068,40 @@ Commit `7695720`. Result: `disaster_relief_8` 0.0 -> 0.7, all four canaries held
 same family still compute off the strict 8-row ratio while their generated clause claims "same
 formula at bigint types" — the clause text and the object it describes have drifted apart and
 should be reconciled the next time this family is touched.
+
+## fake_account V12 - 2026-09-24 from-scratch build, design reviews and iterations
+
+New top-level folder in `diannewood/bird-models-v12`, deployed into the shared `bird_models_v12`
+catalog as **Fake Account V12**, with a `fake_account` domain added to the `atscale_v12` backend in
+`config/environment_backends.yaml` in this same commit. No new repo, no new catalog. Spec authored
+by Fable (F1) from the measurement pass, KB, column meanings, schema and brief; built by the shared
+`utilities/birdsml` emitter. Commits `17f0bbe` (build), `1375750` (F2), `4a3344f` (F3+F4),
+`650b97a` (bare-name move), `951b9e0` (partial revert).
+
+**Shape.** Three datasets: Account Detail (670; every satellite and the monitoring snapshot are 1:1
+with accounts, so no detection, session or reputation history exists), Cluster Detail (200) and
+Cluster Membership Detail (1354 account-cluster pairs), the last carrying every formula that mixes an
+account term with a cluster term. KB 10, 16, 60 and 73 (deleted on Query tasks, each stating a
+cutoff) are withheld, with the model description naming each one's published inputs.
+
+**F2 (why).** A $0 ceiling sweep showed the bare TEI read the `'0.30%'` numeral as the ratio, where
+the build prompt's unit rule says a ratio operand over a percent-formatted text column is the
+figure divided by 100 — swapped, the numeral reading kept as `(Numeral As Stored)`. `Dormant Bot`'s
+name says bot where KB 15's text is state-only: the bare now requires Bot form (49) with `(Any
+Account Form)` (169). `Latest Bot Likelihood Score (Missing As Zero)` added; the completeness PCI
+reading carried into NTS and ARS.
+
+**F3+F4 (why).** Coins went to asks, not discovery: 18 ask triggers cut to 3. `Platform Kind`
+renamed `Platform` (4 values) and every generated "grouped by Platform Code" steering sentence
+removed after a task grouped by the 471-value code on that sentence. Median percentile metrics for
+every KB score average (the build rule F1 missed). `Network Trust Score (Highest Cluster)` added.
+
+**Bare-name move and partial revert (why).** Across two runs the agent took the bare strict
+composite on five tasks whose questions address every account, whatever the twin clause said. The
+plain name moved onto the zero-filled reading for CAS, BBI, PCI, CMS, MPS, CPRI, ETS, CSI, ABS,
+ARS, BAS, CBR, NMI, NTS and CIS (strict qualified `(Strict)`); a $0 regression sweep then showed
+the move wrong for TEI and SRS, which were reverted to strict-bare with `(Missing As Zero)` twins.
+
+**Shared change.** `birdsml.ENGINE_NOTES` gained one clause: projecting only a CAST or ROUND of a
+column does not count as projecting it, so ORDER BY the alias (two tasks refused on it; the alias
+form verified live). Every v12 model picks it up on its next rebuild.

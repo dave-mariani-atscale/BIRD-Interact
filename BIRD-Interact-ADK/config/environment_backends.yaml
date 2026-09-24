@@ -349,3 +349,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Disaster Relief V12
+      fake_account:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Fake Account V12
