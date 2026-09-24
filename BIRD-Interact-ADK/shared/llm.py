@@ -8,6 +8,7 @@ to use a custom backend.
 import logging
 
 from shared.config import settings
+from shared.llm_routing import route_kwargs
 from shared import usage as _usage
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,7 @@ except ImportError:
             kwargs["api_base"] = settings.litellm_api_base
         if settings.litellm_api_key:
             kwargs["api_key"] = settings.litellm_api_key
+        kwargs.update(route_kwargs(model_name))   # config/llm_routing.yaml, most specific wins
 
         # content can come back None (thinking-only / empty-text finals, the same
         # family as the max_tokens truncation issue). One retry, then "" — callers
@@ -121,4 +123,5 @@ except ImportError:
             # ADK forwards unrecognised LiteLlm kwargs straight to litellm's
             # completion call, which is where the hook that consumes this lives.
             kwargs["cache_control_injection_points"] = points
+        kwargs.update(route_kwargs(model_name))   # config/llm_routing.yaml, most specific wins
         return LiteLlm(**kwargs)

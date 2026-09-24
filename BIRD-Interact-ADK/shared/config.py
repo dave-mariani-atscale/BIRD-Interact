@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     user_sim_model: str = "anthropic/claude-haiku-4-5-20251001"
     system_agent_model: str = "anthropic/claude-sonnet-4-20250514"
 
+    # Per-model LiteLLM routing file (see shared/llm_routing.py). Relative paths
+    # resolve against the project root. The shipped default has no routes.
+    llm_routing_file: str = "config/llm_routing.yaml"
+
     # LiteLlm proxy (optional — set if using a LiteLlm proxy server)
     litellm_api_base: str = ""
     litellm_api_key: str = ""

@@ -167,6 +167,40 @@ def test_leaderboard_tracks():
     assert off.user_sim_model == "anthropic/claude-sonnet-5"
 
 
+
+def test_llm_routing_default_is_empty_and_file_is_data():
+    import os, tempfile
+    from shared import llm_routing
+    assert llm_routing.route_kwargs("openai/gpt-4o") == {}          # shipped default: no routes
+    assert llm_routing.route_for("anything/at-all") == {}
+    y = """routes:
+  openai/gpt-4o:
+    api_base: https://openrouter.ai/api/v1
+    api_key_env: TEST_ROUTE_KEY
+    extra_body: {provider: {order: [OpenAI], allow_fallbacks: false}}
+"""
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(y); path = f.name
+    os.environ["TEST_ROUTE_KEY"] = "sk-test"
+    kw = llm_routing.route_kwargs("openai/gpt-4o", path)
+    assert kw == {"api_base": "https://openrouter.ai/api/v1", "api_key": "sk-test",
+                  "extra_body": {"provider": {"order": ["OpenAI"], "allow_fallbacks": False}}}
+    assert "api_key" not in llm_routing.route_for("openai/gpt-4o", path)   # recordable form keeps the NAME
+    assert llm_routing.route_kwargs("openrouter/openai/gpt-oss-120b", path) == {}
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write("routes:\n  x/y:\n    max_tokens: 5\n"); bad = f.name
+    try:
+        llm_routing.load_routes(bad); assert False, "max_tokens must be refused"
+    except ValueError:
+        pass
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write("routes:\n  x/y:\n    api_key_env: DEFINITELY_UNSET_VAR_42\n"); unset = f.name
+    try:
+        llm_routing.route_kwargs("x/y", unset); assert False, "unset key env must be refused"
+    except RuntimeError:
+        pass
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

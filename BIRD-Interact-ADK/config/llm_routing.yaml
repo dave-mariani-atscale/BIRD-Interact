@@ -1,0 +1,5 @@
+# Per-model LiteLLM routing. See shared/llm_routing.py for the schema.
+# The default ships EMPTY so no existing sweep changes; point LLM_ROUTING_FILE at a
+# per-sweep file (like config/llm_routing.gptoss_openrouter.yaml) to route a run,
+# and the resolved routes are recorded in that run's results file.
+routes: {}

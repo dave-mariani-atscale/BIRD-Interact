@@ -15,10 +15,20 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.config import settings
+from shared.config import PROJECT_ROOT, settings
+from shared import llm_routing
 from shared.db_utils import active_grading_corrections
 from shared.output_paths import timestamped_output_path
 from shared import usage as llm_usage
+
+
+def _routing_file_label() -> str:
+    """The routing file as recorded in a results file: repo-relative when inside the repo."""
+    f = llm_routing.routing_file()
+    try:
+        return str(f.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(f)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -143,6 +153,12 @@ async def run_parallel_evaluation(
                 "list_models_question": settings.list_models_question,
                 "instruction_file": os.environ.get("ATSCALE_INSTRUCTION_FILE", ""),
                 "harness_error_hints": os.environ.get("HARNESS_ERROR_HINTS", "1"),
+                # How each model was routed (config/llm_routing.yaml or LLM_ROUTING_FILE):
+                # gateway, provider pin, key NAME. Empty = the model's default endpoint.
+                "llm_routing_file": _routing_file_label(),
+                "llm_routing": {m: llm_routing.route_for(m)
+                                for m in (settings.leaderboard_agent_model if settings.leaderboard_mode else settings.system_agent_model,
+                                          settings.user_sim_model)},
             },
             # The leaderboard switch and everything it pins, so a results file
             # says on its face whether it is a leaderboard-comparable run.

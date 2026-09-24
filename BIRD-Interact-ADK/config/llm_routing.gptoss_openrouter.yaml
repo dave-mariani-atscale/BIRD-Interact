@@ -1,0 +1,15 @@
+# gpt-oss-120b sweep, 2026-09-24, GPT-4o track. The OpenAI project spend cap was
+# exhausted, so the track's simulator - the unchanged model string openai/gpt-4o -
+# is billed through OpenRouter and pinned to OpenAI's own endpoint (OpenRouter would
+# otherwise alternate with the Azure mirror). Prompts and token limits untouched.
+# The agent (openrouter/openai/gpt-oss-120b) has no route: it auto-routes across
+# OpenRouter providers like every prior OpenRouter sweep (Kimi, Nemotron, GLM, Qwen).
+# To pin it, add e.g.
+#   openrouter/openai/gpt-oss-120b:
+#     extra_body: {provider: {order: [CoreWeave], allow_fallbacks: false}}
+routes:
+  openai/gpt-4o:
+    api_base: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    extra_body:
+      provider: {order: [OpenAI], allow_fallbacks: false}
