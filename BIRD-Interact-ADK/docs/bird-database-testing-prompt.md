@@ -530,6 +530,18 @@ read any improvement. Then:
   added space returned the new ones. `gold_diff` and the agent share that path, so a sweep or a run
   after a redeploy can grade the new model on the old model's answers. Restart the engine container
   after a deploy that changes what an existing name returns, then gate, before any sweep or run.
+- **`cmd && nohup run.sh &` backgrounds the WHOLE chain, not just the run.** Measured 2026-09-24 on
+  planets_data: `gate_run.sh | tail -1 && nohup bash run.sh > out &` returned at once with no output
+  file yet, so it looked like a failed launch; relaunching started a second 19-task baseline ten
+  seconds behind the first. Two runs shared the services and the `llm_usage` window ($7.92 for a run
+  whose clean repeats cost $5.07-5.60). Gate in one call, launch in the next, and `pgrep -f
+  "orchestrator.runne[r]"` before any launch.
+- **B-69 (the semantic arm loses "round to the nearest integer") is live again.** Its recorded fix was
+  an atscale guidance bullet that is no longer in `config/environment_backends.yaml`, and
+  `birdsml.ENGINE_NOTES` explains how to round. Measured 2026-09-24 on planets_data: three phases lost
+  in every run to an agent rounding as asked against a reference whose ROUND the grader strips, and 5
+  ceiling phases pass only unrounded. When a sweep phase passes unrounded and fails rounded, it is
+  B-69, not the model; the fix is guidance and it is Dianne's call (B-49).
 - `setsid` does not exist on macOS, and a run launched from inside a backgrounded shell dies
   with its parent. Plain `nohup … &` from a foreground shell survives.
 - The runner **always** timestamps `--output` (`<stem>_YYYYmmdd_HHMMSS.json`). Glob for the

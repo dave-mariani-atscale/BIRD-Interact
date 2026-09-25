@@ -1592,6 +1592,23 @@ reachable tasks in a 0/10 arm.
   descriptions, intersect their 3-grams after dropping the object's own name; a pair sharing a
   domain-specific 3-gram with no cross-reference between them is a finding.
 
+**A question phrase too short for the leakage gate still chooses for the caller.** The A8 gate
+matches 6-word runs; a five-word alias does not trip it. Measured 2026-09-24 on planets_data: the
+arithmetic-mean period ratio described itself as "the average orbital period ratio" - the question's
+own words - and the agent projected it on 2 of 2 runs where the reference used the other average
+(the KB defines only the pairwise ratio, so neither reading is the KB's). Removing the phrase and
+shipping a closed question naming both readings with live counts (identical on 375 stars, different
+on 193) converted the task 2 of 2. Grep the emitted descriptions for the brief's ambiguity terms and
+multi-word question nouns, not only for 6-grams.
+
+**Say when a twin pair is NOT a fork, or the agent pays to ask.** A bare flag and its `(Inputs
+Recorded Only)` twin return the same rows for `= 'Yes'` and differ only on No versus null; a KB flag
+and a live recount that differ on one row are not a choice worth a question. Measured 2026-09-24 on
+planets_data: both invited an ask where the agent was already right, and the second cost two wrong
+submissions after the simulator picked the one-row-different reading. Generate the sentence "for a
+Yes filter these return the same rows" onto every such pair, and give a near-identical pair its
+difference count with the words "not a fork".
+
 ### Surface size
 
 Because it was the single largest cost measured on one database and nothing else here bounds it.
