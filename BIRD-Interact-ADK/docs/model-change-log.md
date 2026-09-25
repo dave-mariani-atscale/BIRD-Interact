@@ -9199,3 +9199,14 @@ number) ship under their KB names.
 **Twins and asks.** `(Inputs Recorded Only)` on every nullable flag, `(Position One Row)` pole deficit,
 `(Career Race Count)`/`(Qualifying Race Count)` PPR, `(Unclassified As Zero)` SPI, `(Multi Lap)`
 consistency, `(Any Row)` qualifying specialist. Two asks, both on the deficit-to-pole reading.
+
+### sports_events V12 - 2026-09-25 F2 design review (`962acf7`)
+
+After a $0 ceiling sweep at P1 11/20, P2 10/20. KB 31 CPS now ships at the constructor-result grain with the
+reliability computed over the season (McLaren 2007: 1 start, 0 finishes), the career reading as the twin. The bare
+pole-deficit family (deficit, specialist flags, KB 53 cluster, driver averages) moved to the last qualifying stage
+reached, which KB 10's "final stage" wording favours; best-of-three readings are `(Best Of Three Stages)` twins, plus
+a row-level specialist share. `(Sample)` standard-deviation twins for lap consistency (KB 32 is the population
+form), an `Age At Race (Year Difference)` twin on standings (KB 20 is the floor-of-days form), and the null
+constructor names (10 of the 44 significant) stated on every Constructor Name. Asks cut from 2 plus 23 generated
+"does not settle" clauses to 1. 515 attributes, 121 metrics, 7 calculations.
