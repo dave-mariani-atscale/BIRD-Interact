@@ -17,7 +17,7 @@ contested without taking anything on trust.
 ## Results
 
 Success Rate is the blended phase-1 rate over all 600 tasks; Reward is
-(0.7·P1 + 0.3·P2)·100. Both come from the best single run by reward, which is the
+(0.7·P1 + 0.3·P2)·100. Both come from the best single run by P1, which is the
 convention your guidelines describe. **Success Rate and Reward are our own gold replay
 of the submitted SQL under your grading (§3)**: they are the figures we expect your
 evaluator to reproduce, and the ones in our submission email. **Live** is what our
