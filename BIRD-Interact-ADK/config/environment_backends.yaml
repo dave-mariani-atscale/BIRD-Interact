@@ -361,3 +361,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Mental Health V12
+      crypto_exchange:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Crypto Exchange V12

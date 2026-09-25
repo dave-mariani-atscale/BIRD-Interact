@@ -9155,3 +9155,24 @@ entries ship under their KB names.
 **Allowlists.** `leakage_allow.json` covers three KB concept names that the A8 KB exemption misses
 because a hyphen is normalised to a space. `masked_allow.json` covers the KB 31 calc name, which the
 gate flagged beside KB 41/43's own cutoffs.
+
+## crypto_exchange V12 - 2026-09-25 from-scratch build
+
+New top-level folder in `diannewood/bird-models-v12`, deployed into the shared `bird_models_v12`
+catalog as **Crypto Exchange V12** (commit `d666a70`, deployed 2026-09-25 11:52). The `crypto_exchange`
+domain was added to the `atscale_v12` backend in `config/environment_backends.yaml` in this same commit.
+No new repo, no new catalog. Spec authored by Fable (F1) from the measurement pass, KB, column meanings,
+schema and brief; built by the shared `utilities/birdsml` emitter, green on the third `build.sh` run.
+
+**Shape.** Seven datasets: Order, Execution, Market, Market Stats, Market Analytics, Wallet and Margin
+Position Detail (the last a risk-row by same-trader balance pair grain, 15 rows). Order Detail carries
+its market's book, fee and execution rollups and its risk fold. `systemmonitoring` joins nothing and is
+not published. 260 attributes, 45 metrics (7 medians), 4 calculations.
+
+**Withheld.** KB 2 (PVaR), 3 (APS), 10 (Whale Order) and 18 (Margin Call Risk) are withheld with a
+model-description signpost listing each concept's published inputs. KB 0, 8 and 34 (named formulas
+with no masked number) ship under their KB names.
+
+**Twins and asks.** Formatted text ships parsed with `(As Recorded)` twins; stored spread percent is
+parsed /100 (it is 100x the KB formula). Two asks: which Order Fill Rate reading, and the margin
+utilization grain.
