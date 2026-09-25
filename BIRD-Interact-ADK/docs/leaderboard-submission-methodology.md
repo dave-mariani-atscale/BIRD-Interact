@@ -6,39 +6,40 @@ contested without taking anything on trust.
 | | |
 |---|---|
 | Split / mode | BIRD-Interact-Full, 600 tasks, a-Interact |
-| Agent models | eight, listed below |
-| User simulator | `claude-haiku-4-5-20251001` (seven models) and `gpt-4o` (GPT-5), **your prompts and token limits, unmodified** |
+| Agent models | six, listed below |
+| User simulator | `claude-haiku-4-5-20251001` (five models) and `gpt-4o` (GPT-5), **your prompts and token limits, unmodified** |
 | Efficiency (budget) | 17.86 average, matching the value listed for every Full a-Interact entry |
 | Runs | 3 per model, all 600 tasks, all included |
 | Harness | public fork: github.com/dave-mariani-atscale/BIRD-Interact, branch `feature/atscale-mcp-semantic-layer` |
-| Dates | 2026-09-11 to 09-23 |
+| Dates | 2026-09-11 to 09-21 |
 | Contact | dave@atscale.com |
 
 ## Results
 
 Success Rate is the blended phase-1 rate over all 600 tasks; Reward is
-(0.7·P1 + 0.3·P2)·100. Both are the best single run by reward, which is the
-convention your guidelines describe. **Validated** is our own gold replay (§3) and is
-the figure we expect your evaluator to reproduce. **First run** is each model's
-opening run from an empty state (§4).
+(0.7·P1 + 0.3·P2)·100. Both come from the best single run by reward, which is the
+convention your guidelines describe. **Success Rate and Reward are our own gold replay
+of the submitted SQL under your grading (§3)**: they are the figures we expect your
+evaluator to reproduce, and the ones in our submission email. **Live** is what our
+harness scored during the same run. The remaining columns are live figures from that
+run, except **First run**, each model's opening run from an empty state (§4), and the
+**3-run mean**.
 
 **Claude-Haiku-4-5 simulator track**
 
-| Model | Success | Validated | Reward | Query P1 | Query P2 | Mgmt P1 | Coins | First run | 3-run mean |
-|---|---|---|---|---|---|---|---|---|---|
-| Claude-Sonnet-5 | 53.17 | **53.00** | 47.02 | 57.1 | 37.3 | 44.7 | 15.57 | 49.17 | 51.44 ± 1.68 |
-| Claude-Opus-4.6 | 50.33 | **50.17** | 45.08 | 54.4 | 38.3 | 41.6 | 15.12 | 44.33 | 47.89 ± 2.57 |
-| Kimi-2.5 | 49.00 | **48.83** | 42.90 | 53.7 | 34.1 | 38.9 | 16.49 | 43.33 | 46.06 ± 2.32 |
-| Grok-4.3 | 46.00 | **45.67** | 39.75 | 46.3 | 25.9 | 45.3 | 16.01 | 40.50 | 43.33 ± 2.25 |
-| Nemotron-Ultra | 44.83 | **44.50** | 39.28 | 47.8 | 30.2 | 38.4 | 16.32 | 41.33 | 43.39 ± 1.49 |
-| Qwen3.8-27B | 37.83 | **37.67** | 33.48 | 40.5 | 28.3 | 32.1 | 12.80 | 33.83 | 36.39 ± 2.22 |
-| GLM-4.7 | 33.50 | **33.33** | 28.90 | 33.9 | 21.7 | 32.6 | 16.18 | 30.17 | 32.28 ± 1.84 |
+| Model | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins | First run | 3-run mean |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Claude-Sonnet-5 | **53.00** | **46.90** | 53.17 | 47.02 | 57.1 | 37.3 | 44.7 | 15.57 | 49.17 | 51.44 ± 1.68 |
+| Claude-Opus-4.6 | **50.17** | **44.97** | 50.33 | 45.08 | 54.4 | 38.3 | 41.6 | 15.12 | 44.33 | 47.89 ± 2.57 |
+| Kimi-2.5 | **48.83** | **42.73** | 49.00 | 42.90 | 53.7 | 34.1 | 38.9 | 16.49 | 43.33 | 46.06 ± 2.32 |
+| Grok-4.3 | **45.67** | **39.47** | 46.00 | 39.75 | 46.3 | 25.9 | 45.3 | 16.01 | 40.50 | 43.33 ± 2.25 |
+| Nemotron-Ultra | **44.50** | **39.00** | 44.83 | 39.28 | 47.8 | 30.2 | 38.4 | 16.32 | 41.33 | 43.39 ± 1.49 |
 
 **GPT-4o simulator track** — not comparable to the rows above, different simulator.
 
-| Model | Success | Validated | Reward | Query P1 | Query P2 | Mgmt P1 | Coins | First run | 3-run mean |
-|---|---|---|---|---|---|---|---|---|---|
-| GPT-5 | 48.17 | **47.83** | 43.02 | 51.5 | 34.9 | 41.1 | 14.80 | 44.33 | 46.83 ± 1.77 |
+| Model | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins | First run | 3-run mean |
+|---|---|---|---|---|---|---|---|---|---|---|
+| GPT-5 | **47.83** | **42.78** | 48.17 | 43.02 | 51.5 | 34.9 | 41.1 | 14.80 | 44.33 | 46.83 ± 1.77 |
 
 ## What the system is
 
@@ -78,13 +79,13 @@ your evaluator. They should score 0, which is what we recorded.
 so all 190 Management (WRITE) tasks route per task to the standard raw tools and the
 standard raw grading path inside the same run; only the 410 Query (READ) tasks use the
 semantic layer. Each row's `category` and `backend` say which path it took. This is
-also a useful control: Management sits at 32–45% across all eight models while Query
+also a useful control: Management sits at 38–45% across all six models while Query
 moves with the semantic layer.
 
 **3. We re-graded our own submission and are quoting the lower number.** Every
 exported Query SQL was re-executed against a clone of each task's template database
 and re-graded under **upstream** rules. All eighteen runs land within 0.34 of what we
-reported; the Validated column above is the result.
+reported; the Success Rate and Reward columns above are the result.
 
 `museum_artifact_6` disagrees in all eighteen: it returns gold's 545 rows exactly and
 fails only because upstream grading strips `DISTINCT` from both sides, inflating that
@@ -139,14 +140,11 @@ excluded, so the rates above already carry them. Counts across each model's thre
 | Nemotron-Ultra | 27 | provider 5xx / rate-limit from the hosting endpoint |
 | GPT-5 | 20 | provider 5xx / rate-limit from the hosting endpoint |
 | Grok-4.3 | 0 | — |
-| Qwen3.8-27B | 11 | client-side read timeout to the agent service |
-| GLM-4.7 | 6 | client-side read timeout to the agent service |
 
-The open-weight and hosted-API models were served through a third-party
+The three open-weight and hosted-API models were served through a third-party
 inference provider, and those errors are infrastructure rather than model behaviour.
-Scored as failures they depress those models' numbers by roughly 1 to 2 points
-against a clean run (well under 1 point for Qwen3.8-27B and GLM-4.7, whose counts are
-single-digit to low-double-digit). We have not re-run to remove them.
+Scored as failures they depress those three models' numbers by roughly 1 to 2 points
+against a clean run. We have not re-run to remove them.
 
 ## Files
 
