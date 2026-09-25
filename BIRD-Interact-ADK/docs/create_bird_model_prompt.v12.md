@@ -360,6 +360,21 @@ carries Critical on 217 rows, "Critical as 1" (the floor) and "High only" are no
 set — "Critical as 4" is the completion a reader who sees the ladder reaches for. Ship it as
 `(Critical Weighted 4)` with the disagreement count.
 
+**A surplus level at the bottom of the same scale is usually the zero, not a gap.** Measured 2026-09-25
+on mental_health: KB 4 scores engagement High 3 / Medium 2 / Low 1, and the warehouse also stores
+'Non-compliant' on 99 treatments. The reference scored it 0. The `(Non-compliant As Zero)` twin passed a
+phase that the excluded bare reading failed, and making the zero reading bare converted it live. When the
+unnamed level is the scale's own floor ("none of it"), the zero completion is the bare reading. Carry it
+into every formula built on it, and re-pin the flags it moves: here three KB flags moved by 6 to 9
+facilities each.
+
+**A binding fork the simulator will not answer is yours to settle, on the table the FK lives on.**
+Measured 2026-09-25 on mental_health: the "assigned facility vs the encounter's facility" closed question
+fired 5 times, was answered "out of scope" 4 times, and decided nothing. A plain SQL reader computing a
+facility's crisis, adherence or engagement figures joins through the encounter, because `fac_id` is on
+the encounter row. Putting the bare name on that binding, with the assigned reading as the `(Assigned
+Facility)` twin, converted the task with no canary loss.
+
 **The KB's named examples are a factor set of their own.** Where the KB says "for various
 environmental factors like light, temperature, and humidity" and a stored JSON profile holds
 five keys under that heading and ten overall, all three sets are defensible readings of
