@@ -2,14 +2,25 @@
 # exhausted, so the track's simulator - the unchanged model string openai/gpt-4o -
 # is billed through OpenRouter and pinned to OpenAI's own endpoint (OpenRouter would
 # otherwise alternate with the Azure mirror). Prompts and token limits untouched.
-# The agent (openrouter/openai/gpt-oss-120b) has no route: it auto-routes across
-# OpenRouter providers like every prior OpenRouter sweep (Kimi, Nemotron, GLM, Qwen).
-# To pin it, add e.g.
-#   openrouter/openai/gpt-oss-120b:
-#     extra_body: {provider: {order: [CoreWeave], allow_fallbacks: false}}
+# The agent is pinned to the providers that parse gpt-oss's tool calls on THIS
+# harness's real request shape (42k-char instruction, 18k-char tool results, and a
+# final submit_sql whose argument is multi-line SQL). Established 2026-09-24 by
+# capturing the harness's exact request bodies (BIRD_LLM_DUMP_DIR) and replaying an
+# exploration turn and a submit turn against each provider in the same time window:
+#   Cerebras  5/5 and 5/5   Groq 5/5 and 5/5
+#   Crusoe    5/5 and 0/5   CoreWeave 5/5 and 0/5   Nebius 5/5 and 0/5   Novita 4/5, 2/5
+#   DeepInfra 0/5 (even with tool_choice=required)   AkashML broken/rate-limited
+# A failing provider returns HTTP 200 with the tool call glued into reasoning text, so
+# ADK ends the task unsubmitted (scored 0) and OpenRouter never fails over. Auto-route
+# gave ~30% such tasks, AkashML 100%, DeepInfra 97%, Crusoe 20%. Short synthetic probes
+# never reproduced it; only the real bodies do. Cerebras is fp16; no fallback beyond
+# the two so the sweep is served by known stacks.
 routes:
   openai/gpt-4o:
     api_base: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     extra_body:
       provider: {order: [OpenAI], allow_fallbacks: false}
+  openrouter/openai/gpt-oss-120b:
+    extra_body:
+      provider: {order: [Cerebras, Groq], allow_fallbacks: false}
