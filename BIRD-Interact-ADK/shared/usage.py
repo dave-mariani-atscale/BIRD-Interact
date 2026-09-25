@@ -181,10 +181,29 @@ def install() -> None:
     class _UsageLogger(CustomLogger):
         # Both hooks are needed: the user simulator calls litellm.completion
         # (sync) and ADK's LiteLlm calls litellm.acompletion (async).
+        def _dump(self, kwargs, response_obj):
+            # Debugging aid, off unless BIRD_LLM_DUMP_DIR is set: the exact request body
+            # litellm sent and the response it parsed, one JSON file per call, so a
+            # misbehaving turn can be replayed outside the harness. Not model-specific.
+            d = os.environ.get("BIRD_LLM_DUMP_DIR", "").strip()
+            if not d:
+                return
+            try:
+                os.makedirs(d, exist_ok=True)
+                body = (kwargs.get("additional_args") or {}).get("complete_input_dict")
+                resp = response_obj.model_dump() if hasattr(response_obj, "model_dump") else str(response_obj)
+                fn = os.path.join(d, f"{time.time():.3f}_{_task_var.get() or 'notask'}.json")
+                with open(fn, "w") as fh:
+                    json.dump({"task": _task_var.get(), "model": kwargs.get("model"), "request": body, "response": resp}, fh, default=str)
+            except Exception:
+                pass
+
         def log_success_event(self, kwargs, response_obj, start_time, end_time):
+            self._dump(kwargs, response_obj)
             _record(_row_from_call(kwargs, response_obj))
 
         async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+            self._dump(kwargs, response_obj)
             _record(_row_from_call(kwargs, response_obj))
 
     litellm.callbacks.append(_UsageLogger())
