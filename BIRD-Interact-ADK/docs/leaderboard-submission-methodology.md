@@ -6,12 +6,12 @@ contested without taking anything on trust.
 | | |
 |---|---|
 | Split / mode | BIRD-Interact-Full, 600 tasks, a-Interact |
-| Agent models | six, listed below |
-| User simulator | `claude-haiku-4-5-20251001` (five models) and `gpt-4o` (GPT-5), **your prompts and token limits, unmodified** |
+| Agent models | eight, listed below |
+| User simulator | `claude-haiku-4-5-20251001` (seven models) and `gpt-4o` (GPT-5), **your prompts and token limits, unmodified** |
 | Efficiency (budget) | 17.86 average, matching the value listed for every Full a-Interact entry |
 | Runs | 3 per model, all 600 tasks, all included |
 | Harness | public fork: github.com/dave-mariani-atscale/BIRD-Interact, branch `feature/atscale-mcp-semantic-layer` |
-| Dates | 2026-09-11 to 09-21 |
+| Dates | 2026-09-11 to 09-23 |
 | Contact | dave@atscale.com |
 
 ## Results
@@ -31,6 +31,8 @@ opening run from an empty state (§4).
 | Kimi-2.5 | 49.00 | **48.83** | 42.90 | 53.7 | 34.1 | 38.9 | 16.49 | 43.33 | 46.06 ± 2.32 |
 | Grok-4.3 | 46.00 | **45.67** | 39.75 | 46.3 | 25.9 | 45.3 | 16.01 | 40.50 | 43.33 ± 2.25 |
 | Nemotron-Ultra | 44.83 | **44.50** | 39.28 | 47.8 | 30.2 | 38.4 | 16.32 | 41.33 | 43.39 ± 1.49 |
+| Qwen3.8-27B | 37.83 | **37.67** | 33.48 | 40.5 | 28.3 | 32.1 | 12.80 | 33.83 | 36.39 ± 2.22 |
+| GLM-4.7 | 33.50 | **33.33** | 28.90 | 33.9 | 21.7 | 32.6 | 16.18 | 30.17 | 32.28 ± 1.84 |
 
 **GPT-4o simulator track** — not comparable to the rows above, different simulator.
 
@@ -76,7 +78,7 @@ your evaluator. They should score 0, which is what we recorded.
 so all 190 Management (WRITE) tasks route per task to the standard raw tools and the
 standard raw grading path inside the same run; only the 410 Query (READ) tasks use the
 semantic layer. Each row's `category` and `backend` say which path it took. This is
-also a useful control: Management sits at 38–45% across all six models while Query
+also a useful control: Management sits at 32–45% across all eight models while Query
 moves with the semantic layer.
 
 **3. We re-graded our own submission and are quoting the lower number.** Every
@@ -138,11 +140,14 @@ excluded, so the rates above already carry them. Counts across each model's thre
 | Nemotron-Ultra | 27 | provider 5xx / rate-limit from the hosting endpoint |
 | GPT-5 | 20 | provider 5xx / rate-limit from the hosting endpoint |
 | Grok-4.3 | 0 | — |
+| Qwen3.8-27B | 11 | client-side read timeout to the agent service |
+| GLM-4.7 | 6 | client-side read timeout to the agent service |
 
-The three open-weight and hosted-API models were served through a third-party
+The open-weight and hosted-API models were served through a third-party
 inference provider, and those errors are infrastructure rather than model behaviour.
-Scored as failures they depress those three models' numbers by roughly 1 to 2 points
-against a clean run. We have not re-run to remove them.
+Scored as failures they depress those models' numbers by roughly 1 to 2 points
+against a clean run (well under 1 point for Qwen3.8-27B and GLM-4.7, whose counts are
+single-digit to low-double-digit). We have not re-run to remove them.
 
 ## Files
 
