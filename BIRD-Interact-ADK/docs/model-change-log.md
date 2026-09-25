@@ -9133,3 +9133,25 @@ the geometric mean. A measurement-quality map (KB 35 limit / KB 38 blend flags p
 went into the model description after two tasks spent 5-6 coins hunting it. Non-fork closures on the
 `(Inputs Recorded Only)` twins and on `Multi-planetary System` vs the live planet count (1 star), and
 escape velocity routed to km/s, all to cut asks that fired where the agent was already right.
+
+## mental_health V12 - 2026-09-25 from-scratch build
+
+New top-level folder in `diannewood/bird-models-v12`, deployed into the shared `bird_models_v12`
+catalog as **Mental Health V12**. The `mental_health` domain was added to the `atscale_v12` backend in
+`config/environment_backends.yaml` in this same commit. No new repo, no new catalog. Spec authored by
+Fable (F1) from the measurement pass, KB, column meanings, schema and brief, and built by the shared
+`utilities/birdsml` emitter. Commit `95b07af` (build) was reverted from main (`d50605b`) while the
+engine refused the 9.0 MB catalog POST (E-19). It was restored as `19c1626` once the engine limit was
+raised to 64m, and deployed 2026-09-25 07:42.
+
+**Shape.** Five datasets with no cross-dataset joins: Facility, Clinician, Patient, Assessment and
+Treatment Detail. Each owner's figures are folded in at the finer grains. 464 attributes, 255 metrics,
+17 calculations.
+
+**Withheld.** KB 47/49/56/59/76 (deleted domain cutoffs) and 64/86 (they depend on those) are withheld,
+with a model-description signpost listing each concept's published inputs. The deleted calculation
+entries ship under their KB names.
+
+**Allowlists.** `leakage_allow.json` covers three KB concept names that the A8 KB exemption misses
+because a hyphen is normalised to a space. `masked_allow.json` covers the KB 31 calc name, which the
+gate flagged beside KB 41/43's own cutoffs.

@@ -357,3 +357,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Planets Data V12
+      mental_health:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Mental Health V12
