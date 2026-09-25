@@ -1122,7 +1122,10 @@ reachable tasks in a 0/10 arm.
   is `0.315` exactly and `0.31499997` in float32, which the grader's HALF_UP turns into `0.32`
   against `0.31`. It moved 2 of 1011 rows on one formula and 0 on three others, so decide **per
   formula** — a model-wide switch risks every already-exact task. Both rules are measurements, not
-  principles: count the rows where the two roundings differ and follow the count.
+  principles: count the rows where the two roundings differ and follow the count. Measured again 2026-09-25 on
+  crypto_exchange: Technical Signal Strength over three jsonb leaves differed at the second decimal on 2 of
+  1000 rows between `::real` and `::numeric`, and `::numeric` matched the reference on both. The model-wide
+  switch that followed held every ceiling pass, but the per-formula count should have decided it first.
 - **A `real` column published for display carries the decimal Postgres itself prints, not the
   IEEE widening.** A stored `real` 0.755 reaches every SQL client as the text `0.755` (Postgres
   prints the shortest round-tripping string) and the reference is graded from that; the engine
@@ -1680,8 +1683,29 @@ Many of the rules above multiply object count.
   expectation honestly: ten KB concepts added to one model cost nothing in discovery (5.1 to 5.0
   calls per task, budget exhaustion actually fell) and were **never once queried**, because no task
   asked for them. Do it so the comparison is fair; do not book a score improvement against it.
+- **A verdict flag's SQL must emit what its description says it reads back as.** Measured 2026-09-25 on
+  crypto_exchange: F1 copied "read back as 1 for Yes and 0 for No" from a reference spec while its flag
+  helper emitted 'Yes'/'No' text, and a phase whose reference is boolean lost on 'No' against 0 with every
+  row right. Grep the flag helper, not the prose.
+- **A status the KB does not name is a label the user supplies: ask for its wording.** A "check X" /
+  "is it Y" question graded against one text column ("Liquidity Crisis" / "Normal Market Conditions")
+  cannot be derived from the KB. On crypto_exchange the simulator supplied labels matching the reference
+  when asked, and a closed question on the verdict flag (1/0 or a label, and which wording) converted a
+  task that had lost three submissions on the projection.
+- **When a question's framing contradicts a warehouse fact, state the fact where the agent reads first.**
+  "Based on the latest market-depth snapshot, i.e. the one with maximum market stats id" made the agent
+  narrow to one market (1 row against 454). The warehouse holds one book row per market, so every order's
+  book already is its latest snapshot. Saying that on the book columns and the signpost converted the task:
+  it is a fact, not an instruction, and it names no filter.
 
 ## Engine constraints (learned the hard way)
+
+- **A WHERE on an unjoined dataset's column is silently dropped (Q-41, 2026-09-25).** Projecting one
+  dataset's column while filtering on another's, where the two datasets share no relationship, dispatches
+  `WHERE true`: every row returns, with no error. Carry into each grain the owner columns a question would
+  project beside its filters. Two FROM-subqueries joined with a comma are refused outright; conditional
+  aggregates in one subquery give two figures in one row. A median metric is called as
+  `<name>_instance_0.5`. All three are in `birdsml.ENGINE_NOTES`.
 
 These work around tracked engine/tool defects — parenthesized IDs reference the team's defect
 tracker and are provenance, not something to resolve. Check the Workarounds table in
@@ -1832,8 +1856,9 @@ failure.
   via a percentile metric the model published); quantile bucketing (`NTILE` rejected — so
   quartile/decile/percentile-band questions are unanswerable unless the band ships as an attribute;
   `ROW_NUMBER` and `RANK` are both accepted, so it is `NTILE` specifically); string aggregation
-  (`string_agg`/`listagg`/`group_concat` rejected, `ARRAY_AGG` accepted but silently does not
-  aggregate); JSON aggregation and construction (`json_agg`, `json_build_object` — "Don't
+  other than `STRING_AGG` (`listagg`/`group_concat` rejected, `ARRAY_AGG` accepted but silently does not
+  aggregate; CORRECTED 2026-09-25 on crypto_exchange: `STRING_AGG` over a FROM-subquery is accepted and
+  passed a graded phase); JSON aggregation and construction (`json_agg`, `json_build_object` — "Don't
   understand function"); `COUNT(*) FILTER (WHERE …)` (rejected — use
   `SUM(CASE WHEN … THEN 1 ELSE 0 END)`, the working pivot idiom); `GREATEST`/`LEAST`;
   `IN (subquery)`/`EXISTS`; CTEs; and `COUNT(*)`. Window and statistical functions the SQL front end

@@ -542,6 +542,15 @@ read any improvement. Then:
   in every run to an agent rounding as asked against a reference whose ROUND the grader strips, and 5
   ceiling phases pass only unrounded. When a sweep phase passes unrounded and fails rounded, it is
   B-69, not the model; the fix is guidance and it is Dianne's call (B-49).
+- **Unattended, a background shell dies when your turn ends.** Measured 2026-09-25 on crypto_exchange: a
+  `run_in_background` wait-then-sweep was killed when the `claude -p` turn ended, and the driver's resume
+  started with nothing on disk. Launch runs with `nohup … &` (they survive), then wait in the FOREGROUND
+  with `until grep -q "ALL DONE" out; do sleep 15; done` under a 590 s timeout, re-issued until it returns.
+  Never end a turn to wait.
+- **An engine that loses its warehouse connection costs a task silently (E-20).** Measured 2026-09-25 on
+  crypto_exchange: two submissions returned `connection to server at "10.254.0.13", port 15432 failed:
+  Connection refused`; the task scored 0 while its last submission matched gold at $0, and it recurred in a
+  later run. Grep the results JSON for `Connection refused` before reading any zero, and re-run the task.
 - `setsid` does not exist on macOS, and a run launched from inside a backgrounded shell dies
   with its parent. Plain `nohup … &` from a foreground shell survives.
 - The runner **always** timestamps `--output` (`<stem>_YYYYmmdd_HHMMSS.json`). Glob for the
