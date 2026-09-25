@@ -79,9 +79,15 @@ def main():
         url = 'init_task' if 'init_task' in l else 'run_session'
         import datetime as _dt
         ts = _dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S').timestamp()
+        # A task id can appear in several runs' error sets (polar_equipment_18 fails
+        # in all three). The run window is what disambiguates; guessing "first run
+        # that contains the id" silently mis-attributes, which is worse than saying
+        # so in a disclosure document.
         run = next((n for n, d, ids, (s0, s1) in runs if task in ids and s0 <= ts <= s1 + 300), None)
         if run is None:
-            run = next((n for n, d, ids, _ in runs if task in ids), None)
+            run = next((n for n, d, ids, (s0, s1) in runs if s0 <= ts <= s1 + 300), None)
+            if run is not None:
+                run += '?'
         if run is None:
             continue
         cause, detail = classify(t, url, sig, limit)
