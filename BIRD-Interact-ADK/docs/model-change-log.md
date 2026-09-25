@@ -9105,3 +9105,31 @@ the move wrong for TEI and SRS, which were reverted to strict-bare with `(Missin
 **Shared change.** `birdsml.ENGINE_NOTES` gained one clause: projecting only a CAST or ROUND of a
 column does not count as projecting it, so ORDER BY the alias (two tasks refused on it; the alias
 form verified live). Every v12 model picks it up on its next rebuild.
+
+## planets_data V12 - 2026-09-24 from-scratch build, design review and iteration
+
+New top-level folder in `diannewood/bird-models-v12`, deployed into the shared `bird_models_v12`
+catalog as **Planets Data V12**, with a `planets_data` domain added to the `atscale_v12` backend in
+`config/environment_backends.yaml` in this same commit. No new repo, no new catalog. Spec authored by
+Fable (F1) from the measurement pass, KB, column meanings, schema and brief; built by the shared
+`utilities/birdsml` emitter. Commits `1e02270` (build), `e6918b9` (F2), `ee6d233` (F3+F4).
+
+**Shape.** Two datasets: Planet Detail (3372) and Star Detail (2509; star aggregates from the same
+planet core). KB 33 Compact System (deleted on `_11`, cutoff < 3) is withheld with a model-description
+signpost naming its inputs; every other deleted id is a named formula or a number-free definition and
+ships. KB 35/38 are allowlisted in `generator/masked_allow.json` (the gate fired on flag codes and live
+counts beside number-free domain entries).
+
+**F2 (why).** A $0 ceiling probe reached `_4` only with the outermost planet by semi-major axis, so
+`Planet Outermost By Semi-Major Axis` and `Star Kepler Third Law Mass (Outermost Planet)` ship beside
+the period-ordered reading (the orderings differ on 46 planets). KB 31 says inclination > 90 while
+the reference reads >= 90: `Retrograde Orbit (Inclination 90 Or More)` exposes the boundary (21
+planets at exactly 90) with the KB reading bare. The sci-notation twin's precision is named as a
+rendering choice, with the TO_CHAR route the engine passes through.
+
+**F3+F4 (why).** `Star Mean Adjacent Period Ratio` described itself with the question's own phrase
+("the average orbital period ratio") and was projected on 2 of 2 runs: now a closed question against
+the geometric mean. A measurement-quality map (KB 35 limit / KB 38 blend flags per star measurement)
+went into the model description after two tasks spent 5-6 coins hunting it. Non-fork closures on the
+`(Inputs Recorded Only)` twins and on `Multi-planetary System` vs the live planet count (1 star), and
+escape velocity routed to km/s, all to cut asks that fired where the agent was already right.
