@@ -9176,3 +9176,26 @@ with no masked number) ship under their KB names.
 **Twins and asks.** Formatted text ships parsed with `(As Recorded)` twins; stored spread percent is
 parsed /100 (it is 100x the KB formula). Two asks: which Order Fill Rate reading, and the margin
 utilization grain.
+
+## sports_events V12 - 2026-09-25 from-scratch build
+
+New top-level folder in `diannewood/bird-models-v12`, deployed into the shared `bird_models_v12`
+catalog as **Sports Events V12** (commit `12e0d61`). The `sports_events` domain was added to the
+`atscale_v12` backend in `config/environment_backends.yaml` in this same commit. No new repo, no new
+catalog. Spec authored by Fable (F1) from the measurement pass, KB, column meanings, schema and brief;
+built by the shared `utilities/birdsml` emitter, green on the fifth `build.sh` run.
+
+**Shape.** Thirteen datasets, each carrying its owners' race, driver and constructor columns so no
+question needs two unjoined datasets (Q-41): Race, Race Session (race x 5 schedule keys), Circuit,
+Driver, Constructor, Constructor Result, Constructor Standing, Driver Standing, Qualifying, Sprint
+Result, Lap Time, Driver Race Lap (driver-race pairs) and Pit Stop. The warehouse has no main-race
+results table; per-driver classification exists only for sprints. 497 attributes, 114 metrics
+(10 medians), 6 calculations. Millisecond integers are widened before /1000.
+
+**Withheld.** KB 0, 9, 10, 11, 14, 15, 51 and 55 are withheld with a model-description signpost
+listing each concept's published inputs. KB 21, 26, 27, 29, 32 and 36 (named formulas with no masked
+number) ship under their KB names.
+
+**Twins and asks.** `(Inputs Recorded Only)` on every nullable flag, `(Position One Row)` pole deficit,
+`(Career Race Count)`/`(Qualifying Race Count)` PPR, `(Unclassified As Zero)` SPI, `(Multi Lap)`
+consistency, `(Any Row)` qualifying specialist. Two asks, both on the deficit-to-pole reading.

@@ -365,3 +365,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Crypto Exchange V12
+      sports_events:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Sports Events V12
