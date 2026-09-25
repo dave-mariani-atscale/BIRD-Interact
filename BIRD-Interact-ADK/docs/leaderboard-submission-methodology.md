@@ -111,10 +111,9 @@ we are finishing and can share with you.
 
 **5. The scaffold was developed against this public dataset.** Our agent instruction
 and the 22 semantic models were built and tuned while measuring against
-BIRD-Interact-Full, whose tasks and gold SQL are public. Nothing in the guidelines
-prohibits it and any entrant could do the same, but it is a real difference from work
-that trains on Lite and evaluates on Full, and you should weigh it. The instruction is
-in the public fork, at `BIRD-Interact-ADK/config/environment_backends.yaml`.
+BIRD-Interact-Full. Gold SQL was not used to create the semantic models. This differs
+from work that develops on Lite and evaluates on Full, and you should weigh it. The 
+instruction is in the public fork, at `BIRD-Interact-ADK/config/environment_backends.yaml`.
 
 **6. Grading is yours, unmodified.** Our harness carries six optional comparison
 corrections we use for internal A/B work (case-insensitive text, column-order
