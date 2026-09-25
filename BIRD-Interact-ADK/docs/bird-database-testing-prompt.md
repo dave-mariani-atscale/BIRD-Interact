@@ -556,7 +556,9 @@ read any improvement. Then:
   reverting, run the canary once more on the changed model, then once on the reverted
   model; if it fails on both, look at what else moved — on 2026-09-18 it was memory blocks.
 - `git revert -q` is not a flag; a failed command at the head of an `&&` chain lets the `;`
-  tail run anyway. Never put the run launch on the same line as the deploy.
+  tail run anyway. Measured 2026-09-24: `git revert --no-edit X -q; git commit --amend -m ...` ran the
+  amend after the refused revert and rewrote X's own message, which left local main diverged from the remote. Chain
+  a revert with `&&`, never `;`, and check `git log -1` before pushing. Never put the run launch on the same line as the deploy.
 
 ## Non-negotiable
 
