@@ -9425,3 +9425,13 @@ spellings and casings (cable status 123 raw, 16 casefold groups), so every categ
 a `(Spellings Merged)` reading; KB 11 Household Density and KB 15 Bathroom Ratio ship bare as the decimal quotient with
 `(Integer Quotient)` twins (they differ on 801 and 1206 rows). Withheld: KB 29's cutoffs only (inputs signposted in the
 model description). 82 attributes, 106 metrics, 9 calcs, 2 asks. Build green in 2 runs (G6 allowlist, G19 folder split).
+
+### households V12 - 2026-09-26 F3+F4 fork removal (`8b1680a`)
+
+From the baseline (P1 2/21): the model's own forks consumed the agent's asks — region vs zone (5 asks, always Region),
+recorded vs merged region (5 asks, merged chosen on 3, each lost), decimal vs integer density — while nine tasks lost on
+output shape with no ask left. `Household Region (Spellings Merged)` and `Household Region Count` removed; the region and
+cable closed questions removed (asks 2 -> 0); area / location / area code stated as the recorded region. Every twin
+description now leads with the bare reading and scopes the twin to a user who asks for it. `Household Income Tier Rank`
+leads with being this model's ordering convention (the agent had filtered on it instead of quoted bracket strings), and
+the KB wording Affluent / Economically Independent moved from it to `Household Income Bracket`. 81 attributes, 105 metrics.
