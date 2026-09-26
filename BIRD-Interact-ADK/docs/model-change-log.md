@@ -9210,3 +9210,12 @@ a row-level specialist share. `(Sample)` standard-deviation twins for lap consis
 form), an `Age At Race (Year Difference)` twin on standings (KB 20 is the floor-of-days form), and the null
 constructor names (10 of the 44 significant) stated on every Constructor Name. Asks cut from 2 plus 23 generated
 "does not settle" clauses to 1. 515 attributes, 121 metrics, 7 calculations.
+
+### sports_events V12 - 2026-09-25 F3+F4 levers and turn economy
+
+After the baseline (P1 10/20, P2 6/20; 14 of 20 tasks at 0-1 coins). Constructor Name now leads with one row per
+Constructor ID, the 10 unnamed significant constructors kept in the listing (the agent had filtered them out on the
+earlier sentence). The standings age names its `(Year Difference)` twin with both >=35 counts (308 vs 332). Sprint
+Performance Index states its classified population (345) and that a measure-less select returns distinct tuples.
+Driver ID and Driver Reference say a driver has both. The driver- and row-grain specialist shares name each other.
+Model description: no ordering asks, and a verdict takes the question's own word. Description 6.87k chars.
