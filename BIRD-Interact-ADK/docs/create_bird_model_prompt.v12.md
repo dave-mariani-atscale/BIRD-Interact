@@ -1679,6 +1679,20 @@ submissions after the simulator picked the one-row-different reading. Generate t
 Yes filter these return the same rows" onto every such pair, and give a near-identical pair its
 difference count with the words "not a fork".
 
+**A name column that is not unique says so first, with its distinct count.** Measured 2026-09-26 on hulushows: 1000
+shows carried 109 distinct titles (every franchise member shares its title) and the title's description did not say it.
+A SELECT with no measure returns DISTINCT tuples, flat listings as much as subqueries, so two agents listing shows by title
+without the ID got 109 of 1000 and 29 of 234 rows. Count distinct values of every name/title column against its entity
+count in facts.md, and lead the description with the gap and the ID that makes a listing per entity.
+
+**A twin that is not a KB reading, and that keeps winning against the bare reading after the bare-name move and the ask,
+is removed rather than reworded.** Measured 2026-09-26 on hulushows: the tier count by row existence (7 on every show)
+was bare, and the media-present count (5 or 7) was its twin with a closed question; across five runs the agent or the
+simulator took the varying count three times, because a figure constant across the population looks uninformative beside
+"several" or "many". The KB counts tiers a show is available in and availability is the row, so the media-present count
+was a builder's narrowing, not a reading; removing it converted one task and restored a dropped canary, 2/2 each. This is
+the step after "put the plain name on the reading the questions mean" when that has already been done.
+
 ### Surface size
 
 Because it was the single largest cost measured on one database and nothing else here bounds it.

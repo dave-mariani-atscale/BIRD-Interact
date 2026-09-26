@@ -583,6 +583,13 @@ read any improvement. Then:
   crypto_exchange: two submissions returned `connection to server at "10.254.0.13", port 15432 failed:
   Connection refused`; the task scored 0 while its last submission matched gold at $0, and it recurred in a
   later run. Grep the results JSON for `Connection refused` before reading any zero, and re-run the task.
+- **gold_diff cannot sweep a Query gold that uses `~` (B-84): the template write guard in `shared/db_utils` fails closed
+  on SQL sqlglot cannot parse.** Measured 2026-09-26 on hulushows: five of 20 tasks had no $0 ceiling and no finding.
+  Running `ALLOW_TEMPLATE_WRITES=1 ... scripts/gold_diff.py` for those Query-category tasks only (their gold is a pure
+  SELECT), then `gate_run.sh`'s template-integrity check, restored diagnosis for all five. Never set it for any other
+  command or for a Management task. Live grading runs on per-task clones and is not affected.
+- **`birdsml.ENGINE_NOTES` counts against each spec's 9000-char model-description assert.** It grew ~290 chars on
+  2026-09-26 (the flat-listing distinct-tuple sentence); cross_border sat at 8996 and will need a trim on its next rebuild.
 - `setsid` does not exist on macOS, and a run launched from inside a backgrounded shell dies
   with its parent. Plain `nohup … &` from a foreground shell survives.
 - The runner **always** timestamps `--output` (`<stem>_YYYYmmdd_HHMMSS.json`). Glob for the
