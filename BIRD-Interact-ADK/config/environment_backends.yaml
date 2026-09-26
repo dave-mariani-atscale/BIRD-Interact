@@ -377,3 +377,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Reverse Logistics V12
+      cross_border:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Cross Border V12

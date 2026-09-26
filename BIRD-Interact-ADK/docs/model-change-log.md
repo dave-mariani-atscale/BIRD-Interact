@@ -9310,3 +9310,18 @@ Footprint carry a closed question when a question names neither total nor averag
 Lapsed; Recovery Rate per Day names the totals beside its average (`_3`). Turn economy: the Latest-100 channel-cost twins
 say they are the reading only when a question names the latest hundred, and Total Return Cost says the 505 have no cost
 to list (asks that fired where the agent was right). 206 metrics; build green first try.
+
+## cross_border V12 - 2026-09-26 from-scratch build (`0e3997c`)
+
+From-scratch v12 build (kickoff 15), F1 by Fable from facts.md + KB + brief. One dataset, Data Flow Detail (999 flows,
+dimension Data Flow Record): every FK is strict 1:1 and the populations nest 999 -> 870 (risk + profile) -> 430
+(security) -> 240 (vendor + compliance + audit), so every satellite is left-joined onto the flow with one coverage flag
+per record and the shared-population rule leading the model description. All 17 withheld KB ids are calculation
+formulas or number-free domain entries, so nothing is withheld (WITHHELD_NAMES empty) and every KB flag ships with its
+cutoff. Twins: DSI/ECR/BRF/DRRS (Critical As 3) for the stored level outside the KB ladder; AFS and Flow Reliability
+Score (Integer Division); AFS/VCB/ARL/ACP and breach/near-miss/critical counts (Unrecorded As Zero); DSI/CDVR (Flow
+Data Size MB); DSRP (Resolution Hours); SRS (Security Record Enc); BCR/CBCE (Any Law); gap (Partial As Gap). Deadline
+flags as of 2025-04-01. Three closed-question asks (DSI Critical, SRS encryption input, compliance-gap "missing").
+Build green after ~10 build.sh runs: model description trimmed 9923 -> 8996 (dropped two sentences duplicated by
+column text and ENGINE_NOTES), 10 pins reset to the model SQL's live counts, `Security ID` -> `Flow Security ID`
+(sibling collision), aggregates folder split per entity (G19), three A8 question-phrase rewordings.
