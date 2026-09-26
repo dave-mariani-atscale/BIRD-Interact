@@ -9414,3 +9414,14 @@ after the bare-name move and the ask had both been tried. The tier-grain `Show T
 Title` now states it is not unique (109 titles over 1000 shows; a title listing without Show ID returns 109 rows);
 `Franchise Canonical Name` leads with being the slug form, `Franchise Show Titles` with being the member titles. 225
 attributes, 207 metrics.
+
+## households V12 - 2026-09-26 from-scratch build (`dbff163`)
+
+New model `Households V12` in `diannewood/bird-models-v12/households`, catalog `bird_models_v12`, backend `atscale_v12`
+domain `households`. F1 (Fable) authored the spec from facts.md, the KB, column meanings, schema and the brief. One
+grain, Household Detail (1581 households; property, infrastructure, amenities, transport and service plan left-joined,
+4 households without a property and 8 without a service plan pinned). The warehouse stores each category in many
+spellings and casings (cable status 123 raw, 16 casefold groups), so every categorical ships its recorded spelling beside
+a `(Spellings Merged)` reading; KB 11 Household Density and KB 15 Bathroom Ratio ship bare as the decimal quotient with
+`(Integer Quotient)` twins (they differ on 801 and 1206 rows). Withheld: KB 29's cutoffs only (inputs signposted in the
+model description). 82 attributes, 106 metrics, 9 calcs, 2 asks. Build green in 2 runs (G6 allowlist, G19 folder split).

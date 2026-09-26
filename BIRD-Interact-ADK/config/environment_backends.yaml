@@ -385,3 +385,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Hulushows V12
+      households:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Households V12
