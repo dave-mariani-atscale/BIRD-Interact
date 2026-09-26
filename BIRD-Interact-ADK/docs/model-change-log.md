@@ -9278,3 +9278,10 @@ placement grain inner-joined the readings, so ART40138's only assessment and the
 dropped (Artifact Latest Assessment summed 994, not 995). The placement grain now reads every showcase, left-joining
 readings; the row's reading columns are null and it counts as its showcase's latest reading. Pins and one prose count
 (Reading Showcase Count, 952 showcases carry a reading) corrected. No description meaning changed.
+
+### museum_artifact V12 - 2026-09-25 iteration 1b, shared engine note (`38a49e1`)
+
+`birdsml.ENGINE_NOTES` gains one fact measured on the baseline (`museum_artifact_1` phase 2): ORDER BY an aggregate the
+SELECT does not project (ORDER BY COUNT(DISTINCT key) DESC LIMIT 1 for the most frequent group) is refused; the aggregate
+goes under an alias in a FROM-subquery holding the ORDER BY and LIMIT. Only museum_artifact is rebuilt here; sibling
+models pick it up at their next build.
