@@ -9260,3 +9260,13 @@ one artifact); ten-factor ERF twins `(Ten Factors Unrated Zero)` / `(Ten Factors
 five-factor readings; neutral standings (rank among rated, share of rated above) for Historical Significance
 Rating and Cultural Score, listed in the withheld high-value signpost without any cutoff; three names cleaned
 (`Hall Mean Daily Visitors`, `Showcase Avg Artifact Count`, `Artifact Max Vulnerability Score`). Asks unchanged (1).
+
+### museum_artifact V12 - 2026-09-25 F3 native types and bare readings (`0216680`)
+
+From the 3-task budget probe: the CPI inputs (research and cultural score) and the hall visitor inputs are jsonb
+numbers, natively numeric, so the KB formulas at the warehouse's own types are decimal quotients. F1 had cast them to
+integer; the bare Conservation Priority Index and Visitor Impact Risk are now decimal through every consumer (level,
+High Priority flag, AVS, CBR, ERPS, VCSF, ESQ, metrics), and the integer-cast readings are `(Integer Division)` twins.
+Genuine bigint ratios (LER, DSD, SESR's RHvar term) keep integer bare. ERF: a blank factor on an existing sensitivity
+profile now scores 0 in the bare reading (the no-record vs empty-field rule; valued on 3 artifacts, was 1), the strict
+reading is the `(Unrated Voids)` twin, carried into LER, DSD and the MDR/TETL/AVS/AEC chain. 678 attributes, 172 metrics.
