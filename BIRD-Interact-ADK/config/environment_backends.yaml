@@ -373,3 +373,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Museum Artifact V12
+      reverse_logistics:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Reverse Logistics V12

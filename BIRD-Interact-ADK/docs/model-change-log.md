@@ -9285,3 +9285,16 @@ readings; the row's reading columns are null and it counts as its showcase's lat
 SELECT does not project (ORDER BY COUNT(DISTINCT key) DESC LIMIT 1 for the most frequent group) is refused; the aggregate
 goes under an alias in a FROM-subquery holding the ORDER BY and LIMIT. Only museum_artifact is rebuilt here; sibling
 models pick it up at their next build.
+
+### reverse_logistics V12 - 2026-09-25 initial build (`b217e44`)
+
+From-scratch v12 build (kickoff 14), F1 by Fable from facts.md + KB + brief. Three unjoined datasets: Return Detail
+(1500 returns, the spine; orders, customers, products, quality assessment, financial record (995/1500) and case record
+left-joined, with a financial-record coverage flag and the shared-population rule leading the model description),
+Customer Detail (206, live order/return/claim counts), Processing Site Detail (26 sites; return_processing has no key
+to any other table). Every jsonb leaf read `::numeric`; enum and `real` columns cast to text/numeric. KB 1/5/9 (RPI, APT,
+RCCI) are deleted on `_2 _5 _9` but ship under their KB names without numerals, per the firewall rule for number-free
+calculation entries; the value ladders withheld on some tasks (20 21 23 24 29) carry their KB names on the host columns
+with stored labels only. WCR decimal bare with an `(Integer Division)` twin (189/206 customers differ); stored profile
+return tally twinned against the live count (190/206 differ). One closed-question ask (warranty claim reading). Build
+green in 3 iterations: enum columns cast to text, `Site Count` -> `Processing Site Count` (sibling collision).
