@@ -9355,3 +9355,12 @@ The (Critical As 1) twins added in F3 are removed and the DSI closed question of
 null; (Critical As 4)). Iteration 1 showed the canary `_4` going 1.0 -> 0 by filtering on the new Sensitive Data
 Exposure (Critical As 1) twin after the simulator answered "everything outside High and Medium is 1", while the one
 target it was for (`_16`) lost on projection anyway. Everything else from F3 stays. 263 attributes, 404 metrics.
+
+### cross_border V12 - 2026-09-26 iteration 3, bare CBRF/CDVR on the fraction reading (`b7bdc6d`)
+
+The percent/fraction closed question fired on `_8` in two runs and the simulator chose the stored reading both times
+while the reference uses the fraction. Structural move per the stop rule: bare Flow Cross-Border Risk Factor and Flow
+Cross-Border Data Volume Risk are now built on Risk Exposure Score (Control As Fraction); the stored-percent reading is the
+(Stored Control Pct) twin. Risk Exposure Score itself is unchanged (bare stored, KB 39's 0.7 cutoff) and keeps the ask;
+CBRF/CDVR no longer carry it. Dependent flags follow the new bare (Regulatory Risk Exposure 93 -> 162, Cross-Border Audit
+Risk 26 -> 29, Regulatory Overload 37 -> 66, High-Impact Audit Risk 60 -> 102).
