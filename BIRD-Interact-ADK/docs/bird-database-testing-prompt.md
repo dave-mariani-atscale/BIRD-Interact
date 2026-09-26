@@ -431,6 +431,14 @@ query for `_16` that reached all four of its rows where my hand-written one reac
 sweep to prove a fix sufficient and to find model gaps; do not quote it as the model's ceiling, and
 do not treat a task the sweep could not reach as capped.
 
+### 5c. A ceiling pass built on an invented label or constant is not a reachability proof
+
+Added 2026-09-25 (museum_artifact). One sweep round "passed" a task by mapping stored budget words to labels no source
+names and by filling a missing conservation status with a mid-scale 5. No agent writes that, and nothing in the KB
+supports it. Count such a pass as unreached, give the task an R2 row with a predicted zero, and say which invented value it
+needed. Relatedly, F4 (turn economy) is conditional: buy it when reachable failures died at zero coins; skip it when they
+are simulator, reference-convention or agent-narrowing (museum_artifact: all of them), and say so.
+
 ### 6. Ask-triggers compete for a fixed budget
 
 Writing "confirm which the question means" into a description works — the agent asks. But

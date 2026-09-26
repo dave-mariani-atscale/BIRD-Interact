@@ -923,6 +923,12 @@ result JSON overcounts badly, because the column catalog is re-served every turn
   lifetime figure is a forward-looking formula this warehouse does not store, and that the agent
   should ask for the formula and constants rather than substitute this column.
 
+**Left-join every satellite into a grain, and pin the grain's parent count.** Measured 2026-09-25 on museum_artifact: the
+measurement pass reported every showcase as carrying a reading, one carried none, and a placement grain that inner-joined
+the readings silently dropped that showcase's only assessment and its artifact (a latest-assessment flag summed 994 of
+995, and a phase-2 listing came back one row short). Count parents with zero children by anti-join in the facts pass, and
+pin each grain's distinct entity count in the dry-run so a dropped parent fails the build.
+
 ### Support sets, missing inputs, and competing readings
 
 - Any measure computed over a subset of rows must expose its support set, and both pieces must
@@ -1229,6 +1235,12 @@ reachable tasks in a 0/10 arm.
   the watts. Each description says which it is — "an ABSOLUTE amount in watts" / "a dimensionless
   PROPORTION" — names the other, and says the two are not interchangeable, so the model's own
   ask-trigger phrasing fires. Do this for every amount/ratio pair sharing an everyday phrase.
+
+**A jsonb number is natively numeric.** Measured 2026-09-25 on museum_artifact: the CPI inputs are numbers inside a
+jsonb profile, so `(profile->>'score')::numeric` is the warehouse's own type and a bigint key plus that value is numeric;
+the KB formula at native types is therefore a DECIMAL quotient. The build cast the leaves to integer, made the whole-number
+reading bare, and the agent took the bare name and lost 7 of 9 values on four submissions. The integer-division rule
+applies to genuinely integer COLUMNS; a JSON leaf's native type is numeric, and the integer-cast reading is the twin.
 
 ### Definitions, labels, and naming
 
