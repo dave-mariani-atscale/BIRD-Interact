@@ -9403,3 +9403,14 @@ Promotional Message Count (Shows With Notes)` (null at 0) and `Show Has Promotio
 from the notes has no row for a show with none. Tier-count descriptions reworded ("listed in all 7 tiers") so the bare
 reading no longer reads as trivial. Shared `birdsml.ENGINE_NOTES`: a flat attribute-only listing also returns DISTINCT
 tuples (two agents listed shows without Show ID and got 109 of 1000 and 29 of 234 rows). 230 attributes, 215 metrics.
+
+### hulushows V12 - 2026-09-26 F4 turn economy + tier-count fork removed (`e04600c`)
+
+The media-present tier counts (`Show/Franchise Tier Count (Media Present)`, `Show Multi Tier (Media Present)`, `Show
+Tier Types (Media Present)`, `Show Average Media Per Tier (Media Present Tiers)` and their metrics/pins) are removed:
+not a KB reading (KB 16/41/76 count tiers a show is available in, and availability is the show_rollups row), and in
+four runs the agent or the simulator took the varying count over the bare row count, costing `_2` and the canary `_11`
+after the bare-name move and the ask had both been tried. The tier-grain `Show Tier Media Present` flag stays. `Show
+Title` now states it is not unique (109 titles over 1000 shows; a title listing without Show ID returns 109 rows);
+`Franchise Canonical Name` leads with being the slug form, `Franchise Show Titles` with being the member titles. 225
+attributes, 207 metrics.
