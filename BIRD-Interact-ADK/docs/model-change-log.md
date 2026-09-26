@@ -9337,3 +9337,14 @@ and CBCE / Regulatory Risk Exposure / Cross-Border Audit Risk now read the RES-b
 it one step). Vendor Risk Tier stores the KB's words 'High Risk' / 'Medium Risk' / 'Low Risk'. Declined: missing control
 effectiveness as 100% (fitted), a GDPR-or-local-law gap (fitted). 44 live counts F1 left unpinned (rendered "?" in the
 first deploy's descriptions) are now pinned. Build green: 263 attributes, 404 metrics, 11 calcs.
+
+### cross_border V12 - 2026-09-26 F3 iteration levers (`2b7d344`)
+
+F3 (Fable) from the n=1 baseline (P1 7/19). Closed question leading Flow High-Pressure naming Flow Overloaded (KB 42 vs
+KB 18, 203 vs 56 flows; the agent had picked High-Pressure by name where the reference means Overloaded). One closed
+question, first on bare Risk Exposure Score / Cross-Border Risk Factor / CDVR, offering the stored-percent and (Control
+As Fraction) readings. New (Critical As 1) twins on DSI, ECR, BRF, DRRS, Flow High-Risk and Sensitive Data Exposure —
+the simulator answered "High 3, Medium 2, everything else 1" on three of four DSI asks and nothing published it; the DSI
+question now offers three readings. Failure Types List says its words are the KB's and a question's own labels are built
+from the two check columns. Compliance-gap ask removed (the simulator settled it unasked); asks 4. 269 attributes, 418
+metrics.
