@@ -429,6 +429,13 @@ same-shape question, which matches the KB formula exactly: two references with s
 fitting rather than derived from a KB formula, a column meaning or a stated population is not shipped; it becomes an R2 row
 carrying the firewall question for Dianne. Brief the search to say which of its passes are fitted.
 
+**A subagent's DERIVED tag is a claim, not a classification** (added 2026-09-26, households). The raw search tagged
+`_M_10` DERIVED for a tenure restriction that happens to drop the two households tied above the reference's answer; that
+is a fit. Opus reclassifies every DERIVED pass against the KB text before it counts or ships. **And read a passing
+submission before attributing a later loss to your change**: `households_17` passed P1 once on `Income Tier Rank = 12`,
+which equals the reference's count in one region and not in the next (its P2 failed on the same reading) - removing Tier
+Rank then looked like a regression and was not.
+
 ### 5b. A ceiling sweep is a lower bound on the model, not an upper bound on the agent
 
 Measured 2026-09-22 on virtual_idol: nine sweep rounds established that 8 of 19 tasks were

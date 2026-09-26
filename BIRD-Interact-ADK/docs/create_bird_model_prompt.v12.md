@@ -1081,6 +1081,19 @@ says on itself that it is the reading only when the question names it, or it dra
   and the dry-run skips it silently (cross_border 2026-09-26: 44 of 167). Fill them from the dataset SQL and grep the
   emitted YAML for "(?" before deploying.
 
+**A MODEL'S OWN FORKS SPEND THE AGENT'S ASKS (households, 2026-09-26).** A spelling-heavy warehouse invites a
+`(Spellings Merged)` twin on every categorical plus closed questions on each, and the baseline showed the cost: the agent
+had about two asks per task and spent them on the model's forks - region vs zone (5 tasks, answered Region 5/5), recorded
+vs merged region (5 tasks; the simulator chose merged on 3 and all three lost, because the references group on the
+recorded `locregion`), decimal vs integer quotient (2) - while nine tasks lost on output shape with no ask left. Removing
+the merged twin on the GROUPING column, removing both asks (an ask whose answer never varies is a fact: state it), and
+scoping every remaining twin to "only for a user who asks to fold" converted two tasks with no canary loss. So: where the
+references are plain SQL over the recorded value, the recorded value is the one reading of a grouping/location column and
+a case-insensitive match is the caller's LOWER(). And do not publish an ordering this model INVENTED (an ordinal rank of
+text brackets, built for a formula whose mapping the KB omits) as an attribute: the agent filtered on it over the user's
+quoted bracket strings three times, including after a rename said it was not a filter route. State such a convention in
+the formula's prose instead.
+
 ### Values, types and units — the value pipeline
 
 The reference answers and the raw baseline are plain SQL readers of the warehouse. Where the
@@ -2152,6 +2165,12 @@ failure.
   model and looks like the fix did nothing); deploy.
 - Record every post-build change — the kind of change and why, naming the tracker row if it works
   around a defect — in `docs/model-change-log.md`.
+
+- **G6 reads a Capitalised word before a parenthesised qualifier as an object name, sentence-initial words included.**
+  A generated sentence "A (Spellings Merged) twin ..." and its fix "Every twin named (Spellings Merged) ..." both failed G6
+  (households, 2026-09-26); "..., and every twin whose name ends in (Spellings Merged) ..." passed. And A10 NAMED fires when
+  a masked KB term is carried as wording on an attribute whose description has numerals - move the wording to the host
+  column the concept is actually matched on.
 
 ## Acceptance — not done until all gates pass, with evidence
 
