@@ -9298,3 +9298,15 @@ calculation entries; the value ladders withheld on some tasks (20 21 23 24 29) c
 with stored labels only. WCR decimal bare with an `(Integer Division)` twin (189/206 customers differ); stored profile
 return tally twinned against the live count (190/206 differ). One closed-question ask (warranty claim reading). Build
 green in 3 iterations: enum columns cast to text, `Site Count` -> `Processing Site Count` (sibling collision).
+
+### reverse_logistics V12 - 2026-09-26 F3+F4 routing and turn economy (`2ddf6b6`)
+
+From the baseline (0.690): Return Count's own description told the caller it was "the number of returns behind any
+grouping ... including the 505 without a financial record", contradicting the same-rows rule (`_13` P2 lost on it); it
+now leads with the population rule and names Return Financial Record Count as the count beside a financial figure. The
+model description's "a null label is membership" is narrowed to labels on an existing record; refund and disposal method
+say their null on the 505 is the absent record, not a group (`_2` P2 kept a null refund group). Return Total / Avg Carbon
+Footprint carry a closed question when a question names neither total nor average (`_15`). New metric Return Total Days
+Lapsed; Recovery Rate per Day names the totals beside its average (`_3`). Turn economy: the Latest-100 channel-cost twins
+say they are the reading only when a question names the latest hundred, and Total Return Cost says the 505 have no cost
+to list (asks that fired where the agent was right). 206 metrics; build green first try.
