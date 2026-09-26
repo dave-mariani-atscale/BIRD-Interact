@@ -9348,3 +9348,10 @@ the simulator answered "High 3, Medium 2, everything else 1" on three of four DS
 question now offers three readings. Failure Types List says its words are the KB's and a question's own labels are built
 from the two check columns. Compliance-gap ask removed (the simulator settled it unasked); asks 4. 269 attributes, 418
 metrics.
+
+### cross_border V12 - 2026-09-26 iteration 2, revert (Critical As 1) (`f855c17`)
+
+The (Critical As 1) twins added in F3 are removed and the DSI closed question offers two readings again (bare, Critical
+null; (Critical As 4)). Iteration 1 showed the canary `_4` going 1.0 -> 0 by filtering on the new Sensitive Data
+Exposure (Critical As 1) twin after the simulator answered "everything outside High and Medium is 1", while the one
+target it was for (`_16`) lost on projection anyway. Everything else from F3 stays. 263 attributes, 404 metrics.
