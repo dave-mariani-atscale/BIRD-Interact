@@ -9219,3 +9219,11 @@ earlier sentence). The standings age names its `(Year Difference)` twin with bot
 Performance Index states its classified population (345) and that a measure-less select returns distinct tuples.
 Driver ID and Driver Reference say a driver has both. The driver- and row-grain specialist shares name each other.
 Model description: no ordering asks, and a verdict takes the question's own word. Description 6.87k chars.
+
+### sports_events V12 - 2026-09-25 iteration 2 (Opus, no design)
+
+A wrong count in prose: 153 of the 154 drivers with a qualifying row carry an average deficit (the prose said 154,
+and the agent filtered IS NOT NULL to 153 rows against a 154-row listing). The specialist-share closed question now
+offers all three readings (qualifying rows 2075, drivers with a deficit 153, all 861); it had offered only the two
+driver denominators. The shared `birdsml.ENGINE_NOTES` gains that a measure-less FROM-subquery returns distinct
+tuples (pit-stop average 87.23 without the stop ID vs 83.4 with it); the duplicate sentence left the model text.
