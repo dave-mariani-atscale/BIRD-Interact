@@ -9392,3 +9392,14 @@ Multi Tier`); the media-present readings become `(Media Present)` twins; the tie
 1). New: `Show Tier Types` (+ media-present twin), a comma-separated alphabetical list of tier words the follow-ups ask
 for; `Show Clip Availability` with KB 79's own words 'Has Clips'/'No Clips' (+ `(General Clips)` twin); `Franchise
 Show Titles`, the member titles of a franchise. 228 attributes, 214 metrics.
+
+### hulushows V12 - 2026-09-26 F3 iteration levers (`d6db7e0`)
+
+From the baseline trajectories. The plain clip names now carry KB 79's film-clip reading: `Show Has Film Clips` ->
+`Show Has Clips` (0 on every show), the general-clips flag (766) -> `Show Has Clips (General Clips)` — the agent had
+taken the bare general-clips flag for film clips. `Franchise Name` / `Show Franchise Name` -> `... First Title` (the
+warehouse stores no franchise name; it was one member's title and competed with Franchise Show Titles). New `Show
+Promotional Message Count (Shows With Notes)` (null at 0) and `Show Has Promotional Notes` (736 of 1000): a count built
+from the notes has no row for a show with none. Tier-count descriptions reworded ("listed in all 7 tiers") so the bare
+reading no longer reads as trivial. Shared `birdsml.ENGINE_NOTES`: a flat attribute-only listing also returns DISTINCT
+tuples (two agents listed shows without Show ID and got 109 of 1000 and 29 of 234 rows). 230 attributes, 215 metrics.
