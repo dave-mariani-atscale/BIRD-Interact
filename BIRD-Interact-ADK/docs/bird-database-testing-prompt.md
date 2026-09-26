@@ -413,6 +413,16 @@ Actual cases, each of which produced a confident false claim first:
 `sqlglot` rather than matching text, and hand-verify ~10 classifications before trusting any
 rate.
 
+### 5a. Search readings on the raw backend when the model's twins run out ($0)
+
+Added 2026-09-25 (sports_events). `gold_diff.py --backend raw --task <id> --sql "<postgres>"` grades plain SQL
+against the warehouse. A Sonnet brief limited to KB-derivable readings (current age vs age at race, season vs
+career scope, row vs driver denominators, last qualifying stage vs best of three) found the reproducing reading
+for **5 of 7** unreached tasks in one call, and F2 turned four of them into published twins: ceiling P1 11 → 15. Run
+it after the model-side rounds stall and before F2. Record each reading's counterfactual note: a reading that
+departs from a KB formula ships as a named twin beside the KB reading, never as a replacement. The brief must say
+READ-ONLY on the warehouse too: the subagent created and dropped a helper function in `sports_events`.
+
 ### 5b. A ceiling sweep is a lower bound on the model, not an upper bound on the agent
 
 Measured 2026-09-22 on virtual_idol: nine sweep rounds established that 8 of 19 tasks were

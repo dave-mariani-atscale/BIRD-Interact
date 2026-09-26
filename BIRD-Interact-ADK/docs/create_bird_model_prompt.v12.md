@@ -1530,6 +1530,20 @@ reachable tasks in a 0/10 arm.
 
 ### Descriptions and discoverability
 
+- **A NULL or shared entity name collapses a listing grouped by name, and a sentence about it can be read as an
+  exclusion (2026-09-25, sports_events).** 10 of the 44 significant-participation constructors have no recorded name,
+  so a listing grouped by name returns 41 or 34 rows against 44. The first sentence ("10 have NULL names ... group
+  by ID") was read, and the agent filtered the 10 OUT. The rewrite ("one row per Constructor ID; the 10 unnamed
+  constructors are still constructors in every listing, shown with the name null, never filtered out on it")
+  converted the task once and was ignored once. Say it as membership, never as a defect.
+- **A closed question must offer every published reading, or the answer lands on one it offered (2026-09-25).** A
+  share ask offered two driver denominators (154 vs 861) while a row-grain twin existed. The simulator answered
+  "qualifying records ... the 154", and the agent took the driver grain. Offering all three still drew a mixed
+  answer ("entries ... the 153"). Name each option by its GRAIN word (rows, drivers), not only by its count.
+- **Every "N carry a value" figure comes from a live count, never from a sibling figure (2026-09-25).** F2 wrote
+  "154 drivers carry a value" from the has-qualifying count, where 153 have a deficit. The agent asked about
+  exactly that population and filtered to 153 against a 154-row listing, which cost a passing task. Put the count
+  in the LIVE dict and pin it.
 - Every measure and attribute description carries: formula and provenance, units and scale, live
   null and coverage counts, disambiguation from near-twins, and the paraphrases someone would
   actually ask with. `explore_columns` is a contiguous, case-insensitive substring match, not fuzzy
@@ -1700,6 +1714,11 @@ Many of the rules above multiply object count.
 
 ## Engine constraints (learned the hard way)
 
+- **A FROM-subquery with no measure returns DISTINCT attribute tuples (2026-09-25, sports_events).** Selecting
+  a per-row attribute without the row's ID column collapses duplicate values, so an outer AVG averages the distinct
+  values only: a pit-stop average came back 87.23 without the stop ID and 83.4 (gold) with it, graded at $0, and an
+  agent lost a passing task on it. The same collapse merges entities that share a name, or have none. Now in
+  `birdsml.ENGINE_NOTES`: the row-grain subquery carries the ID.
 - **A WHERE on an unjoined dataset's column is silently dropped (Q-41, 2026-09-25).** Projecting one
   dataset's column while filtering on another's, where the two datasets share no relationship, dispatches
   `WHERE true`: every row returns, with no error. Carry into each grain the owner columns a question would
