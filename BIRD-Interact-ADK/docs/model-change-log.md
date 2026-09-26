@@ -9435,3 +9435,10 @@ cable closed questions removed (asks 2 -> 0); area / location / area code stated
 description now leads with the bare reading and scopes the twin to a user who asks for it. `Household Income Tier Rank`
 leads with being this model's ordering convention (the agent had filtered on it instead of quoted bracket strings), and
 the KB wording Affluent / Economically Independent moved from it to `Household Income Bracket`. 81 attributes, 105 metrics.
+
+### households V12 - 2026-09-26 Income Tier Rank unpublished (`d4031b7`)
+
+After the F3+F4 rename the agent still filtered `Household Income Tier Rank` = 12 / >= 11 where the user had named income
+labels or quoted bracket strings (`_17` P2, `_5`). A non-KB ordering that keeps winning over the literal is removed under
+the fork-removal rule: the attribute and its four metrics are unpublished; Expenditure Ratio and Socioeconomic Index state
+the bracket position (1 to 12 in ascending R$ order) in prose. 80 attributes, 101 metrics.
