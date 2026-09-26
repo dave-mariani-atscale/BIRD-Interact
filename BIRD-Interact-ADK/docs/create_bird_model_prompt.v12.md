@@ -1055,6 +1055,17 @@ pin each grain's distinct entity count in the dry-run so a dropped parent fails 
   about it; if you can phrase one, unhide it. Report the list with evidence. Also confirm every
   defined object is referenced by the model file — no orphans that exist but cannot be queried.
 
+**Counts, no-record nulls and total/average pairs (measured 2026-09-26, reverse_logistics).** Three description
+defects, each costing a phase that the $0 ceiling already passed. (1) A count metric whose own text names its population
+("the number of returns behind any grouping, including the 505 without a financial record") chooses for the caller and
+overrides the model description's same-rows rule: lead every count with the population rule and name the same-rows count
+beside each covered figure. (2) "A null label is membership" is read onto NO-RECORD nulls: a per-method breakdown of
+financial figures kept a null group made of the returns with no financial record. Membership is for an empty label on a
+record that exists; a satellite label's own description says its null is the absent record, not a group. (3) A Total /
+Average pair with no routing is picked on the total when the question says "the most"; ship one closed question on the
+pair for questions that name neither (the simulator answered "average" 4 of 4). A narrower twin (a latest-N baseline)
+says on itself that it is the reading only when the question names it, or it draws asks where the agent was right.
+
 ### Values, types and units — the value pipeline
 
 The reference answers and the raw baseline are plain SQL readers of the warehouse. Where the

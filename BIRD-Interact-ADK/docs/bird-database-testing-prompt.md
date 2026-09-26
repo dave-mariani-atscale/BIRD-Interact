@@ -423,6 +423,12 @@ it after the model-side rounds stall and before F2. Record each reading's counte
 departs from a KB formula ships as a named twin beside the KB reading, never as a replacement. The brief must say
 READ-ONLY on the warehouse too: the subagent created and dropped a helper function in `sports_events`.
 
+**A reading the search finds is not thereby KB-derivable** (added 2026-09-26, reverse_logistics). `_17` passed on raw
+only with a cost basket - KB Total Return Cost plus three extra fee lines, a fourth excluded - that BREAKS `_2`'s
+same-shape question, which matches the KB formula exactly: two references with swapped readings. A reading reached by
+fitting rather than derived from a KB formula, a column meaning or a stated population is not shipped; it becomes an R2 row
+carrying the firewall question for Dianne. Brief the search to say which of its passes are fitted.
+
 ### 5b. A ceiling sweep is a lower bound on the model, not an upper bound on the agent
 
 Measured 2026-09-22 on virtual_idol: nine sweep rounds established that 8 of 19 tasks were
