@@ -381,3 +381,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Cross Border V12
+      hulushows:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Hulushows V12

@@ -9371,3 +9371,14 @@ No semantic change. The engine kept answering bare CBRF/CDVR from system aggrega
 after two redeploys and an engine restart. Dataset column keys `cbrf`/`cdvr` renamed `cbrf_f`/`cdvr_f` (did not help),
 then the degenerate dimension renamed `Data Flow Record` -> `Cross Border Flow` (column_group name), which forced fresh
 aggregates. Attribute and metric names unchanged.
+
+### hulushows V12 - 2026-09-26 initial from-scratch build (`ece6c43`)
+
+New model `Hulushows V12` in `diannewood/bird-models-v12/hulushows`, catalog `bird_models_v12`, backend `atscale_v12`
+domain `hulushows`. F1 (Fable) authored the spec from facts.md, the KB, column meanings, schema and the brief. Four
+unjoined grains: Show Detail 1000 (core + 1:1 satellites + company + per-show tier rollups + franchise totals), Show Tier
+Detail 7000 (show_rollups is a full show x tier-type cross join, 7 rows per show; show attributes carried in), Studio
+Detail 34, Franchise Detail 109. 223 attributes, 214 metrics, 9 calcs, 2 closed-question asks (Peak Rating as stored vs
+spellings merged; tier row count vs media-present tier count). Withheld cutoffs 63 73 75 78 are signposted only;
+number-free deleted entries named on their host columns; deleted formulas 23 29 57 80 81 ship under their own names.
+Build green in 5 runs (stale pin, 12 unfilled LIVE pins filled, 3 G6 allowlist entries, one A8 question-quote reworded).
