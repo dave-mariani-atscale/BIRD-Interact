@@ -9325,3 +9325,15 @@ flags as of 2025-04-01. Three closed-question asks (DSI Critical, SRS encryption
 Build green after ~10 build.sh runs: model description trimmed 9923 -> 8996 (dropped two sentences duplicated by
 column text and ENGINE_NOTES), 10 pins reset to the model SQL's live counts, `Security ID` -> `Flow Security ID`
 (sibling collision), aggregates folder split per entity (G19), three A8 question-phrase rewordings.
+
+### cross_border V12 - 2026-09-26 F2 design review (`575b74c`)
+
+F2 (Fable) from the $0 ceiling sweep (P1 12/19) and the raw-backend reading search. Risk Exposure Score keeps the
+stored-percent reading bare (KB 39's 0.7 cutoff is written against it) and gains a (Control As Fraction) twin (unit-tie
+rule: control effectiveness / 100). Cross-Border Risk Factor is now built on Risk Exposure Score, per KB 9's
+children_knowledge edge to RES, with (Control As Fraction) and (Raw Risk Score) twins; CDVR follows with the same twins,
+and CBCE / Regulatory Risk Exposure / Cross-Border Audit Risk now read the RES-based CBRF (population 835 -> 709).
+(Critical As 3) replaced by (Critical As 4) across DSI and its dependants (a stored level above the ladder's top extends
+it one step). Vendor Risk Tier stores the KB's words 'High Risk' / 'Medium Risk' / 'Low Risk'. Declined: missing control
+effectiveness as 100% (fitted), a GDPR-or-local-law gap (fitted). 44 live counts F1 left unpinned (rendered "?" in the
+first deploy's descriptions) are now pinned. Build green: 263 attributes, 404 metrics, 11 calcs.
