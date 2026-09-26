@@ -9227,3 +9227,27 @@ and the agent filtered IS NOT NULL to 153 rows against a 154-row listing). The s
 offers all three readings (qualifying rows 2075, drivers with a deficit 153, all 861); it had offered only the two
 driver denominators. The shared `birdsml.ENGINE_NOTES` gains that a measure-less FROM-subquery returns distinct
 tuples (pit-stop average 87.23 without the stop ID vs 83.4 with it); the duplicate sentence left the model text.
+
+## museum_artifact V12 - 2026-09-25 from-scratch build
+
+New top-level folder in `diannewood/bird-models-v12`, deployed into the shared `bird_models_v12`
+catalog as **Museum Artifact V12** (commit `4562fb8`). The `museum_artifact` domain was added to the
+`atscale_v12` backend in `config/environment_backends.yaml` in this same commit. No new repo, no new
+catalog. Spec authored by Fable (F1) from the measurement pass, KB, column meanings, schema and brief;
+built by the shared `utilities/birdsml` emitter, green on the ninth `build.sh` run.
+
+**Shape.** Six datasets: Artifact (995), Artifact Placement (one condition assessment x each reading of
+its showcase, the owner-reading grain carrying every cross-table formula), Showcase (953), Environmental
+Reading (999), Exhibition Hall (20) and Loan Status (3, no artifact key). The warehouse is degenerate:
+ArtifactRatings holds 10 rows and SensitivityData 3, so the CPI/ERF families are computable on at most
+10 and 3 artifacts. 656 attributes, 168 metrics (11 medians), 4 calculations.
+
+**Withheld.** KB 1, 11, 21 and 57 (and 44, 48, 51, 55, 58, which depend on them) with a model-description
+signpost naming each concept's published inputs. KB 0, 4, 5, 7, 31 and 38 ship under their KB names with
+no formula numerals. Management-only 2, 20, 22, 37, 63 publish normally.
+
+**Twins and asks.** ERF three ways (strict / `(Rated Only)` / `(Unrated As Zero)`) carried into every
+consumer; `(Decimal Division)` / `(Decimal RH)` twins on every integer-division ratio; `(Inputs Recorded)`
+on nullable flags. One ask (critical maintenance indicators with or without silica). Names over the SML
+63-character cap were shortened mechanically (qualifier renames plus a `_fit()` fallback), one
+question-mined alias removed at A8, min/max metrics renamed to maximum/minimum for the key-metric audit.

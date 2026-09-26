@@ -369,3 +369,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Sports Events V12
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Museum Artifact V12
