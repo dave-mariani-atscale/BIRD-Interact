@@ -9270,3 +9270,11 @@ High Priority flag, AVS, CBR, ERPS, VCSF, ESQ, metrics), and the integer-cast re
 Genuine bigint ratios (LER, DSD, SESR's RHvar term) keep integer bare. ERF: a blank factor on an existing sensitivity
 profile now scores 0 in the bare reading (the no-record vs empty-field rule; valued on 3 artifacts, was 1), the strict
 reading is the `(Unrated Voids)` twin, carried into LER, DSD and the MDR/TETL/AVS/AEC chain. 678 attributes, 172 metrics.
+
+### museum_artifact V12 - 2026-09-25 iteration 1 (Opus, no design) (`6e63575`)
+
+Defect from the baseline (`_7` phase 2, 70 of 71 rows): showcase SC3748 has no environmental reading, and the
+placement grain inner-joined the readings, so ART40138's only assessment and the artifact's whole placement row were
+dropped (Artifact Latest Assessment summed 994, not 995). The placement grain now reads every showcase, left-joining
+readings; the row's reading columns are null and it counts as its showcase's latest reading. Pins and one prose count
+(Reading Showcase Count, 952 showcases carry a reading) corrected. No description meaning changed.
