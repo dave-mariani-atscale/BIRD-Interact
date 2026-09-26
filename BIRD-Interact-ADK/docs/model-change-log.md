@@ -9364,3 +9364,10 @@ Cross-Border Data Volume Risk are now built on Risk Exposure Score (Control As F
 (Stored Control Pct) twin. Risk Exposure Score itself is unchanged (bare stored, KB 39's 0.7 cutoff) and keeps the ask;
 CBRF/CDVR no longer carry it. Dependent flags follow the new bare (Regulatory Risk Exposure 93 -> 162, Cross-Border Audit
 Risk 26 -> 29, Regulatory Overload 37 -> 66, High-Impact Audit Risk 60 -> 102).
+
+### cross_border V12 - 2026-09-26 stale-aggregate workaround (`85c72eb`, `aa53f2a`)
+
+No semantic change. The engine kept answering bare CBRF/CDVR from system aggregates built on the previous definition
+after two redeploys and an engine restart. Dataset column keys `cbrf`/`cdvr` renamed `cbrf_f`/`cdvr_f` (did not help),
+then the degenerate dimension renamed `Data Flow Record` -> `Cross Border Flow` (column_group name), which forced fresh
+aggregates. Attribute and metric names unchanged.
