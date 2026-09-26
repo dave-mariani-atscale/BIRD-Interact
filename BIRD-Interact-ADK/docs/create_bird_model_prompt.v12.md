@@ -1066,6 +1066,21 @@ Average pair with no routing is picked on the total when the question says "the 
 pair for questions that name neither (the simulator answered "average" 4 of 4). A narrower twin (a latest-N baseline)
 says on itself that it is the reading only when the question names it, or it draws asks where the agent was right.
 
+- **A KB `children_knowledge` edge names a formula's input.** Measured 2026-09-26 on cross_border: KB 9 CBRF multiplies
+  "(overall risk score)" and lists id 2 (RES) as its child; F1 bound it to the stored risk score and the reference built
+  it on RES. Where a formula's input phrase is vague, the child edge is the binding; ship the literal-column reading as a
+  named twin only if a question could mean it.
+- **When a question word matches one KB flag's name but the quantities the question lists are another flag's inputs, the
+  name-matched flag needs a closed question naming both.** Measured 2026-09-26 on cross_border: "high-pressure flows ...
+  BSI and DTE" went to High-Pressure Data Flow (KB 42) by name; the reference used Overloaded Data Flow (KB 18, BSI and
+  DTE). A closed question leading the name-matched flag fired 3/3 and was answered right 3/3.
+- **Do not publish a reading only because the simulator named it without a $0 regression over the passing tasks that ask
+  the same question.** Measured 2026-09-26: a (Critical As 1) twin added after three simulator answers turned a passing
+  canary into a zero (it filtered on the twin's flag) and converted nothing.
+- **Every LIVE key is pinned before the first deploy.** A None LIVE value renders "?" in each description that quotes it
+  and the dry-run skips it silently (cross_border 2026-09-26: 44 of 167). Fill them from the dataset SQL and grep the
+  emitted YAML for "(?" before deploying.
+
 ### Values, types and units — the value pipeline
 
 The reference answers and the raw baseline are plain SQL readers of the warehouse. Where the

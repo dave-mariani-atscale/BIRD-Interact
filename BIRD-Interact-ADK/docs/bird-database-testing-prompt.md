@@ -554,6 +554,14 @@ read any improvement. Then:
   added space returned the new ones. `gold_diff` and the agent share that path, so a sweep or a run
   after a redeploy can grade the new model on the old model's answers. Restart the engine container
   after a deploy that changes what an existing name returns, then gate, before any sweep or run.
+- **Stale engine aggregates survive a redeploy AND an engine restart (E-22), and one added space does not bypass them.**
+  Measured 2026-09-26 on cross_border: after a redeploy changed bare CBRF's definition, every query naming only
+  pre-existing columns returned the old values (2358 against the new 235800) while a query that also named a new column
+  returned the new ones; `outbound_sql.py` showed the engine reading `"aggregates"."as_agg_..."`, one of 632 aggregate
+  tables in the warehouse database's `aggregates` schema. Restarting the engine and renaming the dataset column key both
+  left it in place; renaming the degenerate dimension forced fresh aggregates. After a deploy that changes what an
+  existing attribute name returns, probe one changed value with an old-columns-only query and read its dispatch before
+  any sweep or run.
 - **`cmd && nohup run.sh &` backgrounds the WHOLE chain, not just the run.** Measured 2026-09-24 on
   planets_data: `gate_run.sh | tail -1 && nohup bash run.sh > out &` returned at once with no output
   file yet, so it looked like a failed launch; relaunching started a second 19-task baseline ten
@@ -686,7 +694,7 @@ because a task that spends its whole budget costs nearer the $0.48 never-pass ra
       them — and the $0 sweep then killed **three**, including a T1 `UNSOLVABLE-GOLD` marked
       `[verified]` with `conf: high`. All three turned on **a population the model had not
       published**, which is a model gap wearing a cap's clothing. A census tier is a hypothesis,
-      not a cap; census rev4 has now been wrong on three separate databases.
+      not a cap; census rev4 has now been wrong on four separate databases (cross_border `_18`, 2026-09-26, passed 5/5 live).
 
       Note also that the census's `why` text quotes gold — a SELECT list and a masked cutoff on
       the row read here. Read the **tier field only**; if a `why` reaches you, say so in the
