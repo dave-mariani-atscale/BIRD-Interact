@@ -9382,3 +9382,13 @@ Detail 34, Franchise Detail 109. 223 attributes, 214 metrics, 9 calcs, 2 closed-
 spellings merged; tier row count vs media-present tier count). Withheld cutoffs 63 73 75 78 are signposted only;
 number-free deleted entries named on their host columns; deleted formulas 23 29 57 80 81 ship under their own names.
 Build green in 5 runs (stale pin, 12 unfilled LIVE pins filled, 3 G6 allowlist entries, one A8 question-quote reworded).
+
+### hulushows V12 - 2026-09-26 F2 design review (`72cda56`)
+
+The $0 ceiling reached `_2 _11 _16` and their follow-ups only on the tier count by row existence (7 on every show, the
+show_rollups cross join), and in the budget probe the agent took the media-present count by name until the user
+corrected it. The bare names now carry the row-existence reading (`Show Tier Count`, `Franchise Tier Count`, `Show
+Multi Tier`); the media-present readings become `(Media Present)` twins; the tier closed question is removed (asks 2 ->
+1). New: `Show Tier Types` (+ media-present twin), a comma-separated alphabetical list of tier words the follow-ups ask
+for; `Show Clip Availability` with KB 79's own words 'Has Clips'/'No Clips' (+ `(General Clips)` twin); `Franchise
+Show Titles`, the member titles of a franchise. 228 attributes, 214 metrics.
