@@ -9251,3 +9251,12 @@ consumer; `(Decimal Division)` / `(Decimal RH)` twins on every integer-division 
 on nullable flags. One ask (critical maintenance indicators with or without silica). Names over the SML
 63-character cap were shortened mechanically (qualifier renames plus a `_fit()` fallback), one
 question-mined alias removed at A8, min/max metrics renamed to maximum/minimum for the key-metric audit.
+
+### museum_artifact V12 - 2026-09-25 F2 design review (`85ab53d`)
+
+Ceiling sweep P1 9/20 before this. Fable F2, from a $0 raw-backend reading search: two placement-grain 1/0
+flags for the artifact's latest condition assessment (dated-first, and an undated-as-latest twin that moves
+one artifact); ten-factor ERF twins `(Ten Factors Unrated Zero)` / `(Ten Factors Rated Only)` beside the
+five-factor readings; neutral standings (rank among rated, share of rated above) for Historical Significance
+Rating and Cultural Score, listed in the withheld high-value signpost without any cutoff; three names cleaned
+(`Hall Mean Daily Visitors`, `Showcase Avg Artifact Count`, `Artifact Max Vulnerability Score`). Asks unchanged (1).
