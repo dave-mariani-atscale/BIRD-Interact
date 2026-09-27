@@ -397,3 +397,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Cybermarket Pattern V12
+      cold_chain_pharma_compliance:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Cold Chain Pharma Compliance V12

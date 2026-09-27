@@ -9490,3 +9490,12 @@ column names moved out of parentheses (G6), "Critical Severity" flag renamed "Se
 - [PLAIN] `b187fc2` Marketplace and Transaction degenerate dimensions renamed Record -> Entry: after `e5cdcdf` the engine
   kept answering bare MRS/THR from stale `aggregates.as_agg_*` tables holding the old columns (E-22, dispatch read via
   outbound_sql.py); the dimension rename forced fresh aggregates and every passing ceiling query then passed on bare names.
+
+### Cold Chain Pharma Compliance V12 (v12 build 20) - 2026-09-27 (`diannewood/bird-models-v12`, folder `cold_chain_pharma_compliance`)
+
+Initial build `01cc7de`, [KB] (F1 Fable from facts.md + KB; no gold contact). Six grains, no relationships (the warehouse's
+shipment, product/batch and carrier/vehicle clusters share no key): Cold Chain Shipment Detail 821 (five one-to-one
+satellites + device LEFT-joined, lane folds), Monitoring Device Detail 450, Product Batch Detail 821, Pharma Product Detail
+300, Pharma Carrier Detail 798, Cold Chain Vehicle Detail 498. 226 attributes, 188 metrics, 10 calcs, six asks. Withheld
+cutoffs (KB 3, 9, 13, 27, 34) unpublished with inputs signposted; deleted formulas (TED, CCCR, TIRP, MKT, DLRS) shipped.
+Build to green in 4 runs (G5 prefix, three LIVE pins re-measured, six G6 rewordings). Backend domain added to `atscale_v12`.
