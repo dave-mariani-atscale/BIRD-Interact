@@ -9453,3 +9453,13 @@ are decimal percents (every count/count ratio is 0 under bigint division); WDR b
 / 44 / 52 cutoffs withheld, inputs signposted in the model description; 6 asks. Build: 5 build.sh runs (G12/G13 question-
 mined aliases removed, G15 clause dedupe, G21 input-column signpost owners allowlisted, one LIVE pin 39 -> 113).
 Backend: `labor_certification_applications` domain on `atscale_v12` (`config/environment_backends.yaml`).
+- [KB] `5d2e718` corphandle is the employer's recorded name (546, e.g. 'Google LLC'): published as `LCA Employer Name` /
+  `LCA Case Employer Name` (was `... Employer ID`); a P2 sweep searching for an employer name found none.
+- [PLAIN] `54e42d4` attorney address state bare for a state breakdown, highest-court state the twin (sweep `_16`); the
+  filing-window ask on Days Before Start also asks the label text (`_11`); KB 43 application-floor ask cut (30 settled `_12`).
+- [DIAG] `0d66b1c` (F2) `LCA Case Representation Status` Represented 727 / Self-Represented 254 (KB 9 wording, `_19`);
+  KB 45 labels in the KB's plural (Specialists / Hybrid Practitioners / Generalists, `_15`); `LCA Case Visa Dependent
+  Industry (Application Share)` proxy flag, workforce absent (KB 42, `_14`); ODI bare over SOC code+title pairs (131),
+  `(By SOC Code)` 130 and `(By SOC Title)` 128 twins (`_20`); tech-occupation population ask leads `LCA Case SOC Code` (`_6`).
+  F2 had also published KB 44's 50% and KB 52's 95/85 cutoffs (both withheld on running tasks) to cut their asks;
+  reverted before build, and A10 caught one more KB 41 boundary phrase, removed.
