@@ -110,7 +110,8 @@ between files?** Sonnet.
   to 0 on all 57 of its rows. The design turn caught it from the KB text; the measurement pass is
   where it should have been caught. Emit one row per formula with the native type, the native
   range and the widened range side by side, so a collapse is visible without anyone deciding to
-  look for it. Numbers only, authoring nothing. The build loop: `build.sh`
+  look for it. Numbers only, authoring nothing — and no cutoff the KB does not state: on 2026-09-27 the measurer
+  wrote "candidate cutoffs" for two number-free KB entries (KB 15/16), which F1 had to be told were not KB. The build loop: `build.sh`
   until green, fixing only mechanical gates itself (pipe characters, a missing column, ASCII,
   schema qualification, MDX brackets, join roles, orphans) and returning any gate that needs
   a description or a name changed as one line for Opus — **all of them in ONE list, not one per
@@ -537,20 +538,27 @@ read any improvement. Then:
 - **An exported `SEMANTIC_LAYER_MCP_TOKEN` beats the ADK `.env`, and a stale one 401s every MCP call (A-71).**
   Measured 2026-09-27: the session shell carried a 64-char token with the right prefix and the wrong value;
   services started from it and `gate_run.sh` reported "list_models errored", which reads like E-14.
-  `unset SEMANTIC_LAYER_MCP_TOKEN` before `start_services.sh`, `gate_run.sh` and in every run script.
+  `unset SEMANTIC_LAYER_MCP_TOKEN` before `start_services.sh`, `gate_run.sh` and in every run script. Its fingerprint in a
+  `gold_diff.py --sweep` is every task `EXECUTION ERROR — MCP request ... failed` (2026-09-27, cybermarket_pattern round 1): unset it
+  in the same call as the sweep, not once per session.
 - **The benchmark key's CREDIT can run out mid-run, with a different message from the workspace cap (A-72).**
   Measured 2026-09-27: "Your credit balance is too low to access the Anthropic API" from 11:08:15; the 10
   tasks finished before it were clean, the other 9 returned HTTP 500 with no `instance_id` and are void.
   `gold_diff.py --results` then crashes with KeyError 'instance_id': filter those rows out first. Top-up or
-  key swap is Dianne's call.
+  key swap is Dianne's call. **And it can be out before the session starts** (2026-09-27, build 19: every probe 11:50-14:13
+  returned the same 400): probe the key FIRST, and if it fails run the whole $0 phase — facts, F1, build, deploy, every ceiling
+  round, F2, the ablation — then write the ledger row with dashes and $0.00. The model and the ceiling table are the deliverable.
 - **A design call told to cut asks will publish a withheld cutoff to do it.** Measured 2026-09-27: F2 wrote
   KB 44's 50% and KB 52's 95/85 into descriptions; both were withheld on running tasks. List every withheld
   cutoff by number in each design brief as never-write, and grep the design call's edits for those numbers
   before building.
-- **The $0 lever ablation cannot see `[PLAIN]`.** PLAIN commits change descriptions and asks, not dataset SQL
-  or names, so `noPLAIN` equals FINAL on every $0 measure by construction; attribute PLAIN per task from the
-  paid runs. Probe a changed value after every ablation deploy: the first FINAL redeploy after `noDIAG` did
-  not take.
+- **The $0 lever ablation cannot see a `[PLAIN]` commit that only changes descriptions and asks** — then `noPLAIN`
+  equals FINAL on every $0 measure by construction; attribute PLAIN per task from the paid runs. **Correction
+  2026-09-27 (cybermarket_pattern):** a PLAIN RENAME that moves which reading carries the bare name IS visible — the
+  FINAL bare-name queries fall 18 -> 15 on noPLAIN and the bare-name ceiling 16 -> 14. Probe a changed value after
+  every ablation deploy: the first FINAL redeploy after `noDIAG` did not take (labor_certification), and after
+  `noPLAIN` eight deploy attempts failed with `FetchError` and left noPLAIN live (E-23). A revert that conflicts in
+  the emitted YAML is resolved in `spec.py` only, then the YAML is regenerated with `build.sh`.
 - **A whole arm that finishes in seconds with every task at `error reward=0.0` is the Anthropic
   workspace usage cap, not your model - and it is a DIFFERENT quota from the claude.ai
   subscription this session runs on.** The benchmark bills `ANTHROPIC_API_KEY` from the ADK
@@ -586,6 +594,14 @@ read any improvement. Then:
   left it in place; renaming the degenerate dimension forced fresh aggregates. After a deploy that changes what an
   existing attribute name returns, probe one changed value with an old-columns-only query and read its dispatch before
   any sweep or run.
+  **Recurred 2026-09-27 on cybermarket_pattern** after three bare-name renames (MRS, THR, PLR): `_1` and `_4` failed on
+  exactly their pre-rename cells. So a bare-name rename (a `[PLAIN]` move) IS a change to what a name returns: rename the
+  entity's degenerate dimension IN THE SAME COMMIT (Record -> Entry worked), and do not restart the engine for it — the
+  restart did not clear the aggregates and left deploys failing for ~15 minutes (E-23).
+- **`sml-cli atscale-deploy` fails with `FetchError` for 1-10 minutes after a previous deploy or an engine restart (E-23).**
+  Measured 2026-09-27: 26 of 33 attempts over eight deploys failed that way, the API logged no request, and every retry 45 s
+  later eventually returned HTTP 201. Loop until `Deploy SUCCESSFUL` (up to ~15 min), and never read a loop that gave up as a
+  deploy: the previous model stays live, which is how an ablation arm nearly got recorded as FINAL.
 - **`cmd && nohup run.sh &` backgrounds the WHOLE chain, not just the run.** Measured 2026-09-24 on
   planets_data: `gate_run.sh | tail -1 && nohup bash run.sh > out &` returned at once with no output
   file yet, so it looked like a failed launch; relaunching started a second 19-task baseline ten

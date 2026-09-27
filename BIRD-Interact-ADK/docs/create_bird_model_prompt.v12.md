@@ -372,6 +372,13 @@ unnamed level is the scale's own floor ("none of it"), the zero completion is th
 into every formula built on it, and re-pin the flags it moves: here three KB flags moved by 6 to 9
 facilities each.
 
+**A KB label ladder that matches NO stored value may be read by the reference as the raw value itself.** Measured 2026-09-27
+on cybermarket_pattern: KB 25 names High/Medium/Low session anonymity, the warehouse stores a continuous 1-10 score (1000
+distinct values, 0 rows carrying a KB label), and a question asking for a figure "at each anonymity tier" passed only when
+grouped on the raw score — 1000 groups of one. Publish the score bare, and scope the band-limits ask to questions that name
+the bands or ask for a banded answer; an ask that fires on every mention of the ladder lands on the task where grouping on the
+stored value was already right.
+
 **A binding fork the simulator will not answer is yours to settle, on the table the FK lives on.**
 Measured 2026-09-25 on mental_health: the "assigned facility vs the encounter's facility" closed question
 fired 5 times, was answered "out of scope" 4 times, and decided nothing. A plain SQL reader computing a
