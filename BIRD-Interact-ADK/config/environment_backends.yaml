@@ -389,3 +389,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Households V12
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Labor Certification Applications V12

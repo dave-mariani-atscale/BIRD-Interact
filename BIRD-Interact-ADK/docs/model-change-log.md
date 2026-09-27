@@ -9442,3 +9442,14 @@ After the F3+F4 rename the agent still filtered `Household Income Tier Rank` = 1
 labels or quoted bracket strings (`_17` P2, `_5`). A non-KB ordering that keeps winning over the literal is removed under
 the fork-removal rule: the attribute and its four metrics are unpublished; Expenditure Ratio and Socioeconomic Index state
 the bracket position (1 to 12 in ascending R$ order) in prose. 80 attributes, 101 metrics.
+
+### Labor Certification Applications V12 (v12 build 18) - 2026-09-27 (`diannewood/bird-models-v12`, folder `labor_certification_applications`)
+
+Initial build `10ee6eb`, [KB] (F1 Fable from facts.md + KB; no gold contact). Three grains, no relationships, cross-grain
+columns folded by name: LCA Case Detail (981 applications, every satellite LEFT-joined), LCA Employer Detail (546), LCA
+Attorney Detail (386). 188 attributes, 224 metrics, 11 calcs; model description 8211 chars incl. ENGINE_NOTES. KB ratios
+are decimal percents (every count/count ratio is 0 under bigint division); WDR bare over the 979 same-unit applications
+(KB 11), with unit-ignored and unit-converted twins; Case Certified bare on any casing (981; exact spelling 334). KB 40 / 41
+/ 44 / 52 cutoffs withheld, inputs signposted in the model description; 6 asks. Build: 5 build.sh runs (G12/G13 question-
+mined aliases removed, G15 clause dedupe, G21 input-column signpost owners allowlisted, one LIVE pin 39 -> 113).
+Backend: `labor_certification_applications` domain on `atscale_v12` (`config/environment_backends.yaml`).
