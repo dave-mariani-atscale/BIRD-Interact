@@ -9463,3 +9463,9 @@ Backend: `labor_certification_applications` domain on `atscale_v12` (`config/env
   `(By SOC Code)` 130 and `(By SOC Title)` 128 twins (`_20`); tech-occupation population ask leads `LCA Case SOC Code` (`_6`).
   F2 had also published KB 44's 50% and KB 52's 95/85 cutoffs (both withheld on running tasks) to cut their asks;
   reverted before build, and A10 caught one more KB 41 boundary phrase, removed.
+- [PLAIN] `2a48859` (F4) carried industry figures read by a group-by, not MAX over the attribute (engine refusal cost `_14` two
+  submits); share-cutoff ask on Industry Application Share Pct cut (answer never varied from the flag's 15).
+- [DIAG] `cd46f07` (F3) shape asks: the hotspot ratio ask also asks states-listed vs count (`_13`); the visa-dependent
+  industry flag leads with a column-set ask including a top-occupations text column (`_14`); a job title / SOC title / SOC
+  code closed question leads `LCA Case Job Title` (`_4` P2 wants SOC title, `_17` P2 the recorded title); SOC code + title
+  companion sentence (`_8` P2).
