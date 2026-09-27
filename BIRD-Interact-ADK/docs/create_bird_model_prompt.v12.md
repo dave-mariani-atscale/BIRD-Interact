@@ -265,7 +265,11 @@ There the model hands the agent a ready-made closed question: name all the candi
 each of their descriptions and tell the agent to *ask which one*, rather than to *pick*.
 That publishes nothing withheld, and it converts an open question into the closed form that
 measurably gets a specific answer (After acceptance). Distinguish it sharply from a masked
-cutoff, where naming the candidate values would be a leak.
+cutoff, where naming the candidate values would be a leak. Measured 2026-09-27 on
+labor_certification_applications: a follow-up's "job titles" meant the SOC title on one task
+and the recorded job title on another, so no bare name could serve both; a closed question
+naming the recorded title (700), the SOC title (128) and the SOC code (130) fired and was
+answered right on the first, and the second did not flip.
 
 **A threshold whose unit is ambiguous against the stored column gets both readings, and the
 KB's own words verbatim.** A KB definition states a cutoff in prose (*annual portfolio

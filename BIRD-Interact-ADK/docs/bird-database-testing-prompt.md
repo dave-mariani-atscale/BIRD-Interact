@@ -534,6 +534,23 @@ read any improvement. Then:
 
 ### Operational gotchas, each of which has wasted a cycle
 
+- **An exported `SEMANTIC_LAYER_MCP_TOKEN` beats the ADK `.env`, and a stale one 401s every MCP call (A-71).**
+  Measured 2026-09-27: the session shell carried a 64-char token with the right prefix and the wrong value;
+  services started from it and `gate_run.sh` reported "list_models errored", which reads like E-14.
+  `unset SEMANTIC_LAYER_MCP_TOKEN` before `start_services.sh`, `gate_run.sh` and in every run script.
+- **The benchmark key's CREDIT can run out mid-run, with a different message from the workspace cap (A-72).**
+  Measured 2026-09-27: "Your credit balance is too low to access the Anthropic API" from 11:08:15; the 10
+  tasks finished before it were clean, the other 9 returned HTTP 500 with no `instance_id` and are void.
+  `gold_diff.py --results` then crashes with KeyError 'instance_id': filter those rows out first. Top-up or
+  key swap is Dianne's call.
+- **A design call told to cut asks will publish a withheld cutoff to do it.** Measured 2026-09-27: F2 wrote
+  KB 44's 50% and KB 52's 95/85 into descriptions; both were withheld on running tasks. List every withheld
+  cutoff by number in each design brief as never-write, and grep the design call's edits for those numbers
+  before building.
+- **The $0 lever ablation cannot see `[PLAIN]`.** PLAIN commits change descriptions and asks, not dataset SQL
+  or names, so `noPLAIN` equals FINAL on every $0 measure by construction; attribute PLAIN per task from the
+  paid runs. Probe a changed value after every ablation deploy: the first FINAL redeploy after `noDIAG` did
+  not take.
 - **A whole arm that finishes in seconds with every task at `error reward=0.0` is the Anthropic
   workspace usage cap, not your model - and it is a DIFFERENT quota from the claude.ai
   subscription this session runs on.** The benchmark bills `ANTHROPIC_API_KEY` from the ADK
