@@ -9479,3 +9479,14 @@ Marketplace Detail 954, Vendor Detail 994, Buyer Detail 990, Product Listing Det
 CEI/ACI/BRDR/PLR/THR/WTR (|corr| <= 0.08). Gate fixes by Opus (mechanical): question-mined aliases removed (G12/G13), raw
 column names moved out of parentheses (G6), "Critical Severity" flag renamed "Severity Critical", generated Min-metric text
 "The minimum of". 268 attributes, 534 metrics, 20 calcs, 5 asks.
+- [PLAIN] `e5cdcdf` Marketplace Risk Score (MRS): the reputation-as-zero reading goes bare (all 954 platforms), the strict one
+  becomes (Reputation Assessed Only) (567; `_1` failed on exactly its 387 nulls); stored Threat Handling Rate goes bare,
+  the recomputed one becomes (Recomputed) (`_4`, all 1000 cells differed), and the THR ask is cut. No new object.
+- [DIAG] `dcbc647` F2 (Fable): vendor route-complexity counts and shares plus a shape ask on PLR (`_3`); platform Level3
+  and per-severity alert counts plus a closed question between KB 17 Secure Platform (63) and security audit Pass (331) (`_6`);
+  the buyer's behaviour consistency and both BRDR readings plus category listing counts carried to the transaction grain,
+  and a KB 16 Suspicious Buyer cutoff ask (`_7`, `_2`); a label ask for buyers with no authentication level (`_4`); the
+  per-listing vs per-sale-line average added to the sales-value ask (`_15` P2). Asks 4 -> 7.
+- [PLAIN] `b187fc2` Marketplace and Transaction degenerate dimensions renamed Record -> Entry: after `e5cdcdf` the engine
+  kept answering bare MRS/THR from stale `aggregates.as_agg_*` tables holding the old columns (E-22, dispatch read via
+  outbound_sql.py); the dimension rename forced fresh aggregates and every passing ceiling query then passed on bare names.
