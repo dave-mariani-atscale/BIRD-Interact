@@ -393,3 +393,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Labor Certification Applications V12
+      cybermarket_pattern:
+        catalog: atscale_catalogs
+        schema: bird_models_v12
+        table: Cybermarket Pattern V12

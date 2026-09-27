@@ -9469,3 +9469,13 @@ Backend: `labor_certification_applications` domain on `atscale_v12` (`config/env
   industry flag leads with a column-set ask including a top-occupations text column (`_14`); a job title / SOC title / SOC
   code closed question leads `LCA Case Job Title` (`_4` P2 wants SOC title, `_17` P2 the recorded title); SOC code + title
   companion sentence (`_8` P2).
+
+### Cybermarket Pattern V12 (v12 build 19) - 2026-09-27 (`diannewood/bird-models-v12`, folder `cybermarket_pattern`)
+
+Initial build `c02580c`, [KB] (F1 Fable from facts.md + KB; no gold contact). Five grains, no relationships, satellites
+LEFT-joined and entity counts pinned: Transaction Detail 1000 (spine, carrying platform/vendor/buyer columns against Q-41),
+Marketplace Detail 954, Vendor Detail 994, Buyer Detail 990, Product Listing Detail 999. Decimal quotient bare with
+`(Integer Division)` twins on TVR/DPE/SSD (bigint/bigint collapses 66-99.9% of rows); recomputed-vs-`(Stored)` twins on
+CEI/ACI/BRDR/PLR/THR/WTR (|corr| <= 0.08). Gate fixes by Opus (mechanical): question-mined aliases removed (G12/G13), raw
+column names moved out of parentheses (G6), "Critical Severity" flag renamed "Severity Critical", generated Min-metric text
+"The minimum of". 268 attributes, 534 metrics, 20 calcs, 5 asks.
