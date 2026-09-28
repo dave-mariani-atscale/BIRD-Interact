@@ -338,14 +338,30 @@ two, and today's most common real cause was neither: it was the user simulator.
 ### 1. Read the dispatched SQL before theorising
 
 The SQL an agent writes is **not** what runs. The engine rewrites it, and several rewrites
-are silent — a clause dropped or inverted, a plausible result, no error. Known so far
-(re-probe on your build): `OFFSET` ignored entirely; NULL ordering inverted vs Postgres and
-un-overridable; a top-level `UNION ALL` over the model **works** — it dispatches and grades, and a listing
-`UNION ALL` a one-row summary is a working shape (corrected 2026-09-23; the old entry here said it
-returned zero rows). What does not work: a `UNION` inside a subquery, CTE or `WHERE`; a bare `NULL`
-literal in a branch, which needs `CAST(NULL AS VARCHAR)`; and the branch **order**, which the engine
-re-sorts and no `ORDER BY` can restore (E-17). Also: a
-grain-forcing derived table that drops the entity key and re-groups on the value tuple.
+are silent — a clause dropped or inverted, a plausible result, no error.
+
+**Re-probe before you trust any of this.** `scripts/engine_claims.py` runs the whole inventory —
+50 probes, MCP only, no LLM calls, $0 — and prints which shipped claims no longer reproduce. Run it
+on the engine build under test; on 2026-09-28 against `pr9967` it found **16 of 50 had gone stale**,
+including three that had been in this file.
+
+Silent rewrites that still reproduce on `pr9967`: a measure-less `SELECT` returns DISTINCT attribute
+tuples, so a listing that omits the entity key merges rows (Q-24); a `WHERE` on an unjoined dataset's
+column is dropped and becomes `true` (Q-41); a whole-population scalar subquery is inlined as a
+per-row value (Q-26/Q-20); and a grain-forcing derived table that drops the entity key re-groups on
+the value tuple.
+
+**No longer silent, corrected 2026-09-28** — do not chase these: `OFFSET` survives into the dispatch;
+NULL ordering matches Postgres (`DESC` nulls first, `ASC` nulls last) and an explicit
+`NULLS FIRST`/`NULLS LAST` is honoured; an inner `ORDER BY` with no `LIMIT` survives; a measure
+dispatches with no `FLOAT8` cast; and a window over a measure in a flat `SELECT` agrees with the
+derived-table form.
+
+`UNION`: a top-level `UNION ALL` over the model **works** — it dispatches and grades, and a listing
+`UNION ALL` a one-row summary is a working shape (corrected 2026-09-23). **Corrected 2026-09-28:**
+branch **order is preserved**, so the summary row comes back last, and a bare `NULL` literal in a
+branch is accepted — `CAST(NULL AS VARCHAR)` is no longer required, and E-17's cap should be
+re-tested. A `UNION` inside a subquery, CTE or `WHERE` is still refused.
 
 **A negative result is valuable** — "the engine dispatched exactly what the agent wrote"
 eliminates a whole layer. **Clause fidelity is necessary, not sufficient:** every clause can

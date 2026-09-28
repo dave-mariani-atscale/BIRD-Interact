@@ -155,13 +155,52 @@ name, and the agent cannot tell "withheld" from "I have not found it yet". Measu
 lifted out of a description, proving a negative no amount of searching could settle; a
 third asked the right question only after **11** searches. Listing each withheld concept's
 published inputs in the model description — which `list_models` serves once per task, so it
-costs no coins — took those three to 1, 0 and 4 calls and converted one of them. Say also
-that searching the concept's name again returns nothing, or the agent re-searches. Otherwise the agent anchors its
-clarifying question on the one component it found, gets a partial yes, and never learns the
-rest. Expect the firewall to cost tasks and do not buy them back: on one database every
+costs no coins — took those three to 1, 0 and 4 calls and converted one of them. Say also, **as a
+fact about this model rather than about the benchmark**, that the model does not publish the
+concept itself and that no column carries it under any name, so the agent stops searching instead
+of proving a negative. Otherwise the agent anchors its clarifying question on the one component it
+found, gets a partial yes, and never learns the rest. Word it the way a real semantic layer would —
+see *What a description cannot know* — never as "the benchmark withholds this" or "searching again
+costs a coin". Expect the firewall to cost tasks and do not buy them back: on one database every
 task that failed on every run of both backends turned on a withheld term, and no honest
 model change would have moved any of them. Report those separately from real defects so the
 score is read correctly.
+
+**What a description cannot know — the published text must read as a semantic layer, not as a
+benchmark entry (2026-09-28 review, `results/v12_cheating_review_20260928.md`).** A semantic layer
+knows its own contents, its warehouse and its engine. It does not know that it is being measured,
+what a knowledge base withheld from whom, what a clarifying question costs, or how its answers will
+be compared. Three things follow, and all three were found live in the 22 shipped v12 models:
+
+- **Never name the benchmark, the withholding, or the interaction budget.** 13 models shipped a
+  "Withheld concepts" block and five named the benchmark outright — *"the benchmark withholds the
+  cutoffs of…"*, *"ONE knowledge-base composite is withheld from this model by the benchmark"*,
+  *"Searching the catalog again for the concept's name costs a coin and returns nothing."* That
+  information comes from the benchmark's own `is_mask` / `deleted_knowledge` annotations, not from
+  the warehouse or the KB, and it converts a search cost the benchmark is measuring into a free
+  constant. Say the same useful thing from the model's own point of view instead: **which columns
+  this model publishes, which concept it does not publish, and that the agent should ask the user
+  for the full definition.** That keeps the measured benefit — three tasks went from 10, 9 and 11
+  `explore_columns` calls to 1, 0 and 4 — without claiming knowledge the layer cannot have. The
+  A10 gate blocks publishing a withheld *value*; nothing blocks publishing "this value is withheld
+  by the benchmark, go ask", so this one is on you.
+- **Never describe the grader.** 71 descriptions used the word "graded"; most were harmless
+  shorthand, one was not — a model description stating *"the grader reads the two spellings as
+  equal"*, which tells the agent under test how its own scoring works. Grading behaviour belongs in
+  your build notes and in this prompt, never in published text. Where you mean "these two spellings
+  are the same thing", say that about the data.
+- **Never publish a result that could only be computed from a withheld formula.** One model
+  published *"the withheld arbitrage score exceeds 0.05; 0 of 1000 rows qualify (the score never
+  exceeds 0.0471)"* — an empty answer to a masked task, plus the masked formula's maximum. The
+  threshold gate misses this shape: `0.05` belongs to the unmasked entry and `0.0471` sits next to
+  no threshold cue, so it reads as ordinary prose. Before shipping any sentence containing a live
+  figure, ask whether producing that figure required evaluating something the model is not allowed
+  to implement.
+
+Audit it the cheap way, on the emitted YAML rather than by reading: grep every published
+description for `benchmark`, `withheld`, `withholds`, `coin`, `graded`, `grader`, `task` and
+`deleted`, and justify each hit or delete it. All three findings above survived a clean A8/A10 pass
+on 22 of 22 models, so the gates are not the check here.
 
 **A withheld classification still owns its label vocabulary.** Where a masked entry decides
 a status by comparing a reading against thresholds it also states, the *label strings* are
@@ -1870,24 +1909,27 @@ failure.
 - **Near-duplicate readings of one concept must all be cleared in the same tuple.** Where three
   columns are three readings of one concept, an `[All]` on one leaves the other two narrowing the
   denominator, and a query grouping by two of them returns 100.00.
-- **`SUM` and `COUNT` over a *dimension attribute* return one row per member carrying the member's
-  own raw value**, with no aggregation and no error. Measured on two unrelated models: `MIN`, `MAX`
-  and `COUNT(DISTINCT …)` are correct; `AVG` fails the planner with `assertion failed: We already
-  handled attribute values`; and `COUNT(<attribute>)` returned a row whose value was `null` — a
-  count cannot be null under any semantics, which is the clearest available proof that nothing is
-  being aggregated. **Correction, measured 2026-09-23 on disaster_relief: `MIN` over a dimension
-  attribute is NOT universally safe.** `MIN("Affected Area")` in a scope reading the model directly
-  was refused with the same shape of message as `AVG` — *"aggregates the dimension attribute … in a
-  scope that reads the model directly, which fails in the engine planner. Select the attribute at
-  row grain in a FROM-subquery and aggregate outside it."* So the safe statement is that **any**
-  aggregate over a dimension attribute read directly from the model is suspect: `SUM`/`COUNT`
-  silently return members, `AVG` and `MIN` are refused outright, and the FROM-subquery form is the
-  route for all of them. Re-probe on your build rather than trusting the older `MIN`/`MAX` claim.
+- **An aggregate over a *dimension attribute* read directly from the model is refused, not
+  silently wrong — CORRECTED 2026-09-28.** The long-standing claim here was that `SUM` and `COUNT`
+  over an attribute return one row per member carrying the member's own raw value, with no
+  aggregation and no error. On `pr9967` that no longer holds in either half: `COUNT(<attribute>)`
+  **aggregates correctly** and agrees with both `COUNT(DISTINCT <key>)` and the published count
+  metric, per group; `SUM` and `AVG` are **refused before the query is dispatched**, with a message
+  naming the FROM-subquery workaround. `MIN` was also refused this way on disaster_relief
+  (2026-09-23) in a scope reading the model directly. The design rule is unchanged and is what
+  matters here — **publish the metric rather than making the caller aggregate an attribute** — but
+  the reason has moved from "it lies to you" to "it stops you", which is the better failure and
+  changes what a description needs to warn about. Two cautions before you lean on the new reading:
+  the `SUM`/`AVG` refusals come from the **MCP guardrail, ahead of the engine**, so the engine's own
+  behaviour there is untested and a guard can mask a fix; and the earlier `null` result from
+  `COUNT(<attribute>)` — a count cannot be null under any semantics — is the kind of evidence that
+  should make you re-probe on your own build rather than trust either version of this bullet.
 - **Three engine facts the agent pays coins to rediscover, now carried in `birdsml.ENGINE_NOTES`**
   (added 2026-09-23 after each cost a submission on disaster_relief): `AVG` over a dimension
-  attribute is refused by the planner and needs the FROM-subquery form; **sorting by a column the
-  query neither projects nor groups by is refused outright** with a message saying to add it to the
-  select list; and **`ROUND` to fixed decimals goes through a numeric cast that must carry precision
+  attribute is refused by the planner and needs the FROM-subquery form; **sorting by an ATTRIBUTE
+  the query neither projects nor groups by is refused outright** with a message saying to add it to
+  the select list — narrowed 2026-09-28, since a published **measure** can now be sorted on without
+  being projected, and an unprojected **aggregate** still refuses; and **`ROUND` to fixed decimals goes through a numeric cast that must carry precision
   and scale** — a bare `CAST(x AS numeric)` is refused with *"Numeric values are only accepted with
   specified precision and scale"*, so `CAST(x AS numeric(18,4))` is the working form and its result
   returns as a string. The note demonstrably lands: on the next run the agent wrote the
@@ -2302,6 +2344,20 @@ warehouse SQL for any semi-additive or window-based construct.
    before and after; it came back zero lost, zero gained across all twelve models, the only removals
    being hidden key attributes, one per absorbed dimension, which is the point of the merge. State
    the expected removals up front so the diff has something to be checked against.
+7. **Grep the published text for knowledge the layer cannot have** (added 2026-09-28 after the
+   review in `results/v12_cheating_review_20260928.md` found all three of these on models that had
+   passed every other gate). Over every emitted description, not the source spec:
+
+   ```
+   grep -rinE 'benchmark|withheld|withholds|deleted|grader|graded|coin|task [0-9_]' */models */dimensions */calculations
+   ```
+
+   Every hit is justified in writing or deleted. The three shapes that actually shipped: a
+   "Withheld concepts" block naming the benchmark (13 models), a description stating how the grader
+   normalises text (1), and an empty result that could only come from evaluating a masked formula
+   (1). A8 and A10 passed 22/22 alongside all of them — A10 only detects digits and A8 only catches
+   verbatim six-word runs — so this gate is not redundant with those. See *What a description
+   cannot know*.
 
 **A ceiling sweep is cheap enough to ITERATE, and rounds two and three are where it pays.**
 Measured 2026-09-20 on insider_trading: round 1 of 21 hand-written queries reached 3 exact
