@@ -10130,3 +10130,35 @@ of 22.
 
 No model built, nothing deployed, no grader change, no benchmark run. Answer-key firewall
 unchanged: gold only through `scripts/gold_diff.py`.
+
+## 2026-09-28 — three process rules learned during the v13 rebuild arm
+
+Recorded here because they change how every future model is measured and authored, not because a
+deployed model changed. The arm itself is `results/v13/`.
+
+**1. A KB rule that is a JOIN CONDITION must be evaluated live, like the arithmetic ones.** Added to
+the facts.md standard in `docs/bird-database-testing-prompt.md`. virtual_idol's KB "Session Time
+Window" states five minutes; F1 implemented it faithfully and it matched **zero of 821 rows**,
+because the minimum gap between two same-idol interactions in that warehouse is 1425 minutes. The
+published peer-count column was 0 on every row and the flag built on it 'No' on every row — a task
+made unreachable by any SQL, by a correct implementation of an unsatisfiable rule. The existing
+range-and-nulls sweep cannot catch this, since a join predicate has no range. The standard now asks
+for the COUNT a predicate actually matches, at the KB's own number and at one or two wider settings.
+
+**2. The bare name takes WHOLE UNITS.** Generalised in `docs/create_bird_model_prompt.v12.md` from
+the existing ages-only rule. virtual_idol published a fractional day count under the plain name and
+whole days under `(Calendar Days)`; the task passed only through the qualifier. A
+qualified-twin-only pass converts live at about −0.05, so the ceiling sweep recorded a pass that the
+live run would not have. The rule now covers every quantity readable both ways — durations, gaps,
+ages, wait times, tenure, holding periods, any count-derived figure — and says to decide each one
+rather than settle it by symmetry.
+
+**3. Never redirect a sweep's stdout onto `<queries>.report.txt`.** `scripts/gold_diff.py:419`
+writes that path itself, so a redirect puts two writers on one file. My error, caught the same hour;
+the PASS count survived it but the report text did not. Noted in the testing prompt beside the
+other sweep gotchas.
+
+Both in-flight F1 authoring turns were sent rules 1 and 2 directly rather than left to re-read the
+docs, since a file edit races an agent that has already read it.
+
+No deployed model changed in this commit, no grader change, no benchmark run.

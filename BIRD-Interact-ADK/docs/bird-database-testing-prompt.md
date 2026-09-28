@@ -103,7 +103,18 @@ between files?** Sonnet.
   That last one is cheap and catches a whole class before the spec is written: an Appraisal Ratio
   defined as `alpha / (volatility * sqrt(1 - R-squared))` over an R-squared stored 0-100 is the
   square root of a negative on nearly every row, which a range line shows at once and which
-  otherwise costs three sweep rounds to find. **The integer-division check must be a mechanical
+  otherwise costs three sweep rounds to find. **Added 2026-09-28: a KB rule that is a JOIN
+  CONDITION must be evaluated live too, not only the ones that are arithmetic.** Measured on
+  virtual_idol V13 that day: KB "Session Time Window" states five minutes, F1 implemented it
+  faithfully as same-idol / another-row / within five minutes, and it matched ZERO of 821 rows --
+  the minimum gap between two same-idol interactions in that warehouse is 1425 minutes. The
+  published peer-count column was 0 on every row, the flag built on it was 'No' on every row, and
+  the task that needed it was unreachable by any SQL. The range-and-nulls sweep cannot see this,
+  because a join predicate has no range. So: for every KB rule expressed as a co-occurrence, a
+  time window, a proximity or a match condition between two rows, emit the COUNT of rows the
+  predicate actually matches, at the KB's own number and at one or two wider settings beside it.
+  A predicate that fires on nothing is a design problem to be surfaced before authoring, not a
+  sweep round to be spent later. **The integer-division check must be a mechanical
   sweep over EVERY ratio, not a judgement about which ones look like counts** — measured
   2026-09-23 on disaster_relief, the pass ran `pg_typeof` on three ratios, caught all three, and
   reported the *widened* reading for a fourth of identical `bigint / bigint` shape that collapses
@@ -563,6 +574,12 @@ read any improvement. Then:
   `unset SEMANTIC_LAYER_MCP_TOKEN` before `start_services.sh`, `gate_run.sh` and in every run script. Its fingerprint in a
   `gold_diff.py --sweep` is every task `EXECUTION ERROR — MCP request ... failed` (2026-09-27, cybermarket_pattern round 1): unset it
   in the same call as the sweep, not once per session.
+- **Never redirect a sweep's stdout onto `<queries>.report.txt` — `gold_diff.py` writes that file
+  itself** (`scripts/gold_diff.py:419`). Doing so puts the shell and the script on one file and the
+  report comes back interleaved and unreliable. Measured 2026-09-28 on virtual_idol V13 round 1;
+  the PASS count happened to survive, the report text did not. The correct call is
+  `... gold_diff.py --sweep <file>.json --phase 1 --backend atscale` with stdout left alone: the
+  screen gets one line per task and the full reports land in `<file>.json.report.txt` on their own.
 - **The benchmark key's CREDIT can run out mid-run, with a different message from the workspace cap (A-72).**
   Measured 2026-09-27: "Your credit balance is too low to access the Anthropic API" from 11:08:15; the 10
   tasks finished before it were clean, the other 9 returned HTTP 500 with no `instance_id` and are void.

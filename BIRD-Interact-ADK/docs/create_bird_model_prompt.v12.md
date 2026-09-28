@@ -949,6 +949,16 @@ result JSON overcounts badly, because the column catalog is re-served every turn
   so the native form is the bare name. Ship the continuous reading as an `(Fractional)` twin and
   carry it down every consuming formula. Verify with a count of rows where the two conventions
   round differently before deciding it does not matter.
+- **That rule is not about ages — it is about every quantity readable as whole units or as a
+  fraction, and the BARE NAME TAKES WHOLE UNITS unless the knowledge base explicitly asks for a
+  fraction.** Measured 2026-09-28 on virtual_idol V13: the model published a longest-inactivity
+  gap as a fractional day count under the plain name and whole days under a `(Calendar Days)`
+  qualifier. The task passed only through the qualifier, and a qualified-twin-only pass converts
+  live at a measured coefficient of about −0.05 — that is, effectively never. The ceiling sweep
+  recorded a pass and the live score would not have. So sweep your own objects for the shape
+  before shipping: durations, gaps, ages, wait times, holding periods, days-to-first-anything,
+  tenure, and any count-derived quantity. Decide each one; do not settle it by symmetry with the
+  one beside it, and do not assume a sweep pass through a qualifier is a pass.
 - **A rate defined "since commissioning" is undefined before commissioning — NULL, never a
   negative number — and its description states how many rows that is.** 445 of 998 snapshots
   were timestamped before their entity's go-live date and 91 more inside the first year; the old
