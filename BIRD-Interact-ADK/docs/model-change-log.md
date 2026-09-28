@@ -10091,3 +10091,42 @@ knowledge tools serve KB 51 and KB 31 in full. The gate passing is therefore not
 answer to its own concern; the answer is that nothing was withheld from either arm.
 
 No grader change, no gold SQL in any description, no benchmark run.
+
+## 2026-09-28 — a v13 rebuild arm for the three earliest v12 models (scaffolding only)
+
+**Dianne's call.** insider_trading, organ_transplant and virtual_idol were authored in the first
+five v12 builds (2026-09-19 to 09-22), before the process settled. They are being rebuilt from
+scratch under the current rules so that every v12-era model shares one authoring method and the
+three can be read against each other. Stated intent: "Perhaps it won't change anything but I still
+want to do it … and I can see the results for myself."
+
+**The expectation is on the record, and it is not a large gain.** The 2026-09-26 insider_trading
+A/B ran exactly this experiment on the worst of the three: a Fable-authored from-scratch re-author
+(arm A) reached full P1 12/21 and bare-name 9, against the shipped model's 12 and 8 — a tie on the
+predictive number for three times the cost. organ_transplant's v12 ceiling (11/19) is already
+*above* the tuned model's live P1 (10/19). So this arm is being built to be measured, not because
+a rebuild is the expected lever, and that distinction should survive into whatever the numbers say.
+
+**Shape: a parallel arm, not a replacement.** New repo `diannewood/bird-models-v13` (private),
+catalog `bird_models_v13`, backend `atscale_v13`. `bird_models_v12` is untouched and stays
+deployed; every comparison is v13 against its v12 twin. A separate repo and catalog is forced, not
+chosen — SML `unique_name`s are repo-wide and the deployed model names would collide. Deployed
+names therefore carry a `V13` suffix. Same precedent as `bird_models_v12_nocheat`.
+
+**Carried over, deliberately:** `utilities/` (the build machinery and both gates), each database's
+`generator/build.sh`, `dry_run.py`, `generate.py`, its `brief/task_brief.json`, and its v12
+`generator/facts.md`. facts.md is the measurement pass, not the design — reusing it costs the arm
+nothing in independence and saves the one genuinely expensive mechanical step. It is a starting
+point and gets refreshed against the current standard before authoring; the v12 files are longer
+(699–877 lines) but predate the denser findings-oriented format builds 19–20 used.
+
+**Not carried over:** `spec.py` and `sql_defs.py`. Those are the model, and they are authored
+fresh from the packet with no sight of the v12 spec.
+
+**ADK side of this commit:** `atscale_v13` added to `config/environment_backends.yaml` (three
+domains), and `scripts/deploy_models_v13.sh` derived from the v12 deploy script — same three
+non-guessable facts, same A8/A10 gates, same E-23 fetch-retry preload, expecting 3 models instead
+of 22.
+
+No model built, nothing deployed, no grader change, no benchmark run. Answer-key firewall
+unchanged: gold only through `scripts/gold_diff.py`.
