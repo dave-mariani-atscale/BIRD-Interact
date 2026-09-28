@@ -9916,3 +9916,37 @@ behind it — and two rebuilt models already exceed it (crypto_exchange 9969, po
 Both failing asserts were raised to 10000 rather than cutting curated prose. **The real engine limit is
 still unmeasured**; if the engine truncates, it truncates the end, which is where the engine notes live.
 Verify a deployed description against source before trusting the notes are present.
+
+## All 22 v12 models — engine notes corrected in place (2026-09-28)
+
+The shared `ENGINE_NOTES` block was re-probed live against the engine now running
+(`ghcr.io/atscaleinc/engine:pr9967`, 40.0.0-pr9967, rev d44a17b) with
+`scripts/engine_claims.py` — 50 probes, MCP only, no LLM calls. Five of its claims no longer
+reproduce, and a stale "this is broken" claim costs a task the same way a missing feature does:
+the agent writes the workaround, or never tries the construct.
+
+Corrected in every model's description, and in `birdsml.ENGINE_NOTES` so a rebuild keeps them:
+
+- `COUNT` over a dimension attribute **aggregates correctly** (it agrees with
+  `COUNT(DISTINCT <key>)` and the published count metric). `SUM`/`AVG` over an attribute are now
+  refused before dispatch with a message naming the workaround, rather than silently ungrouping.
+- NULL sort order **matches Postgres** (`DESC` → NULLS FIRST, `ASC` → NULLS LAST) and an explicit
+  `NULLS FIRST`/`NULLS LAST` **is honoured**. The old "reverse of Postgres and not overridable" was
+  wrong on both halves.
+- A published **measure** can be sorted on without being projected; only an unprojected *attribute*
+  is refused.
+- A window alias is filtered in the **outer WHERE** over a FROM-subquery. The `HAVING` shape added
+  to the notes on 2026-09-27 is in fact REFUSED ("constraints have been incorrectly constructed"),
+  so that correction shipped backwards and is reversed here.
+- `UNION ALL` **branch order is preserved** (a listing then a one-row summary comes back in that
+  order) and an untyped `NULL` literal in a branch is accepted.
+
+Model-specific wording carrying the same claims was corrected too: `exchange_traded_funds` (NTILE
+in its refused list, `STRING_AGG(... ORDER BY ...)` called refused — both accepted) and
+`archeology_scan` (NTILE, the attribute-aggregate sentence, NULL sort order).
+
+No model was regenerated. `scripts/patch_engine_notes.py` rewrites the sentences where they already
+sit in the emitted YAML, which keeps every hand edit the generators do not carry; the same wording
+went into `utilities/birdsml/engine_notes.py` so the next real rebuild agrees. Everything else in the
+block still reproduces — including the keyless-listing collapse, the cross-dataset filter drop, the
+per-row scalar subquery, and the whole refused-function list.
