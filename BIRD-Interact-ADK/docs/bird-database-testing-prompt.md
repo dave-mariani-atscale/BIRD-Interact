@@ -117,10 +117,13 @@ between files?** Sonnet.
   a description or a name changed as one line for Opus — **all of them in ONE list, not one per
   turn**, since a gate loop that bounces a single wording fix at a time burns an Opus turn each
   time. **Ceiling-sweep rounds two onward**, against this table: `COLUMN COUNT` → change the
-  projection to the count and order gold names; `ROW COUNT` with every expected row already
-  present → a threshold the question does not state, so try the caller-supplied value; `ROW ORDER`
-  → an ORDER BY defect; `VALUES` on the right shape → the population or the wrong twin, so swap
-  the published twin or restrict to the coverage flag; `VALUES ROUNDING` → a cast. Escalate to
+  projection to the count and order gold names, and (decided 2026-09-26, builds 18–20) put a
+  companion-column sentence and a shape ask on the projected object; `ROW COUNT` with every
+  expected row already present → a threshold the question does not state, so try the
+  caller-supplied value; `ROW ORDER` → an ORDER BY defect; `VALUES` on the right shape → the
+  population or the wrong twin, so swap the published twin or restrict to the coverage flag — and
+  when the swapped twin passes, rename it bare (decided 2026-09-26, builds 18–20: the `RENAME TO
+  PLAIN` block in the kickoff); `VALUES ROUNDING` → a cast. Escalate to
   Opus only a finding that needs an object the model does not publish. Deploy,
   `scripts/gate_run.sh`, run scripts and launches, `llm_usage` summaries, sheet and change-log and
   kickoff writes, the propagation grep audits. Reports are 20 lines or fewer and it never decides
@@ -363,7 +366,10 @@ diagnosed in one sitting.
 It reads gold so that you do not. **Gold SQL never appears in its output** — not the
 text, not a fragment, not a paraphrase of the construction; the Postgres `LINE n:` echo
 is stripped for the same reason. Column labels and a capped sample of differing cell
-values do appear, because otherwise it is not a value diff. Those are diagnosis only.
+values do appear, because otherwise it is not a value diff. Those are diagnosis only —
+except on v12 builds 18–20 (decided 2026-09-26), where a finding may motivate a model change
+tagged `[DIAG]`; gold SQL still never enters the model. See the kickoff's `GOLD_DIFF DIAGNOSIS
+ALLOWED` block for the tag vocabulary and the $0 ablation that measures it.
 
 Read the finding, not the rows: `ROW ORDER` is an `ORDER BY` defect, `VALUES ROUNDING`
 is a ROUND/CAST defect, a row-count difference with the non-numeric columns matching is
@@ -598,17 +604,17 @@ read any improvement. Then:
   exactly their pre-rename cells. So a bare-name rename (a `[PLAIN]` move) IS a change to what a name returns: rename the
   entity's degenerate dimension IN THE SAME COMMIT (Record -> Entry worked), and do not restart the engine for it — the
   restart did not clear the aggregates and left deploys failing for ~15 minutes (E-23).
+- **E-23 root cause and workaround (2026-09-27, cold_chain build 20): a keep-alive race, not an engine window.** `NODE_DEBUG=undici,fetch`
+  shows the deploy POST reusing the socket from sml-cli's earlier GET /repos, which the API closes while the CLI compiles ("other side
+  closed"); a bigger catalog compiles longer and loses every time (31 straight failures, pauses included). Deploy with
+  `NODE_OPTIONS="--require scripts/sml_fetch_retry.cjs"` (absolute path): one retry on a fresh socket, 5/5 deploys first try. Each $0
+  ablation arm also needs its OWN degenerate-dimension rename (E-22): noDIAG served FINAL's values under the shared name until renamed.
 - **`sml-cli atscale-deploy` fails with `FetchError` for 1-10 minutes after a previous deploy or an engine restart (E-23).**
   Measured 2026-09-27: 26 of 33 attempts over eight deploys failed that way, the API logged no request, and every retry 45 s
   later eventually returned HTTP 201. Loop until `Deploy SUCCESSFUL` (up to ~15 min), and never read a loop that gave up as a
   deploy: the previous model stays live, which is how an ablation arm nearly got recorded as FINAL.
 - **`cmd && nohup run.sh &` backgrounds the WHOLE chain, not just the run.** Measured 2026-09-24 on
   planets_data: `gate_run.sh | tail -1 && nohup bash run.sh > out &` returned at once with no output
-- **E-23 root cause and workaround (2026-09-27, cold_chain build 20): a keep-alive race, not an engine window.** `NODE_DEBUG=undici,fetch`
-  shows the deploy POST reusing the socket from sml-cli's earlier GET /repos, which the API closes while the CLI compiles ("other side
-  closed"); a bigger catalog compiles longer and loses every time (31 straight failures, pauses included). Deploy with
-  `NODE_OPTIONS="--require scripts/sml_fetch_retry.cjs"` (absolute path): one retry on a fresh socket, 5/5 deploys first try. Each $0
-  ablation arm also needs its OWN degenerate-dimension rename (E-22): noDIAG served FINAL's values under the shared name until renamed.
   file yet, so it looked like a failed launch; relaunching started a second 19-task baseline ten
   seconds behind the first. Two runs shared the services and the `llm_usage` window ($7.92 for a run
   whose clean repeats cost $5.07-5.60). Gate in one call, launch in the next, and `pgrep -f

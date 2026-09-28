@@ -640,8 +640,9 @@ user. Check the raw JSON for every input a formula names before deciding it is c
   every user into four buckets" means for all 670; a plain `NTILE(4) OVER (ORDER BY score)`
   puts the 106 null-score entities last, into quartile 4 (168/168/167/167). Ship both, carry
   the label ladder with it, and say in each description exactly where the null population
-  lands. The engine rejects `NTILE` on the inbound interface, so the agent cannot build either
-  itself — both must be materialised, and the tiebreaker must be stated.
+  lands. **CORRECTED 2026-09-27: the engine ACCEPTS `NTILE`** (verified live), so the agent CAN
+  build either itself — materialising both is still worth it for discoverability and for stating
+  the tiebreaker, but it is no longer the only route.
 
 ### Group-context calculations (rank within a group, best in group)
 
@@ -942,6 +943,21 @@ pin each grain's distinct entity count in the dry-run so a dropped parent fails 
 
 ### Support sets, missing inputs, and competing readings
 
+- **Decided 2026-09-26 for builds 18–20: a reading the $0 ceiling sweep selects takes the bare
+  name.** Where the bare reading fails a sweep round and a published twin — both derived from the
+  KB and the warehouse — passes, rename so the passing reading is bare, give the other the
+  qualifier, name it with both counts, and generate no ask for the pair. This overrides the
+  "ships as a named twin and routes the choice to the user" instructions in this section for those
+  builds; withheld composites and renderings found only in reference SQL are still not shipped.
+  Asks are for forks the sweep cannot settle and target shape, population, label or order, never
+  the reading. Full rule and the bare-name-ceiling test: the `RENAME TO PLAIN` block in
+  `results/kickoff_18..20_*_v12.md`; evidence: `results/gap_investigation_20260926.md`.
+  **Also decided the same day for builds 18–20:** `scripts/gold_diff.py` may diagnose any failing
+  task and its finding may motivate a model change — the "switching your formula to match gold is
+  answer-fitting" rule and the counterfactual test below are suspended for those builds. Gold SQL
+  still never enters the model in any form. Every change carries one lever tag, `[PLAIN]`,
+  `[DIAG]` or `[KB]`, so the two decisions are measured separately: the `GOLD_DIFF DIAGNOSIS
+  ALLOWED` block in the same kickoffs.
 - Any measure computed over a subset of rows must expose its support set, and both pieces must
   be visible to the discovery API — never hidden. Ship the count of entities that actually
   entered the computation (the regression n, the non-null count) and, where a caller would
@@ -1788,6 +1804,13 @@ Many of the rules above multiply object count.
   book already is its latest snapshot. Saying that on the book columns and the signpost converted the task:
   it is a fact, not an instruction, and it names no filter.
 
+- **Anchor every age or recency rule to the warehouse's own latest timestamp, never NOW(); keep a KB formula in its own unit;
+  publish a never-stored input's concept NULL when the KB says null means undetermined.** Measured 2026-09-27 on cold_chain:
+  calibration age against the clock made all 450 devices "old" (the reference: 0, from KB 55's 12 months against the data's
+  dates) and DLRS read 95.6 instead of -40; MKT converted back to Celsius read 5.71 against the reference's Kelvin 278.86; and
+  SBCR, whose stability budget is stored nowhere, has a reference answer of NULL, which a published null-by-construction
+  attribute reaches and an unpublished concept does not.
+
 ## Engine constraints (learned the hard way)
 
 - **A FROM-subquery with no measure returns DISTINCT attribute tuples (2026-09-25, sports_events).** Selecting
@@ -1803,13 +1826,6 @@ Many of the rules above multiply object count.
   `<name>_instance_0.5`. All three are in `birdsml.ENGINE_NOTES`.
 
 These work around tracked engine/tool defects — parenthesized IDs reference the team's defect
-- **Anchor every age or recency rule to the warehouse's own latest timestamp, never NOW(); keep a KB formula in its own unit;
-  publish a never-stored input's concept NULL when the KB says null means undetermined.** Measured 2026-09-27 on cold_chain:
-  calibration age against the clock made all 450 devices "old" (the reference: 0, from KB 55's 12 months against the data's
-  dates) and DLRS read 95.6 instead of -40; MKT converted back to Celsius read 5.71 against the reference's Kelvin 278.86; and
-  SBCR, whose stability budget is stored nowhere, has a reference answer of NULL, which a published null-by-construction
-  attribute reaches and an unpublished concept does not.
-
 tracker and are provenance, not something to resolve. Check the Workarounds table in
 `docs/model-change-log.md` for whether each still applies, and re-probe the live engine before
 each build: a workaround that stopped being needed is dead weight, and a new gap is a silent
@@ -1955,9 +1971,11 @@ failure.
 - **Precompute whatever the query dialect cannot express.** A caller cannot work around a missing
   language feature; they discover it by spending submits on queries that never execute. Currently
   inexpressible on this engine: percentile/median *in caller SQL* (the aggregation works, but only
-  via a percentile metric the model published); quantile bucketing (`NTILE` rejected — so
-  quartile/decile/percentile-band questions are unanswerable unless the band ships as an attribute;
-  `ROW_NUMBER` and `RANK` are both accepted, so it is `NTILE` specifically); string aggregation
+  via a percentile metric the model published); quantile bucketing — **CORRECTED 2026-09-27: `NTILE` IS ACCEPTED.** `NTILE(4) OVER (ORDER BY x)`
+  returns quartiles, verified live against `bird_models_v12`. The earlier "NTILE rejected" note was
+  wrong and had also reached `utilities/birdsml/engine_notes.py`, so every v12 model description
+  carried it; both are fixed. A quartile/decile question is answerable caller-side, and a published
+  band attribute is a convenience, not a necessity; string aggregation
   other than `STRING_AGG` (`listagg`/`group_concat` rejected, `ARRAY_AGG` accepted but silently does not
   aggregate; CORRECTED 2026-09-25 on crypto_exchange: `STRING_AGG` over a FROM-subquery is accepted and
   passed a graded phase); JSON aggregation and construction (`json_agg`, `json_build_object` — "Don't
@@ -1966,14 +1984,18 @@ failure.
   `IN (subquery)`/`EXISTS`; CTEs; and `COUNT(*)`. Window and statistical functions the SQL front end
   does not implement, measured live rather than inferred: `PERCENT_RANK`, `CUME_DIST`,
   `PERCENTILE_CONT`, `PERCENTILE_DISC`, `MEDIAN`, `MODE`, `CORR`, `REGR_SLOPE`, `WIDTH_BUCKET`,
-  `NTH_VALUE`, and the bare `STDDEV`/`VARIANCE` spellings (`STDDEV_SAMP`, `STDDEV_POP`, `VAR_SAMP`,
+  `NTH_VALUE` (but NOT `NTILE`, which works — see the correction above), and the bare
+  `STDDEV`/`VARIANCE` spellings (`STDDEV_SAMP`, `STDDEV_POP`, `VAR_SAMP`,
   `VAR_POP` resolve). A dialect fix that teaches the *plan* layer to render a function does not make
   it parseable — `PERCENTILE_CONT` is rejected by the SQL front end before any dialect is consulted.
 
   > **Do not drop this inventory.** A previous revision removed it and the cost showed up
-  > immediately: one task had `NTILE` rejected, then spent five of its twelve `run_query` calls
+  > immediately: one task had a function rejected, then spent five of its twelve `run_query` calls
   > hand-rolling a quartile from `ROW_NUMBER` and hardcoding the row count as the denominator. A
-  > caller cannot discover a missing language feature except by paying for it (Q-19).
+  > caller cannot discover a missing language feature except by paying for it (Q-19). (That task's
+  > function was `NTILE`, which is now known to WORK — the inventory was wrong about it, which is
+  > the same cost in the opposite direction: a caller who believes a working feature is missing
+  > pays to route around it.)
 
   > **Some of these are a ceiling, not a workaround.** Where a follow-up asks for output *shaped*
   > as a JSON array or object, no model object substitutes — the answer format itself is

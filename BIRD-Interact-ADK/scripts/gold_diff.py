@@ -29,7 +29,13 @@ WHAT IT WILL NOT PRINT: gold SQL, in any form — not the text, not a fragment, 
 paraphrase of its construction. Column labels and a capped sample of differing cell
 VALUES are printed, because a value diff is not a value diff without them, and the
 protocol already allows gold to be read to diagnose. Those are diagnosis only:
-nothing seen here may be built into the model, the guidance, or the code.
+nothing seen here may be built into the model, the guidance, or the code — EXCEPT where
+a kickoff says otherwise. Decided 2026-09-26 for v12 builds 18–20, and extended 2026-09-27
+to the round-2 retrofit of the other 19 models: a diagnosis MAY motivate a model change,
+tagged `[DIAG]` in the commit and the change log so its effect can be measured separately.
+The test is not how a reading was FOUND but whether it is derivable from the KB and the
+warehouse and stands on its own once written. Gold SQL still never enters the model, in
+any form, and no description says why a reading was chosen.
 
 The verdict line is the real grader's (`ex_base_external_pred` / `grade_raw_submission`
 on `<db>_template`), not a reimplementation, so it cannot drift from what a run would
@@ -468,7 +474,9 @@ def main():
 
     print("Gold SQL is not printed by this tool, ever. Column labels and the sampled "
           "values below are for DIAGNOSIS ONLY — nothing here may be built into the "
-          "model, the guidance, or the code.\n")
+          "model, the guidance, or the code, unless the kickoff you are running under "
+          "allows a [DIAG]-tagged change (v12 builds 18-20 and the round-2 retrofit). "
+          "Gold SQL never enters the model either way.\n")
 
     for iid in ids:
         task = tasks.get(iid)

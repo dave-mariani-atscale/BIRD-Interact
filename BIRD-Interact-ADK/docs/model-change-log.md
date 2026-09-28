@@ -3,7 +3,10 @@
 Post-build changes to the AtScale semantic models in
 [AtScaleInc/bird-atscale-models](https://github.com/AtScaleInc/bird-atscale-models),
 one section per model. Record the kind of change and why; name the Workarounds
-row when a change works around a tracked defect.
+row when a change works around a tracked defect. v12 builds 18–20 (decided 2026-09-26)
+prefix every entry with one lever tag — `[PLAIN]` rename/ask change among existing
+readings, `[DIAG]` change motivated by a `gold_diff.py` diagnosis, `[KB]` derived from the
+KB or warehouse alone — so the two levers can be summed separately afterwards.
 
 Sections below sometimes cite `docs/create_bird_model_prompt.md`,
 `docs/lift-levers-handoff.md` or `docs/crypto-followups-handoff.md`. Those are
@@ -9443,6 +9446,22 @@ labels or quoted bracket strings (`_17` P2, `_5`). A non-KB ordering that keeps 
 the fork-removal rule: the attribute and its four metrics are unpublished; Expenditure Ratio and Socioeconomic Index state
 the bracket position (1 to 12 in ascending R$ order) in prose. 80 attributes, 101 metrics.
 
+### insider_trading V12 AB-B (A/B re-author test, arm B) - 2026-09-26 (`diannewood/bird-models-v12-abb`)
+
+Temporary test model (`results/kickoff_ab_insider_trading_reauthor_20260926.md`), its own repo and catalog
+`bird_models_v12_abb` because SML unique_names are repo-wide. Removed at the end of the test unless kept. Initial build
+`054e4e0` (F1 Fable, [KB]); F2 edits applied by Opus, one lever per commit:
+- [PLAIN] `8991d54` Potential Insider Trading Flag: the event-type-recorded reading goes bare, the event-row reading
+  becomes (Event Row Exists), no ask (`_17` 325 vs 246 bare, twin exact). Event-Driven Trader NOT renamed (bare passes M_9).
+- [DIAG] `62a7124` Suspected Event-Driven Insider, High-Intensity Insider Investigation, Boosted Insider Leakage Score / ISSR
+  built on the narrow insider flag (`_6`). **Reverted in `3624e70`**: `_6` had passed on the wide reading; the change cost it.
+- [DIAG] `b3327b0` Group Behavior Score states that a fraction cutoff reads on its 0-100 scale times 100 (`_19`); KB 13's
+  own cutoffs stay unpublished.
+- [PLAIN] `4b924d7` restriction-column ask cut; Business Restriction named as the enforcement action's restriction (`_9`).
+- [PLAIN] `51e2e91` "plainer name does not settle" cut on the settled PAS-scale and Event-Driven pairs.
+- [PLAIN] `428051e` caller-cutoff asks on Price Acceleration / Information Leak Rate and Liquidity Impact (`_13`, `_14`).
+- [KB] `b85aaf7` the engine's median metric form `_instance_0.5` named in the model description and on OMI (`_11`).
+
 ### Labor Certification Applications V12 (v12 build 18) - 2026-09-27 (`diannewood/bird-models-v12`, folder `labor_certification_applications`)
 
 Initial build `10ee6eb`, [KB] (F1 Fable from facts.md + KB; no gold contact). Three grains, no relationships, cross-grain
@@ -9511,3 +9530,389 @@ F2 (Fable 2 of 4) edits, applied by Opus one lever per commit (hunk-split):
   against E-22; TIRP ask carries the KB's zone test order and the list-order question (`_9`); OTDP names its 679 same-rows count.
 Ablation tags (not shipped): `cold_chain_pharma_compliance-noDIAG`, `cold_chain_pharma_compliance-noPLAIN`; both needed their
 own dimension renames (Row / Line) because the engine served the other arm's aggregates under a shared dimension name (E-22).
+
+### Planets Data V12 (v12 build 09) - 2026-09-27 round-2 update (`diannewood/bird-models-v12`, folder `planets_data`)
+
+Round-2 retrofit of the builds 18-20 process onto the 2026-09-24 model `ee6d233` (uncommitted at time of
+writing; one spec edit set, one rebuild). BEFORE ceilings on the deployed model: full P1 16/19, bare-name
+P1 14/19, full P2 19/19, bare-name P2 17/19 - so five phases were reachable only through a qualified twin.
+- [PLAIN] the plain name moves onto the reading the sweep settles, and the loser keeps a qualifier naming
+  what narrows it: escape velocity and orbital velocity bare in km/s with `(Metres Per Second)` twins
+  (`_13` P1, `_18` P2, `_2` P1); transit depth bare as the percentage with `(Fraction Of Stellar Disc)`
+  (`_8`); `Retrograde Orbit` bare at inclination >= 90 with `(Inclination Above 90 Degrees)` for the
+  knowledge base's strict form (`_2` P1 returned zero rows on the bare reading); `Star Kepler Third Law
+  Mass` bare = the outermost-planet reading (`_4`); `Star Mean Adjacent Period Ratio` bare = the geometric
+  mean, arithmetic renamed `Star Arithmetic Mean Adjacent Period Ratio` (`_11`).
+- [PLAIN] asks cut where the sweep settled the fork: the TTV facility-vs-discovery-group question (`_12`
+  passes both phases on the facility reading) and the arithmetic-vs-geometric question. The band-grouping
+  ask stays - neither reading reaches `_14`.
+- [KB] the 14 `(Inputs Recorded Only)` flag twins are no longer published: they differ from the bare flag
+  only on No versus null, so a Yes filter returns the same rows, and the model's own forks were spending
+  the agent's asks (households, 2026-09-26). 220 attributes -> 207, 63 qualified names -> 47.
+- [DIAG] transit depth now reads the planet radius through `Planet Radius Earth` (KB 2, radjup x 11.209) at
+  6.371e6 m rather than through the Jupiter radius constant; the two chains differ by 0.22% and `_8` P1
+  turns on the third significant figure. Verified at $0 with `gold_diff --task planets_data_8`.
+- [DIAG] `Star Gravitational Parameter (Scientific Notation Text)` withdrawn - a six-digit rendering the
+  model invented that the agent resubmitted three times; the numeric column now says the rendering is the
+  caller's TO_CHAR EEEE mask and asks the user how many significant digits (`_20`).
+- [DIAG] a shape ask on `Planet Designation`: "name a planet" maps to a different column on different tasks
+  (designation, host star name, planet letter), a fork no sweep can settle; the sentence also says a listing
+  projecting only one of them returns distinct tuples (`_2`, `_18`).
+- [KB] the model description now says 'Upper Limit Value' and 'Blended Measurement' are properties of ONE
+  named measurement, so a reliability narrowing filters the flags of the columns the question names, not all
+  twelve (`_10`: the blanket reading gives a different average from the per-measurement one).
+- E-22: both degenerate dimensions renamed in the same edit (Planet Record -> Planet Entry, Star Record ->
+  Star Entry) because the plain-name moves change what an existing name returns.
+No grader change, no gold SQL in any description, no benchmark run (round 2 is $0).
+
+## organ_transplant V12 - 2026-09-27 round-2 retrofit (uncommitted; session deploys)
+
+Build #02 (2026-09-20) predates almost every rule added since, so this is a retrofit, not a rebuild.
+BEFORE, measured on the deployed model with `gold_diff.py --sweep` at $0 (files under
+`results/ot_r2/`): full ceiling P1 11/19, bare-name ceiling P1 6/19, P2 7/19.
+
+- [KB] `birdsml.ENGINE_NOTES` appended to the model description, which had none (the model was built
+  before gate G27); plus the withheld-concept signpost (four masked rules named with their published
+  inputs) and one engine fact measured here: a window function cannot be filtered in a WHERE at ANY
+  nesting depth, but selecting it in a FROM-subquery and filtering in HAVING after GROUP BY works.
+  That form is what reaches `_3` and `_2`. It also CORRECTS two claims in the shared
+  `utilities/birdsml/engine_notes.py` (NTILE is accepted; "a rank cannot be filtered in HAVING;
+  filter it in an enclosing FROM-subquery" is exactly backwards) - shared file not touched here.
+- [PLAIN] The population question on the six Record Coverage flags and on `Match` becomes a
+  population FACT. Eight ask instances removed: the sweep settles it on every graded listing and
+  group aggregate (`_2 _8 _9 _13 _17 _18 _21` all need the intersection and nothing needs the union).
+- [PLAIN] `Match Status`: "finished/completed/done" = Completed and "waiting/candidate" = Pending are
+  stated as settled; the ask is kept only for the other lifecycle words.
+- [PLAIN] Total Ischemia Time / Average Total Ischemia Time: ask cut, bare reading named as the one a
+  question naming ischemia time means (`_8` passes on it).
+- [PLAIN] Recipient wait rank (Pending Matches): ask cut - a waiting-list question means the pending
+  reading.
+- [PLAIN] `Recipient Comorbidity Count` now carries the ZERO-FILLED reading bare and the strict one is
+  `(Recorded List Only)`; the match-level carry and both metrics follow. E-22: the Recipient dimension
+  is renamed `Recipient` -> `Recipient Profile` in the same edit because a published name now returns
+  different values.
+- [DIAG] Cost-effectiveness ratio: the KB's QALY is years x quality-of-life score (KB 11), so the
+  denominator of KB 12 is `Quality Of Life Score` x the years the caller names; the years are an ASK,
+  because the KB states none and two tasks use different ones. Converted `_3` and `_21`.
+- [DIAG] HLA locus flags: the three antigen comparisons ARE what a locus question wants (their counts
+  match); what is unsettled is the printed LABEL TEXT, so the ask moves to the label. Converted `_19`.
+- [DIAG] Cross-tabulation is a shape question: `Recipient Ethnicity` now describes the wide matrix
+  versus the pair-per-row grouping and asks which, plus the heading text (`_4`, a COLUMN COUNT loss).
+- [DIAG] Count metrics lead with their population: a count beside a per-match average counts the
+  MATCHES carrying that average, not the people. Converted `_9`.
+- [DIAG] Equal-width banding reads its min and max over the SAME filtered rows (0 over all 947,
+  0.01 over the completed matches carrying an EGS). Converted `_13`.
+- [DIAG] New: `Average Urgency Of Pending Patients For Organ` - the group average, one constant per
+  organ; the published leave-one-out varies per row and gold's figure does not (`_7`).
+- [DIAG] New: `Recipient Wait Rank Within Organ (Pending, PRA Recorded)` and its verdict twin - the
+  rank over the intersection population, verified to reproduce all five of `_10`'s rows. The old
+  description told the caller to re-rank with a window function, which this engine refuses.
+- [KB] `Consecutive Match Failure` was null on 768 of 947 (null-majority verdict flag); it is now No
+  on every match carrying an administrative record and empty only on the 306 without one.
+- [KB] `Average Patient Urgency Score (Literal Status Text)` metric added - the attribute twin existed
+  with no metric, so it could not be aggregated at all.
+- [KB] `Centre Performance Score (Recorded Scores)` named a twin that does not exist
+  ("(Counted Volume And Success Rate)"); corrected to `(Counted Volume)`.
+
+Asks: 36 objects / 39 instances -> 26 / 31. Twins 28 -> 33. Attributes 262 -> 261, metrics 84 -> 89.
+No grader change, no gold SQL in any description, no benchmark run (round 2 is $0).
+
+### cross_border V12 - 2026-09-27 round-2 update pass (uncommitted at time of writing)
+
+Round-2 retrofit of the post-build-17 rules onto build 15. BEFORE, measured at $0 against the deployed `aa53f2a`:
+full ceiling P1 13/19 P2 12/19; bare-name ceiling (no qualified twin, no ask) P1 12/19 P2 11/19. The whole gap was
+`_4`, which needed the `(Security Record Encryption)` twin in both phases.
+
+- [PLAIN] **Security Robustness Score bare-name move.** KB 5 reads full encryption and trusted-user access; access
+  control is only on the security profile record, so both inputs now come from that record and the bare name carries
+  `Security Encryption State`. The flow's own classification word becomes `Security Robustness Score (Flow Encryption
+  Status)` (188 flows differ). The SRS closed question is removed - the sweep settles the pair, so rule 1 forbids an ask
+  on it. This propagates to ECR, SCCR, SPM, Sensitive Data Exposure, Flow Secure and Insecure High-Volume Flow.
+- [DIAG] **`Risk Exposure Score (Control As Fraction)` reads an unrecorded control effectiveness as 100 per cent** - a
+  control that reduces nothing, so the 128 risk records with no measurement carry the Risk Score itself instead of null
+  and the reading covers all 870 risk records. Bare RES (control as stored 0-100, null when unmeasured) is unchanged, so
+  every KB cutoff flag built on it is unchanged. CBRF/CDVR/CBCE coverage 709 -> 835. This is R2-37; see the caveat below.
+- [PLAIN] **Four twin families removed as readings the KB or the sweep settles**, per the households counter-rule:
+  `(Raw Risk Score)` x11 (KB 9's `children_knowledge` edge names RES, so the stored score is not a reading of CBRF);
+  `(Flow Data Size MB)` x7 (KB 22 Data Volume is described as ranging "from small amounts like 0.1 to large ones like
+  1000", which is the profile's gigabyte column, not the flow's 80-99933 MB figure); `(Any Law)` x6 (KB 54/58 name GDPR
+  Compliance Status as their child; the four-law reading belongs to KB 15 and is not carried into them);
+  `(Next Five Days)` x2 (the KB states the window literally). Twins 116 -> 90 names; attributes 263 -> 256, metrics
+  404 -> 385.
+- [KB] **E-22: the degenerate dimension is renamed `Cross Border Flow` -> `Cross Border Transfer` in the same edit**,
+  because both reading changes alter what an existing attribute name returns.
+- [KB] `(Resolution Hours)` scoped to a question that names resolution hours (the KB leaves Response Time's unit open,
+  so the fork stays, but it no longer advertises itself on every request-pressure question).
+- Model description re-trimmed 9422 -> under 9000 (ENGINE_NOTES is now 3502 chars). The intersection/population rule,
+  the two-nulls rule and the twin doctrine were checked by name after the trim.
+
+Asks 4 -> 3 (RES percent-vs-fraction, DSI Critical, High-Pressure vs Overloaded). No grader change, no gold SQL in any
+description, no benchmark run.
+
+**For Dianne (R2-37).** The `(Control As Fraction)` change is the open firewall question from the 09-26 pass, and it is
+a judgement call I took rather than deferred: `gold_diff` alone settles it (`_1` converts in both phases, `_8` holds in
+both), it needs no gold outside that tool, and section 3 of the round-2 recipe allows a diagnosis-motivated change. But
+"unrecorded control effectiveness means 100 per cent" is a convention the KB does not state, and `_12` wants the
+opposite treatment on the bare reading. If you judge it fitted, revert that one line in `sql_defs.RES_F`.
+
+## virtual_idol V12 — round-2 update, 2026-09-27 (uncommitted at time of writing)
+
+Repo `diannewood/bird-models-v12`, folder `virtual_idol/`, all edits in `generator/spec.py`. Build green
+(`GENERATE PASS`, A8, A10, dimension-key audit, `sml-cli validate` SUCCESSFUL). No benchmark run, no grader
+change, no gold SQL in any description. BEFORE, measured on the deployed pre-round-2 model over four
+`gold_diff --sweep` rounds: full ceiling P1 11/19 and P2 10/19, bare-name ceiling P1 8/19 and P2 8/19.
+
+- [PLAIN] **The strict `(<Record> Record Only)` twin is withdrawn from all 33 knowledge-base verdict flags**
+  (31 generated plus the two hand-written ones on At-Risk Fan and High-Maintenance Fan), along with the closed
+  question each carried. The sweep settles the fork — `_4`'s two-by-two has 917 fans in the neither cell, which
+  only the two-valued reading produces — and `Has <Record> Record` was already published as the filter that
+  restricts a grouping to the fans carrying the record, so the twin bought a null group nothing asked for and
+  spent an ask on every flag. Each bare flag now says it is never null and names that filter.
+- [PLAIN] **The exact quotient takes the plain name on every integer-division pair**; the warehouse's own
+  truncating evaluation keeps `(Truncated)`, and the closed question on the pair is withdrawn (14 sites). One
+  generated pass over the name lists, never a hand edit per object. The sweep settles it on four task phases
+  (`_2` needs the exact Chattiness Score, `_3` the exact follower ratio, `_20` the exact density and
+  progression rate) and on none the other way. 18 objects now carry `(Truncated)`.
+- [PLAIN] **The NPS tier reached through the support record's own interaction pointer takes the plain name**;
+  the preferences-chain reading becomes `(Preferences Chain)`. `_6` passes at both phases through the
+  interaction-pointer route and fails through the chain by one cell at the second decimal.
+- [PLAIN] `(KB Category Names)` renamed `(Plural Category Names)` — the parked reading is named for what
+  narrows it, not for the authority it borrowed. This is the 2026-09-22 pass's own finding 8, never applied.
+- [PLAIN] `Content Preference` becomes the one-value-per-fan collapse and the per-record value becomes
+  `(Per Engagement Record)`; the per-record/per-fan question is withdrawn. `_2` counts a fan with two
+  engagement records once.
+- [PLAIN] Seven further hand-written closed questions withdrawn as sweep-settled: social score (`_5` P2 →
+  Social Capital Score), influence score ×2 (`_3` → Community Influence Index), merchandise dollars vs
+  proportion (`_6`, `_7` P2 → the proportion), the three inactive-period readings (`_12` → longest streak,
+  `_16` → average gap), Loyal Achiever's arithmetic, and the whale interaction-vs-fan population (`_1`, `_14`,
+  `_17` → the fan-grain verdict). The naming sentences stay; only the question goes.
+- [DIAG] **At-Risk Fan now names Churn Risk Flag as the knowledge base's other reading of the same
+  likelihood, with both live counts (54 and 22), and ships the one closed question on that pair.** Six task
+  phases turn on it — `_4` P1+P2, `_11` P1+P2, `_16` P1, `_5` P2 — and all six want the flag alone.
+- [DIAG] A shape question on `Sum Of Gift Value USD` naming the three row sets a multi-attribute gift
+  breakdown can have (40 / 60 / 97 rows) and the two language columns; `_18` reaches 27 of gold's 90 rows and
+  the sweep cannot settle the shape.
+- [KB] The three pointer-agreement flags (engagement, support, moderation) are null on 431, 947 and 961 of 986
+  rows. They are null by construction — no record, no pointer pair — and each description now says so and
+  names its `Has ... Record` flag, per the re-audit of every published Yes/No attribute.
+- [KB] `birdsml.ENGINE_NOTES` concatenated into the model description (G27 is new since this model was built);
+  description 3787 → 7551 chars. Nothing was cut to make room.
+- [KB] **E-22: both degenerate dimensions renamed in the same edit** — `Fan Membership Record` → `Fan
+  Membership Entry`, `Fan Interaction Record` → `Fan Interaction Entry` — because the plain-name moves change
+  what several existing attribute names return.
+
+Ask sites 72 → 5 (conversion population ×2, gift-breakdown shape, loyalty points, At-Risk Fan vs churn flag).
+Twins 137 → 102. Published objects 530 → 495.
+
+# ROUND 2 — 2026-09-27 — retrofitting the newer process onto the 19 models built before it
+
+Dianne, 2026-09-27: bring every v12 model except builds 18–20 up to the process those three ran
+under. An UPDATE, not a rebuild — no model was regenerated from scratch. Recipe and the rulings made
+during the pass: `results/kickoff_r2_00_v12_round2.md`. Every measurement is $0 (`scripts/gold_diff.py`,
+MCP and Postgres only); there were no API credits, so no benchmark run backs any of it.
+
+Pre-round-2 backup of the whole repo at `46403da`:
+`~/go/src/github.com/diannewood/bird-models-v12-backup-20260927_pre_r2`.
+
+Entries for cross_border, households, insider_trading, organ_transplant, planets_data and virtual_idol
+were written by their own passes and appear in those models' sections above. The rest follow.
+
+## utilities/birdsml — shared, affects EVERY v12 model description
+
+- [KB] **`engine_notes.py` was wrong in two places and both were propagated into all 22 model
+  descriptions.** (1) `NTILE` was listed as "not accepted in submitted SQL in any spelling" — it IS
+  accepted; `NTILE(4) OVER (ORDER BY x)` returns quartiles, verified live against `bird_models_v12`.
+  (2) "A rank cannot be filtered in HAVING; filter it in an enclosing FROM-subquery" is backwards —
+  a window column selected in a FROM-subquery and filtered in HAVING after a GROUP BY works; what
+  fails is a WHERE on a window function at any depth. Both corrected; the text grew 16 characters.
+  Found by the organ_transplant pass, which had lost tasks to the technique the notes forbade.
+  The same false `NTILE` claim was corrected in three places in `docs/create_bird_model_prompt.v12.md`.
+
+## archeology_scan (v12)
+
+- [PLAIN] Exact ESI takes the bare name, integer division becomes `(Integer Division)`; the reading
+  question is withdrawn. Sweep tally exact 3 – integer 1. E-22: four degenerate dimensions renamed in
+  the same edit.
+- [DIAG] All three ESI quartile ladders now NTILE the exact reading, not the integer one — proved at
+  $0, `_7` P1 is an exact match on the exact ladder and differs on two cells on the integer one.
+  `Site ESI Quartile (All Sites)` is now empty for the 75 sites with no reading rather than parking
+  them in quartile 4.
+- [KB] `Days Since Calibration` anchored to the warehouse's own latest scan date, not `CURRENT_DATE`:
+  the published range was 577–757 and drifted by one every day the model sat there. Now −1 to 179.
+- [KB] A generated "empty on most rows — the empty is the absent record, not a No" clause for any
+  verdict flag empty on more rows than it settles; it fires on two.
+
+## crypto_exchange (v12)
+
+- [DIAG] Exchange-wide market volatility published (the per-market readings become its twins); the
+  risk measures now ship bare on that reading; a per-analytics-row market impact cost grain added
+  (993 pairs, where the order-grain reading gives 476); a six-significant-figure margin balance twin.
+- [KB] Risk-Adjusted Return (KB 30) now ships — it had been recorded "not computable" and every input
+  is published.
+- [PLAIN] Two settled reading questions withdrawn (order fill rate, PVaR volatility); a margin
+  utilization denominator question added, which the sweep settles oppositely on two tasks; seven
+  `(Inputs Recorded)` twins deleted whose own text said they were not a fork.
+- Engine finding: `CORR` is refused ("Don't understand function: corr"), capping one phase-2 task.
+
+## disaster_relief (v12)
+
+- [PLAIN] Mass Casualty Incident's bare name moves to the staffed-events reading (Yes on 54 of 57);
+  the three-valued all-records reading (Yes on 955) takes a qualifier. Cost Per Beneficiary's bare
+  name moves to the costed-and-staffed reading. Both questions withdrawn. E-22 rename in the same edit.
+- [DIAG] An operation-population question on Operation Funding Crisis — **converts `_5` exactly, 6 of
+  6 cells, on both backends. `_5` had been recorded unreachable; the build's ceiling was 9/12, not 10/12.**
+- [DIAG] Companion columns and a shape question on Catastrophic Disaster and on the average public
+  health risk score (`_8` P2 lost on column count alone).
+- [KB] The `NOW()` rule deliberately NOT applied: KB 4 writes the burn rate as
+  `current_date - operation_start_date`, so the clock is the knowledge base's own anchor, and a raw
+  probe matches gold cell for cell.
+
+## exchange_traded_funds (v12)
+
+- [DIAG] The model description claimed string aggregation "is not accepted in any spelling". It is:
+  `STRING_AGG(tk, ', ')` with the ORDER BY in an enclosing subquery passes `_3` P2 outright, killing a
+  cap carried since the build brief. It also claimed a query names columns from one grain only; two
+  grains work when each is constrained by its own key column.
+- [PLAIN] Ask sites 23 → 6. Percent/fraction questions withdrawn wherever both readings select the
+  same rows; the information-ratio question now lives on one object and the five built on it point at
+  it instead of restating it.
+- [KB] Fund Count now leads with its population rule and names the eight `Funds With … Count` metrics;
+  the median return leads with its same-rows count. That is the whole `_10` gap, both phases.
+
+## fake_account (v12)
+
+- [DIAG] Network Trust Score's bare name moves to the highest-risk-cluster reading, zero-filled — every
+  other composite's bare reading was zero-filled and this one had been missed. Per-membership medians
+  added for all ten pair-grain composites.
+- [KB] **Temporal Pattern Deviation Score published NULL by construction**: KB 50 needs 24 observed and
+  24 expected hourly frequencies and the warehouse stores a three-bucket spread code. `_18` was a
+  recorded cap with a predicted zero; gold's phase-2 answer is null and the null reading passes it.
+- [KB] **Every recency rule anchored to the warehouse's latest snapshot instead of `NOW()`.** `Account
+  Inactivity` had been Yes on all 569 accounts — a published flag that discriminated nothing — and now
+  reads 423. `Trusted Account` is 9.
+- [PLAIN] Plain names moved to the sweep-settled readings on the account fraud factor and the
+  coordinated bot risk grain; three questions withdrawn; four composites deleted. Ask sites 3 → 1.
+
+## hulushows (v12)
+
+- [PLAIN] The promotional message count's bare name moves to the shows-with-notes reading (736, null on
+  the 264 without); zero-filled takes the qualifier. This was the model's entire full-vs-bare gap.
+- [DIAG] Two published figures added that gold projects and the model could not express: a tier's
+  catalogue share counted from its shows' own video totals, and a per-show volume summed across content
+  types (differs from the stored media total on 958 of 1000 shows).
+- Cap sharpened, not a model gap: **`_17`'s gold references `content_key 'SH004'` / `'Shadow War'`,
+  which exist in no table of the warehouse.** Checked against all 1000 core rows on the grader's own
+  template. No model can reach it.
+
+## mental_health (v12)
+
+- [DIAG] A correlation over all 541 facility rows, scoring an unrecorded resource level and an
+  unmeasured adherence rate as zero, added beside the existing readings; every published correlation had
+  been dropping the facilities with no outcome.
+- [KB] **27 of 202 twins had a base name the model does not publish** — the 63-character limit forced
+  abbreviations, so the generator's cross-reference pass emitted nothing in either direction and the
+  twin-naming rule was silently off. Resolver added, with an assertion; twelve descriptions gained their
+  missing sentence.
+- [KB] **Nine of thirteen stored per-assessment rates had no aggregate at all**, and the planner refuses
+  `AVG` over a dimension attribute, so no grouped question could reach them. Average/median/max/min added.
+- The recorded close (P1 4/20, P2 2/20) was wrong: the shipped model reaches P1 5/20 and P2 3/20 with
+  objects it already published.
+
+## museum_artifact (v12)
+
+- [PLAIN] The four-indicator failure-risk reading takes the bare name on all four grains; the
+  three-indicator one takes a qualifier. Gold's `_7` population is 67, the old bare name gave 17.
+- [DIAG] Two environmental risk readings published whose values were derived from published inputs and
+  match gold exactly (9636.65 on one task, 5.8/5.6/4.5 on another); temperature deviation columns and a
+  shape question for a column-count loss; the artifact-title list is now null-propagating and ordered by
+  artifact ID.
+- [KB] **The whole `(Inputs Recorded)` twin family deleted — 49 published attributes** whose own
+  generated sentence said they were not a fork, and which no ceiling query used in six rounds.
+- Two failures left as caps with the probe evidence rather than papered over: gold wants populations of
+  59 and 287/46, and the only derivable readings give 17/67 and 251/42. No question can convert those.
+
+## polar_equipment (v12)
+
+- [PLAIN] Plain names moved to the sweep-settled readings on six families (structural safety factor,
+  extreme-weather readiness, temperature zone, transport efficiency, station, and the two rank objects),
+  each with its question withdrawn. **Ask sites 34 → 18.** E-22: all three degenerate dimensions renamed
+  in the same edit.
+- [DIAG] The reliability composite's own text named the wrong count as the one to show beside it; all
+  three counts are now named with live per-type figures and one closed question.
+- [KB] `birdsml.ENGINE_NOTES` concatenated (G27 is new since this build); about 300 characters of
+  duplicated prose given up to fit.
+- Finding for the build prompt, not just this model: **three references read the same KB concept
+  differently across their own two phases**, which is why four questions survive here rather than
+  becoming renames. A rename cannot settle a fork whose own task wants both answers.
+
+## reverse_logistics (v12)
+
+The programme's best model (reward 0.8275) and the control case for this pass: it reproduced its
+recorded ceiling exactly, and **its bare-name ceiling already equalled its full ceiling, 18/20 on both**
+— not one ceiling query named a qualified twin. The fork work here was already done. Four changes only:
+- [KB] Two `None` live keys pinned (281 and 141), killing three `(?` placeholders in shipped descriptions.
+- [KB] A generated twin-naming pass over the aggregate metrics, emitted ONE WAY only (qualified names
+  its bare partner, not the reverse) — on a model with no twin-choice failures the reverse direction has
+  no upside and would reinstate text a previous pass deliberately removed.
+- [PLAIN] One settled question withdrawn and stated as a fact.
+- [DIAG] The companion sentence for `_3` existed on the attribute but not on the object the agent
+  actually projects; moved, with a shape question.
+- R2-34 (the gold-fitted basket for `_17`) was NOT revisited: it is Dianne's standing refusal.
+
+## robot_fault_prediction (v12)
+
+The first v12 model ever built (2026-09-18), so nearly every later rule was missing.
+- [DIAG] Max/min joint temperature published (KB 9's own operands — 417 of 1000 records have a joint
+  over 75 °C while no mean does), and two alert-status columns that are never empty.
+- [KB] Two never-stored concepts published as always-empty columns; `ENGINE_NOTES` concatenated, ~480
+  characters of duplicated prose given up.
+- [PLAIN] The top-tier usage reading moved to the top-quarter definition, resolving the single row that
+  made `_3` P2 138-vs-137.
+- **Two questions were cut as sweep-settled and then RESTORED**, because they were the measured
+  converters for `_1` and `_5` in the 2026-09-18 paid build. A $0 sweep settles a fork for a human
+  hand-writing SQL and says nothing about whether the live agent picks the bare name; paid evidence
+  outranks it. A third cut stayed cut — it had no paid evidence. Rule recorded in the round-2 recipe.
+- [KB] `CURRENT_DATE` deliberately kept: KB 0 writes the formula that way and gold matches today.
+- Three recorded caps dissolved by diagnosis alone, before any edit: `_11` and `_12` P1 and `_8` P2.
+
+## solar_panel (v12)
+
+- [PLAIN] Plain names moved to the kilowatt reading of the expenditure index and the as-stored
+  temperature-corrected reading, questions withdrawn; the snapshot-grain trailer on ~20 attributes now
+  states the fact instead of asking. **Ask sites 52 → 42 objects, 74 → 59 occurrences.** E-22 rename
+  in the same edit.
+- [DIAG] A closed question on which degradation reading "quality drop" means, with both live means; a
+  companion-column sentence and shape question for the warranty listing; the soiling index now states
+  its live counts so a high cutoff answers zero rather than looking broken.
+- [KB] Plant age anchored to the warehouse's latest snapshot, not `CURRENT_DATE`; `ENGINE_NOTES` adopted.
+- **Three of the six recorded ceiling "failures" were the sweep query's fault, not the model's.**
+  Corrected, the pre-round-2 model already reached 17/20, not the 14/20 its build recorded.
+- B-77 confirmed stale: `_16` passes with case-only label differences under the corrected grader.
+- A `Plant` → `Plant Code` restructure was attempted and reverted — build gate G10 requires a dimension
+  to publish a level attribute of its own name. It is the last bare-name gap here and needs a decision.
+
+## sports_events (v12)
+
+- [PLAIN] Three plain-name moves (constructor reliability rank, driver age at race, qualifying
+  specialist share), one question withdrawn as settled. E-22: two dimensions renamed in the same edit.
+- [DIAG] The performance-cluster ladder's third band is its "otherwise" branch, gated on the driver
+  having a qualifying record; null now means "no qualifying row" (707 drivers) and the cluster is
+  non-null on exactly the 154 that have one. This kills the 153-of-154 trap that cost `_19` live.
+- [KB] No `CURRENT_DATE` ages a record any more: driver age, veteran status and all three per-race
+  readings anchor to the warehouse's latest race date or to the row's own age at that race.
+- [PLAIN] A cutoff question added for "experienced driver", which the KB does not state.
+- Two deferred-lever rows CORRECTED: `_13` P2 and `_7` are not user-supplied thresholds. Sliding the
+  cutoff moves the row count, but a fixed core of gold rows never appears at any threshold — so it is a
+  different basis, and a user's answer could not be acted on. Recorded as caps with the evidence.
+- `ENGINE_NOTES` growth forced 532 characters of its own prose out; the self-imposed 7000-character
+  assertion was raised to 10000 to match the other models (see the note below).
+
+## The model-description budget
+
+`birdsml.ENGINE_NOTES` is appended to every v12 model description and has grown since these models
+were built; two rebuilds failed on it by 46 and 56 characters. The cap is a self-imposed `assert` in
+each generator, present in only 9 of 22, set at 9000 in eight and 7000 in one, with no engine limit
+behind it — and two rebuilt models already exceed it (crypto_exchange 9969, polar_equipment 9241).
+Both failing asserts were raised to 10000 rather than cutting curated prose. **The real engine limit is
+still unmeasured**; if the engine truncates, it truncates the end, which is where the engine notes live.
+Verify a deployed description against source before trusting the notes are present.
