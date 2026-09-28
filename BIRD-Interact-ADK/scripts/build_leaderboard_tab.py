@@ -301,13 +301,21 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
         cell.value = query_reward_lift(cols, ALL)
         cell.number_format = "+0%;-0%"
 
-    ws[f"A{BEST}"] = "BEST SINGLE RUN (leaderboard reporting convention)"
+    ws[f"A{BEST}"] = "BEST SINGLE RUN (by Success Rate, ties by Reward)"
     rr = [cols[f"rw_r{i}"] for i in range(1, nr + 1)]
     rng = f"{rr[0]}{ALL}:{rr[-1]}{ALL}"
-    idx = f"MATCH(MAX({rng}),{rng},0)"
     sr_r = [cols[f"sr_r{i}"] for i in range(1, nr + 1)]
+    # Best by Success Rate (phase-1), ties broken by Reward: the rule the methodology
+    # doc states. Reward is 0..1, so /1000 can only order runs whose Success Rates are
+    # equal. Spelled out per run rather than as array arithmetic inside MATCH, which
+    # older Excel and Google Sheets do not evaluate without an array-formula wrapper.
+    keys = [f"({s}{ALL}+{w}{ALL}/1000)" for s, w in zip(sr_r, rr)]
+    top = f"MAX({','.join(keys)})"
+    idx = str(nr)
+    for i in range(nr - 1, 0, -1):
+        idx = f"IF({keys[i - 1]}={top},{i},{idx})"
     ws[f"{cols['sr']}{BEST}"] = f"=INDEX({sr_r[0]}{ALL}:{sr_r[-1]}{ALL},{idx})"
-    ws[f"{cols['rw']}{BEST}"] = f"=MAX({rng})"
+    ws[f"{cols['rw']}{BEST}"] = f"=INDEX({rng},{idx})"
     p2_r = [cols[f"p2_r{i}"] for i in range(1, nr + 1)]
     ws[f"{cols['b_p2']}{BEST}"] = f"=INDEX({p2_r[0]}{ALL}:{p2_r[-1]}{ALL},{idx})"
     ws[f"{cols['b_p2']}{BEST}"].number_format = PCT
@@ -315,7 +323,7 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
     ws[f"{cols['sr']}{BEST}"].number_format = PCT
     ws[f"{cols['rw']}{BEST}"].number_format = "0.000"
     ws[f"{cols['eff']}{BEST}"].number_format = R2
-    ws[f"{cols['coins']}{BEST}"] = f'="best run by reward: r"&{idx}'
+    ws[f"{cols['coins']}{BEST}"] = f'="best run by success rate: r"&{idx}'
     for r in (ALL, BEST):
         for col in range(1, c):
             cell = ws.cell(r, col)
@@ -331,8 +339,9 @@ def build(src, out, paths, label, in_place=False, raw_paths=None):
         "informative efficiency number, and it falls as memory warms. Blended is Query + Management together, which is "
         "the leaderboard's denominator; Query tasks ran on the semantic layer and Management tasks on raw Postgres, "
         "routed per task inside the same run. Row 28 is the task-mean over runs (per-database cells are means; the ALL "
-        "row weights them by question count, so it equals pooling all tasks). Row 29 is the best single run by reward, "
-        "the convention the submission guidelines use.")
+        "row weights them by question count, so it equals pooling all tasks). Row 29 is the best single run by Success Rate, "
+        "ties broken by Reward (the submission guidelines' Validation Mode reports 'the best result' of at least "
+        "three runs without naming the metric).")
     style(ws[f"A{NOTE}"], wrap=True, size=9)
     ws.merge_cells(start_row=NOTE, start_column=1, end_row=NOTE, end_column=min(c - 1, 30))
     ws.row_dimensions[NOTE].height = 95

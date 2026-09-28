@@ -2,8 +2,8 @@
 """Fill the BEST SINGLE RUN row of every "Leaderboard *" tab with the Query and
 Management breakdown, not just the blended figures.
 
-Row 29 is the leaderboard reporting convention - one run, the best of the three
-by blended reward - but the tab only carried its blended Success Rate, Blended
+Row 29 is one run, the best of the three by blended Success Rate (phase-1), ties
+broken by blended reward - but the tab only carried its blended Success Rate, Blended
 P2, Reward and Efficiency. The per-category columns (Query P1/P2 %, Mgmt P1/P2 %)
 existed only as the task-mean on row 28, so the split behind the headline number
 could not be read for the run actually being quoted. There are no per-run
@@ -45,7 +45,8 @@ NOTE_ADD = (
     " ROW 29 CARRIES THE CATEGORY SPLIT (added 2026-09-17). The best-single-run row now also shows "
     "that run's Query P1/P2 % and Mgmt P1/P2 %, its census-adjusted Query rates, and - where the "
     "corrected-regime section is present - the same run on those rules. The run is the one row 29 "
-    "already quotes: the highest pooled blended reward of the three, named in the Coins used cell. "
+    "already quotes: the highest blended Success Rate of the three (ties broken by blended reward), "
+    "named in the Coins used cell. "
     "The four category rates are literals read from that run's results file, because the tab has no "
     "per-run category columns to INDEX into; everything derived from them is still a formula.")
 
@@ -115,7 +116,9 @@ def fill_best(ws, regrades):
     if not stats:
         print(f"{ws.title}: no results files found - skipped")
         return 0
-    best = max(stats, key=lambda f: stats[f]["reward"])
+    # Success Rate first, Reward only to break a tie - the rule build_leaderboard_tab.py's
+    # row-29 formula uses, so this script names the same run the tab quotes.
+    best = max(stats, key=lambda f: (stats[f]["sr"], stats[f]["reward"]))
     idx = files.index(best) + 1
     s = stats[best]
 
@@ -200,7 +203,7 @@ def fill_best(ws, regrades):
     # the builder's own label cell names the run; make it explicit rather than a formula
     if "Coins used" in H:
         cell = ws[f"{H['Coins used']}{BEST}"]
-        cell.value = f"best run by reward: r{idx} ({best[:46]})"
+        cell.value = f"best run by success rate: r{idx} ({best[:40]})"
         cell.font = Font(bold=True, size=9)
 
     upsert_note(ws, MARKER, NOTE_ADD)

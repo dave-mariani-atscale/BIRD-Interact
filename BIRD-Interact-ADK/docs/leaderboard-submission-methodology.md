@@ -17,8 +17,12 @@ contested without taking anything on trust.
 ## Results
 
 Success Rate is the blended phase-1 rate over all 600 tasks; Reward is
-(0.7·P1 + 0.3·P2)·100. Both come from the best single run by P1, which is the
-convention your guidelines describe. **Success Rate and Reward are our own gold replay
+(0.7·P1 + 0.3·P2)·100. Both come from each model's best single run of three, chosen
+by Success Rate (phase-1) with ties broken by Reward. The one tie is GPT-5, whose runs
+2 and 3 both replay at 47.83; run 3 is reported. Your Submission Guidelines address
+run count only in §V, Validation Submission Mode, which recommends at least three runs
+and says "we will report the best result among them" without naming the metric, so we
+state ours. **Success Rate and Reward are our own gold replay
 of the submitted SQL under your grading (§3)**: they are the figures we expect your
 evaluator to reproduce, and the ones in our submission email. **Live** is what our
 harness scored during the same run. The remaining columns are live figures from that

@@ -259,9 +259,13 @@ python scripts/cost_scheme_audit.py --run 'results/leaderboard_<date>_atscale_ru
 ```
 
 Submission goes by email to bird.bench25@gmail.com with the subject
-`[BIRD-INTERACT-1.0-full][a-Interact][AtScale][<method>]`; the guidelines report
-the best of at least three runs. `scripts/test_leaderboard_mode.py` covers the
-switch.
+`[BIRD-INTERACT-1.0-full][a-Interact][AtScale][<method>]`. The Submission
+Guidelines speak to run count only in §V (Validation Submission Mode, where BIRD runs
+your code): at least three runs recommended, and they report "the best result among
+them" without naming the metric. We report each arm's best run by Success Rate
+(phase-1), ties broken by Reward, beside the 3-run mean; `build_leaderboard_tab.py`
+and `add_best_run_breakdown.py` apply the same rule. `scripts/test_leaderboard_mode.py`
+covers the switch.
 
 ## LLM Configuration
 
