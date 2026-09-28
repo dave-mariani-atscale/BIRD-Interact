@@ -603,9 +603,11 @@ user. Check the raw JSON for every input a formula names before deciding it is c
   N" means the first N rank positions under `RANK` and the N highest distinct values under
   `DENSE_RANK` — different row sets whenever values tie. Check the live data at the N the
   questions use; wherever the two disagree, ship both as named twins whose descriptions say
-  which question each answers and name the other. The caller cannot recover the missing
-  reading: a window alias used in `WHERE` must also be projected on this engine, which
-  changes the column count.
+  which question each answers and name the other. **CORRECTED 2026-09-28:** the caller CAN
+  recover the missing reading — a window alias is filterable in the outer `WHERE` over a
+  FROM-subquery that projects it, and the outer `SELECT` need not project the alias, so the
+  column count is unchanged. The older claim that it must also be projected does not
+  reproduce on `pr9967`. Ship the twins for discoverability, but the caller-side escape is real.
 - Where the two agree in the live data — no ties at the N the questions use — ship only one.
   Twins that never disagree are pure surface cost (Surface size).
 - **A pre-built rank's *population* is part of its definition, and belongs in its name.** A
@@ -1917,6 +1919,41 @@ failure.
 
 **Rejected or mis-planned, with the workaround**
 
+> **Re-probed live 2026-09-28 against `ghcr.io/atscaleinc/engine:pr9967` (`40.0.0-pr9967`,
+> rev `d44a17b`) — 16 of 50 shipped claims NO LONGER REPRODUCE.** The battery is
+> `scripts/engine_claims.py` in the ADK repo: 50 probes, MCP only, no LLM calls, re-runnable
+> at $0. Re-run it before trusting any claim in this section, and do not add a claim without a
+> probe. What changed, each verified with a follow-up probe rather than taken from the first run:
+>
+> | Was documented as | Now |
+> |---|---|
+> | `COUNT` over a dimension attribute returns the member value and drops the `GROUP BY` (E-01) | `COUNT` over an attribute aggregates correctly and agrees with `COUNT(DISTINCT <key>)` and the published count metric. `SUM`/`AVG` over one are refused **before dispatch** by the MCP guardrail, so the engine's own `SUM` behaviour is untested — a guard can mask a fix |
+> | `ORDER BY <col> DESC` puts NULLs FIRST, the reverse of Postgres, and the override is ignored (Q-23) | Matches Postgres (`DESC` NULLs first, `ASC` NULLs last) and an explicit `NULLS FIRST`/`NULLS LAST` is honoured. The original claim was also wrong about Postgres |
+> | `ORDER BY` an unprojected **measure** fails (Q-03/Q-36) | Accepted and correctly ordered. Unprojected **attribute** and unprojected **aggregate** still refuse |
+> | A window alias cannot be filtered in `WHERE` at any depth | Filtering the alias in the **outer `WHERE`** over a FROM-subquery works. Filtering it in `HAVING` after a `GROUP BY` is **refused** (`One or more constraints [r] have been incorrectly constructed`) — the 2026-09-27 note shipped this backwards; new tracker row **E-24** |
+> | `OFFSET` is silently dropped (Q-22) | `OFFSET` survives into the dispatched SQL and `OFFSET n` returns a different row from `OFFSET 0` |
+> | An inner `ORDER BY` with no `LIMIT` is stripped (Q-12) | Survives into the dispatch and the rows come back ordered. The mandatory inner `LIMIT` is now belt-and-braces |
+> | The engine re-sorts `UNION ALL` branches and a bare `NULL` literal must be typed (E-17) | Branch order is preserved (listing first, summary last) and a bare `NULL` in a branch is accepted. A `UNION` inside a subquery is still refused |
+> | Every measure dispatches as `SUM(CAST(col AS FLOAT8))` (E-10) | No cast: the dispatch is `SUM(t_15."<col>")`. Probe must filter to force a raw read, or a pre-built system aggregate hides the answer |
+> | A window over a measure in a flat `SELECT` ranks at the wrong grain (Q-39) | The flat form now agrees with the derived-table form |
+> | A dimension filter inside a subquery is rejected (Q-05) | The `WHERE` form is accepted. The `HAVING`-inside-the-subquery form was not re-run |
+> | `COUNT(DISTINCT dim)` returns null under a measure predicate (Q-15) | The grouped `HAVING` form returns plausible per-group counts. Predicate-dependent by its own description, so it stays open |
+> | Every percentile metric is unexecutable (Q-31) | The `_instance_0.5` name executes and returns per-category medians. The plain name is still not found |
+> | `TRIM` is unsupported (Q-07) | Accepted |
+> | `STRING_AGG(x, ', ' ORDER BY x)` is refused | Accepted and ordered |
+> | `NTILE` is rejected | Accepted (already corrected 2026-09-27) |
+>
+> **Nine refusals never reach the engine.** `COUNT(*)`, `SUM`/`AVG` over an attribute,
+> `IN (subquery)`, `EXISTS`, CTEs, `NULLIF`, a `UNION` in a subquery, a comma join and the
+> non-conforming pairing are all stopped by the MCP pre-dispatch guardrail — its messages carry a
+> `## Next Steps` block, engine errors do not. Those claims are **untested** on this build, and a
+> guard will keep masking a fix until it is probed behind the guard.
+>
+> The shared `birdsml.ENGINE_NOTES` constant and all 22 deployed v12 model descriptions were
+> corrected in place on 2026-09-28 with `scripts/patch_engine_notes.py` (no regenerate); see
+> `docs/model-change-log.md`.
+
+
 - **`HAVING` on a rank measure leaks an internal plan dump instead of filtering
   (ATSCALE-52369).** Filtering a `RANKX` measure at its own level fails with a raw plan node
   (`Unmatched physical type SemanticWindowFunctionValue(WindowFunctionApplication(
@@ -1949,6 +1986,12 @@ failure.
   widest-reaching failure of one sweep: 20 occurrences across seven of eight databases, plus 20
   submissions that died without receiving a grade. Put the `ORDER BY` **and its `LIMIT`** inside the
   derived table that projects the sort column, and leave the outer `SELECT` with no `ORDER BY`.
+  **NARROWED 2026-09-28:** a published **measure** can now be sorted on without being projected
+  (`SELECT "Family" … GROUP BY "Family" ORDER BY "Fund Count" DESC LIMIT 3` is accepted and
+  correctly ordered). What still refuses is an unprojected **attribute** — now with a legible
+  "add it to the select list" message rather than the render fault — and an unprojected
+  **aggregate** (`ORDER BY COUNT(DISTINCT …) DESC`). The derived table is still the fix for
+  those two only.
 - **Projecting only a CAST or ROUND of a column does not count as projecting it for ORDER BY.**
   `SELECT id, CAST(x AS numeric(18,4)) ... ORDER BY x` is refused "Cannot sort by [x]: the query
   does not group by it"; ordering by the expression's alias is accepted (verified live 2026-09-24).
@@ -1978,7 +2021,8 @@ failure.
   band attribute is a convenience, not a necessity; string aggregation
   other than `STRING_AGG` (`listagg`/`group_concat` rejected, `ARRAY_AGG` accepted but silently does not
   aggregate; CORRECTED 2026-09-25 on crypto_exchange: `STRING_AGG` over a FROM-subquery is accepted and
-  passed a graded phase); JSON aggregation and construction (`json_agg`, `json_build_object` — "Don't
+  passed a graded phase, and CORRECTED 2026-09-28: `STRING_AGG(x, ', ' ORDER BY x)` is accepted
+  too and orders correctly); JSON aggregation and construction (`json_agg`, `json_build_object` — "Don't
   understand function"); `COUNT(*) FILTER (WHERE …)` (rejected — use
   `SUM(CASE WHEN … THEN 1 ELSE 0 END)`, the working pivot idiom); `GREATEST`/`LEAST`;
   `IN (subquery)`/`EXISTS`; CTEs; and `COUNT(*)`. Window and statistical functions the SQL front end
@@ -2497,10 +2541,14 @@ facts worth knowing:
   SQL is identical on both paths; only the session differs. Recompute the reference at ±1 day before
   classifying a wall-clock value as a model defect; a match there is this cap, which is the
   harness's to fix.
-- **A screened listing whose sort key is NULL on a qualifying row is not automatically capped.** The
-  rule that this engine emits `DESC NULLS LAST` where Postgres defaults to `NULLS FIRST` held on the
-  databases it was measured on; on another the same shape came back with the null row first and
-  graded 1. Probe it on the model in hand rather than assuming either way.
+- **A screened listing whose sort key is NULL on a qualifying row is not automatically capped.**
+  **CORRECTED 2026-09-28:** on `pr9967` the engine matches Postgres — a bare `DESC` places NULLs
+  FIRST, `ASC` places them LAST, and an explicit `NULLS FIRST`/`NULLS LAST` is honoured — so this
+  shape is not capped at all and the null rows can be pushed wherever the reference puts them.
+  The older rule (the engine emits `DESC NULLS LAST` where Postgres defaults to `NULLS FIRST`,
+  override ignored) held on the databases it was measured on and on another the same shape came
+  back with the null row first and graded 1; it no longer reproduces anywhere. Probe it on the
+  model in hand rather than assuming either way.
 - **Tie-order is not a model problem, and the grading flags will not close a gap.** Where the
   reference's `ORDER BY` key is constant across its rows, its row order is arbitrary plan order
   following *no* rule — verified against alphabetical, reverse-alphabetical and every other column. A
