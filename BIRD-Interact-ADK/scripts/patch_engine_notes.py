@@ -72,6 +72,12 @@ REPLACEMENTS = [
      "back in that order.",
      "union-untyped-null accepted; union-branch-order returns TOTAL last"),
 
+    ("string-agg-order",
+     "STRING_AGG over a FROM-subquery that projects the rows is accepted.",
+     "STRING_AGG over a FROM-subquery that projects the rows is accepted, and an ORDER BY inside "
+     "the STRING_AGG call is accepted too and orders the result.",
+     "string-agg-order-by: accepted and ordered"),
+
     # exchange_traded_funds carries its own wording for two of the same facts.
     ("etf-ntile",
      "REGR_SLOPE, CORR, PERCENT_RANK and NTILE are not accepted.",

@@ -9950,3 +9950,43 @@ sit in the emitted YAML, which keeps every hand edit the generators do not carry
 went into `utilities/birdsml/engine_notes.py` so the next real rebuild agrees. Everything else in the
 block still reproduces — including the keyless-listing collapse, the cross-dataset filter drop, the
 per-row scalar subquery, and the whole refused-function list.
+
+## 2026-09-28 — no-cheat test arm: polar_equipment and robot_fault_prediction copies (diannewood/bird-models-v12-nocheat a91eb0a)
+
+A second deployed copy of two v12 models, NOT a change to `bird_models_v12`. Repo
+`diannewood/bird-models-v12-nocheat`, catalog `bird_models_v12_nocheat`, models `Polar Equipment
+V12 NC` and `Robot Fault Prediction V12 NC`, backend `atscale_v12_nocheat`. Copied from
+`bird-models-v12` at `584c1db`; description strings only, 20 files, every other field identical.
+
+- [PLAIN kept] Bare names, twins, datasets, live counts and default-reading sentences unchanged.
+- Removed, per `results/v12_cheating_review_20260928.md`: the "withheld by the benchmark" block and
+  the five references to the withheld composite (finding 1, polar only); every "closed question" /
+  "ask again ... rather than choosing one" / "ask as a closed question: every operation record, or
+  one per robot" directive (finding 2, 26 polar + 41 robot sites), replaced by a statement that both
+  readings are published or that the value comes from the user; the six "graded against" sentences
+  (finding 6, polar).
+- Hand-edited YAML via `utilities/strip_cheats.py` in that repo. The generators still carry the
+  original text: a rebuild there restores the cheats. Never `build.sh` in the copy.
+- Estimate of the score without the text, and the reasoning per task:
+  `results/nocheat_estimate_20260928.md`. Polar about unchanged (0.45), robot about -10 pp (0.55 ->
+  0.45), both far above raw. Paid measurement not bought; `scripts/run_nocheat_baseline.sh` is ready.
+- Teardown: remove the repo, the catalog (undeploy by the NC model names, which do not collide with
+  the shipped names) and the backend block together.
+
+## 2026-09-28 — all 22 v12 models: STRING_AGG ORDER BY added to the engine notes, in place
+
+Follow-up to the same day's in-place correction pass, closing a gap rather than a false claim.
+The shared block said "STRING_AGG over a FROM-subquery that projects the rows is accepted" and
+stopped there, so an agent had no reason to believe the `ORDER BY` inside the call would work —
+`scripts/engine_claims.py` probe `string-agg-order-by` shows it is accepted and orders correctly
+on `pr9967` (the earlier note that it was refused was one of the 16 claims corrected).
+
+- One sentence, applied with `scripts/patch_engine_notes.py` (new `string-agg-order` replacement)
+  to the 20 models carrying the shared wording, plus `utilities/birdsml/engine_notes.py` so the
+  next real rebuild agrees. No model was regenerated.
+- `exchange_traded_funds` already carried its own corrected sentence from the earlier pass;
+  `archeology_scan` does not mention `STRING_AGG` at all, so neither needed the edit.
+- The wording deliberately contains no quote characters, so the same text is valid in the
+  single-quoted scalars (20 models) and the double-quoted one (`insider_trading`).
+- Every YAML re-parsed under `yaml.safe_load`; the G27 gate phrases are still present and the
+  constant is 3897 chars.
