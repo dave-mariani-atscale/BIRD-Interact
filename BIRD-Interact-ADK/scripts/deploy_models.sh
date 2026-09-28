@@ -214,7 +214,8 @@ if [ -n "${DEPLOY_VIA_CONTAINER:-}" ]; then
   echo "  DEPLOY_VIA_CONTAINER set - publishing from inside the api container"
   deploy_in_container
 else
-  ( cd "$STAGE" && ATSCALE_API_URL="$SML_API_URL" \
+  ( cd "$STAGE" && NODE_OPTIONS="--require $ADK_DIR/scripts/sml_fetch_retry.cjs" \
+    ATSCALE_API_URL="$SML_API_URL" \
     ATSCALE_API_TOKEN="$TOKEN" \
     sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -${DEPLOY_LOG_LINES:-8} )
   if ! api_deployed; then

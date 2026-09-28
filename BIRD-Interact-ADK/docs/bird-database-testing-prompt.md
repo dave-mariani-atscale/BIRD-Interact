@@ -110,7 +110,7 @@ between files?** Sonnet.
   to 0 on all 57 of its rows. The design turn caught it from the KB text; the measurement pass is
   where it should have been caught. Emit one row per formula with the native type, the native
   range and the widened range side by side, so a collapse is visible without anyone deciding to
-  look for it. Numbers only, authoring nothing — and no cutoff the KB does not state: on 2026-09-27 the measurer
+  look for it. Numbers only, authoring nothing — no "computable / not computable" verdicts (2026-09-27: facts.md declared ~11 KB formulas not computable, DLRS and SBCR wrongly) — and no cutoff the KB does not state: on 2026-09-27 the measurer
   wrote "candidate cutoffs" for two number-free KB entries (KB 15/16), which F1 had to be told were not KB. The build loop: `build.sh`
   until green, fixing only mechanical gates itself (pipe characters, a missing column, ASCII,
   schema qualification, MDX brackets, join roles, orphans) and returning any gate that needs
@@ -604,6 +604,11 @@ read any improvement. Then:
   deploy: the previous model stays live, which is how an ablation arm nearly got recorded as FINAL.
 - **`cmd && nohup run.sh &` backgrounds the WHOLE chain, not just the run.** Measured 2026-09-24 on
   planets_data: `gate_run.sh | tail -1 && nohup bash run.sh > out &` returned at once with no output
+- **E-23 root cause and workaround (2026-09-27, cold_chain build 20): a keep-alive race, not an engine window.** `NODE_DEBUG=undici,fetch`
+  shows the deploy POST reusing the socket from sml-cli's earlier GET /repos, which the API closes while the CLI compiles ("other side
+  closed"); a bigger catalog compiles longer and loses every time (31 straight failures, pauses included). Deploy with
+  `NODE_OPTIONS="--require scripts/sml_fetch_retry.cjs"` (absolute path): one retry on a fresh socket, 5/5 deploys first try. Each $0
+  ablation arm also needs its OWN degenerate-dimension rename (E-22): noDIAG served FINAL's values under the shared name until renamed.
   file yet, so it looked like a failed launch; relaunching started a second 19-task baseline ten
   seconds behind the first. Two runs shared the services and the `llm_usage` window ($7.92 for a run
   whose clean repeats cost $5.07-5.60). Gate in one call, launch in the next, and `pgrep -f
@@ -639,7 +644,8 @@ read any improvement. Then:
 - `shared/environment_backends.py` caches config at import: restart services after editing
   guidance or grading code, or the run silently uses the old rules.
 - `scripts/sheet.py` has no append primitive — read the cell, concatenate, write back, then
-  verify with `get` (a `set` can time out silently).
+  verify with `get` (a `set` can time out silently). `get KEY COL` prints `-- row N --` as its LAST line, so `| tail -1` is not the value (it overwrote E-23's Notes
+  on 2026-09-27); read it with `get KEY Notes | grep '^Notes' | cut -f2-`.
 - A canary that fails after a model change is not proof the change did it. Before
   reverting, run the canary once more on the changed model, then once on the reverted
   model; if it fails on both, look at what else moved — on 2026-09-18 it was memory blocks.
@@ -741,7 +747,7 @@ because a task that spends its whole budget costs nearer the $0.48 never-pass ra
       them — and the $0 sweep then killed **three**, including a T1 `UNSOLVABLE-GOLD` marked
       `[verified]` with `conf: high`. All three turned on **a population the model had not
       published**, which is a model gap wearing a cap's clothing. A census tier is a hypothesis,
-      not a cap; census rev4 has now been wrong on four separate databases (cross_border `_18`, 2026-09-26, passed 5/5 live).
+      not a cap; census rev4 has now been wrong on five separate databases (cross_border `_18`, 2026-09-26, passed 5/5 live; cold_chain `_1` and `_11` T1, 2026-09-27, both reach the ceiling).
 
       Note also that the census's `why` text quotes gold — a SELECT list and a masked cutoff on
       the row read here. Read the **tier field only**; if a `why` reaches you, say so in the

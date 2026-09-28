@@ -1803,6 +1803,13 @@ Many of the rules above multiply object count.
   `<name>_instance_0.5`. All three are in `birdsml.ENGINE_NOTES`.
 
 These work around tracked engine/tool defects — parenthesized IDs reference the team's defect
+- **Anchor every age or recency rule to the warehouse's own latest timestamp, never NOW(); keep a KB formula in its own unit;
+  publish a never-stored input's concept NULL when the KB says null means undetermined.** Measured 2026-09-27 on cold_chain:
+  calibration age against the clock made all 450 devices "old" (the reference: 0, from KB 55's 12 months against the data's
+  dates) and DLRS read 95.6 instead of -40; MKT converted back to Celsius read 5.71 against the reference's Kelvin 278.86; and
+  SBCR, whose stability budget is stored nowhere, has a reference answer of NULL, which a published null-by-construction
+  attribute reaches and an unpublished concept does not.
+
 tracker and are provenance, not something to resolve. Check the Workarounds table in
 `docs/model-change-log.md` for whether each still applies, and re-probe the live engine before
 each build: a workaround that stopped being needed is dead weight, and a new gap is a silent
