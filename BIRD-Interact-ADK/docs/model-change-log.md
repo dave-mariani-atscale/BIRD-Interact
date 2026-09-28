@@ -9990,3 +9990,57 @@ on `pr9967` (the earlier note that it was refused was one of the 16 claims corre
   single-quoted scalars (20 models) and the double-quoted one (`insider_trading`).
 - Every YAML re-parsed under `yaml.safe_load`; the G27 gate phrases are still present and the
   constant is 3897 chars.
+
+## 2026-09-28 — organ_transplant: KB 34's allocation order ships, and the `is_mask` reading that withheld it was wrong
+
+`is_mask: true` on a `knowledge_ambiguity` **withholds nothing from the agent.** Verified two ways,
+both $0: `db_environment/server.py:_filter_knowledge` drops a knowledge entry only when the
+ambiguity carries a `deleted_knowledge` id; and running that function over the real
+`organ_transplant_2` record serves all 55 knowledge-base entries, KB 34 among them. `facts.md`
+§3h already recorded that no task in this brief carries `deleted_knowledge` at all. A mask marks
+the term ambiguous **in the user's phrasing**, not absent from the knowledge base — the same
+finding as the cross_border 2026-08-27 pass, which is where six KB flags stopped being withheld.
+
+The 2026-09-20 build read it the other way and declined to publish four composites on that basis.
+This change lifts one of them; the other three are named below and are Dianne's call.
+
+- [KB] **New `Allocation Priority Rank Within Region`** (dataset column
+  `allocation_priority_rank_within_region`): KB 34's order — medical urgency status first, lower
+  HLA Mismatch Score breaking a tie — ranked within the allocation region KB 36's regional
+  priority rule allocates over. Pending matches carrying a region, an urgency and a mismatch
+  score; empty elsewhere, because a rank over rows missing a sort key is not that order. Urgency
+  reads through `Recipient Medical Urgency Status` (the noise-aware tier). Targets `_2`, whose
+  bare reading projected the raw columns with no order at all.
+- [PLAIN] **`ALLOC_INPUT` inverted.** It told the caller to "ask the user for the complete
+  ordering rule ... rather than inferring one", which now steers away from a published object
+  that answers the question. It names the rank instead, on all four objects carrying it
+  (Recipient Medical Urgency Status, HLA Mismatch Score, Allocation Policy Version, Allocation
+  Sequence Number). This is the gap investigation's lever 5.
+- Build green: 4 datasets, 262 attributes (+1), 89 metrics, 7 calculations; A8, A10 and
+  `sml-cli validate` all clean. A10 still passes because a rank is not a threshold.
+
+**Still withheld on the same mistaken reading, NOT changed here** — each would ship a verdict its
+task currently cannot reach, and each needs a decision because the 2026-09-26 ruling adopted the
+"allow the reading choice" position and explicitly not the withheld-composite half:
+KB 51 AMR Risk Stratification (`_1`), KB 31 Optimal Donor-Recipient Match (`_4`, `M_2`),
+KB 53 Marginal Donor Acceptance Criteria (`_16`). The ruling's reasoning does not obviously apply,
+since nothing was ever actually withheld — but that is a firewall question, not a build decision.
+
+**Measured, $0.** `_2` now passes on a BARE-NAME query — the five columns the question asks for
+plus this rank, no qualified twin and no ask — every cell identical, in the same order. Its
+bare-name P1 ceiling goes **6/19 to 7/19**; the full ceiling is unchanged at 11/19, since `_2`
+already reached it through a hand-written window function the agent cannot write (this engine
+refuses a window function in any enclosing WHERE). That is the point of the change: the task moves
+from a reading only the ceiling could express to one a plain reader of the model writes first.
+Regression sweep on the full 19-task P1 round, cache-busted: 11/19, nothing dropped.
+
+The first cut of the rank partitioned by region alone and failed at 13 of 15 cells with the row
+set, the row order and the other four columns already correct — a pancreas waiting list ranks
+among pancreas candidates, so the partition is (organ, region), and the rank is over distinct
+recipients or a recipient holding two pending matches for the same organ doubles it.
+
+Round files `results/ot_r2/after/{p1,bare_p1}.json` updated with the new `_2` query, and `_10`'s
+stale `Recipient Comorbidity Count (Unrecorded As Zero)` corrected to the post-round-2 bare name
+(it had been returning EXECUTION ERROR, not a real ceiling failure).
+
+No grader change, no gold SQL in any description, no benchmark run.

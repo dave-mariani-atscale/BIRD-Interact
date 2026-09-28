@@ -402,3 +402,20 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12
         table: Cold Chain Pharma Compliance V12
+
+  # No-cheat test arm (2026-09-28). Copies of two v12 models with the text flagged in
+  # results/v12_cheating_review_20260928.md removed (withheld block, closed-question /
+  # re-ask directives, "graded" wording); plain names and objects unchanged. Own repo
+  # and catalog: diannewood/bird-models-v12-nocheat -> bird_models_v12_nocheat.
+  # Remove with the repo at the end of the test.
+  atscale_v12_nocheat:
+    <<: *atscale
+    domains:
+      polar_equipment:
+        catalog: atscale_catalogs
+        schema: bird_models_v12_nocheat
+        table: Polar Equipment V12 NC
+      robot_fault_prediction:
+        catalog: atscale_catalogs
+        schema: bird_models_v12_nocheat
+        table: Robot Fault Prediction V12 NC
