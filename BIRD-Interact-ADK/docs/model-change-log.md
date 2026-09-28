@@ -10044,3 +10044,50 @@ stale `Recipient Comorbidity Count (Unrecorded As Zero)` corrected to the post-r
 (it had been returning EXECUTION ERROR, not a real ceiling failure).
 
 No grader change, no gold SQL in any description, no benchmark run.
+
+## 2026-09-28 — organ_transplant: KB 51 and KB 31 ship too; KB 51 works, KB 31 has no live consumer
+
+Dianne's call, same day and same cause as the KB 34 entry above: `is_mask: true` withholds nothing,
+so the two remaining composites the 2026-09-20 build declined were declined on a wrong premise.
+KB 53 stays out for its own still-valid reason — it names three factors and states no number for
+any of them, so there is no verdict to build.
+
+- [KB] **`Recipient AMR Risk Stratification`** — KB 51's High Risk / Standard Risk, over the
+  positive-crossmatch population the knowledge base defines it on, empty on the other 589 of 787
+  recipients. A recipient with no recorded panel reactive antibody score reads Standard Risk, which
+  is the knowledge base's own otherwise branch.
+- [KB] **`Optimal Donor-Recipient Match`** and **`(ABO By Rule)`** — KB 31's three criteria at
+  once. The stored blood-compatibility flag holds on 1 of 870 matches, the blood-group rule on 2,
+  so the fork ships as a twin rather than a choice made here.
+- [PLAIN] `AMR_INPUT` and `OPTIMAL_INPUT` inverted on their seven objects: both told the caller to
+  ask for a definition the model now publishes.
+- Build green, 265 attributes (+3), A8 / A10 / `sml-cli validate` clean.
+
+**Measured, $0, and the honest split:**
+
+- **KB 51 works.** `_1`'s verdict column is the one gold calls `amr_risk_stratification`. Against
+  the pre-change query it differed on **198 of 198** rows (the model's nearest object was
+  Recipient Immunological Sensitization, a different concept); it now differs on **14**, and the
+  rows are known to be misaligned — `_1` is order-graded and the Recipient column itself differs on
+  107 rows — so the residual is alignment, not the classification.
+- **`_1` still fails, on two things this change does not touch.** Gold's fifth column is
+  `previous_match_ts`, a previous-match TIMESTAMP; the model's nearest object is Recipient Previous
+  Transplants, a count, and no timestamp column exists on the recipient grain. The sort tiebreak
+  under equal panel reactive antibody score is also unresolved. Both are open.
+- **KB 31 converts nothing measurable.** `facts.md` §3h lists it masked on `_4` and `M_2`, which is
+  why the build named `_4` as its consumer — but `_4`'s gold columns are
+  `donor_ethnicity, caucasian, african, asian, hispanic, other`, an ethnicity cross-tabulation, so
+  the optimal-match concept is at most a filter inside it and never the output. `M_2` is a
+  Management task this backend does not run. The verdict is correct and derivable; it has no live
+  task to convert. Recorded so nobody re-measures it expecting a gain.
+- **No regression:** full P1 11/19, bare-name P1 7/19, P2 10/19 — all unchanged, cache-busted.
+
+**A10 passed, and the reader should know why.** The gate scans published DESCRIPTIONS for a masked
+cut-off in threshold position; these descriptions say "a high panel reactive antibody score" and
+"inside the stated band", so the numbers live only in the dataset SQL. The gate's stated rationale
+is that a baked-in number "hands the semantic-layer arm an answer the raw arm must spend a turn
+buying" — that rationale rests on the same `is_mask` reading disproved above, since the raw arm's
+knowledge tools serve KB 51 and KB 31 in full. The gate passing is therefore not by itself the
+answer to its own concern; the answer is that nothing was withheld from either arm.
+
+No grader change, no gold SQL in any description, no benchmark run.
