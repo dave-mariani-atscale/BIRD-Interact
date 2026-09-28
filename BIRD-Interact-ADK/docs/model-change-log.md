@@ -9499,3 +9499,15 @@ satellites + device LEFT-joined, lane folds), Monitoring Device Detail 450, Prod
 300, Pharma Carrier Detail 798, Cold Chain Vehicle Detail 498. 226 attributes, 188 metrics, 10 calcs, six asks. Withheld
 cutoffs (KB 3, 9, 13, 27, 34) unpublished with inputs signposted; deleted formulas (TED, CCCR, TIRP, MKT, DLRS) shipped.
 Build to green in 4 runs (G5 prefix, three LIVE pins re-measured, six G6 rewordings). Backend domain added to `atscale_v12`.
+F2 (Fable 2 of 4) edits, applied by Opus one lever per commit (hunk-split):
+- `143c297` shared `birdsml/dryrun.py`: keyalias parity treats an all-NULL column and its alias as agreeing (SBCR is null by
+  construction and was failing None vs None).
+- [DIAG] `3599100` device calibration age measured against the latest shipment log timestamp instead of NOW() (KB 55's 12
+  months: 450 -> 0 old); per-100 fleet DLRS bare (= -40), per-device `(Per Device)`, DLRS ask cut (`_17`); MKT bare in Kelvin
+  per KB 26, `(Celsius)` twin (`_7`); SBCR published null on all 821 per KB 31's null rule (`_14`); Carrier Certification shows
+  KB 4's 'None' on the 281 NULLs, `(As Recorded)` twin (`_11` P2); TED shape+label ask (`_1`).
+- [PLAIN] `46403da` the route risk note takes the bare name Shipment Risk Level, the incident record's level becomes Shipment
+  Incident Risk Level (sweep-settled on `_1 _2 _3 _4`, no ask); shipment and device degenerate dimensions Entry -> Record
+  against E-22; TIRP ask carries the KB's zone test order and the list-order question (`_9`); OTDP names its 679 same-rows count.
+Ablation tags (not shipped): `cold_chain_pharma_compliance-noDIAG`, `cold_chain_pharma_compliance-noPLAIN`; both needed their
+own dimension renames (Row / Line) because the engine served the other arm's aggregates under a shared dimension name (E-22).
