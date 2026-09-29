@@ -419,3 +419,17 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12_nocheat
         table: Robot Fault Prediction V12 NC
+
+  # No-questions arm (2026-09-29, results/plan_no_questions_labor_certification_20260929.md).
+  # Same tools, instruction, costs and hints as `atscale` (YAML merge) - the instruction build 18's
+  # v12 labor_certification figures were measured under - but each domain resolves to a model built
+  # with docs/create_bird_model_prompt.v12-noq.md: KB, schema, meanings and warehouse only, no
+  # question text, no gold, no iteration. Repo AtScaleInc/bird-atscale-models branch `no-questions`,
+  # catalog bird_models_noq. Schema read back from list_models after the deploy.
+  atscale_noq:
+    <<: *atscale
+    domains:
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_models_noq
+        table: Labor Certification Applications NoQ
