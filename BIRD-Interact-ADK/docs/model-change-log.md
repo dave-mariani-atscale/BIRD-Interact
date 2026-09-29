@@ -10267,3 +10267,23 @@ measurements attached.
 
 Anyone asking "should we rebuild the weak models from scratch?" should read
 `results/v13/05_RESULT.md` before spending a day finding out again.
+
+## 2026-09-28 — nocheat estate deployed; five recorded runs and a crypto_exchange diagnosis
+
+No model object changed. The deployed catalog `bird_models_v12` was moved from branch `main`
+(`7881d16`) to branch `nocheat` (`0c6a4f0`), which is that same commit plus one description-only
+strip of benchmark-aware, closed-question/re-ask and grader-aware sentences across all 22 models.
+No merge was required: `nocheat`'s parent is main's tip. Object names, plain names and the
+`atscale_v12` backend are unchanged.
+
+Measured cost of the strip, on the one database where both arms ran n=1: **zero at P1**
+(crypto_exchange 10/20 either way). What it removes on that database is 830 characters across 4 of
+383 descriptions, all of it ask machinery.
+
+Paid numbers recorded for the first time on `cybermarket_pattern` (0.6550, +5.3 pp) and
+`cold_chain_pharma_compliance` (0.5778, +21.1 pp), closing the last two dashes in the programme
+ledger. Re-measurements: organ_transplant 0.1263 → 0.2895 (the `is_mask` handicap lifting, not a
+model change), planets_data 0.4711 → 0.6158 (B-69 rounding rule restored 2026-09-26 confirmed as a
+live cost), crypto_exchange unchanged within noise at n=2.
+
+Full record `results/nocheat_record_20260928_204444/RESULT.md`. Benchmark spend $33.59.
