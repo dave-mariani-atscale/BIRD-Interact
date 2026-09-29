@@ -10466,3 +10466,24 @@ sha256 `25027ce38085f8e829ac0475de6e589440fe51ca1e5c6405699d87c0e731d085`. Conta
   (233ce1b). Net model diff against `0c6a4f0` is empty. `main` fast-forwarded to `nocheat` and
   deployed from `main`. New rule for this branch: no model change may be motivated by `gold_diff`
   output; `gold_diff` measures, it does not design.
+
+## 2026-09-29 — labor_certification_applications NoQ: initial build and deploy (branch no-questions a666a74e, NOT pushed)
+
+**What.** First no-questions model: `Labor Certification Applications NoQ`, catalog `bird_models_noq`,
+backend `atscale_noq`. Sonnet facts pass (`generator/facts.md`, warehouse-only) then ONE Fable F1 call
+from the noq prompt, facts, KB, meanings, schema and `noq_brief.json`; format reference was v12
+reverse_logistics' spec (shape only). 4 datasets (case 981, employer 546, attorney 386, employer
+contact 578; employer attributes folded onto the case grain), 226 attributes, 249 metrics, 16
+calculations; 5 ask placements on 2 forks (certified any-spelling 981 vs title-case 334; integer vs
+decimal worksite density, 446 rows differ). Withheld: KB 40, 41, 44, 51, 52 (deleted cutoffs/bands);
+deleted but shipped as KB-named formulas: 11, 12, 13, 18, 20, 21, 24, 34.
+
+**Build.** Green on the second run. The only model edit after F1 was mechanical: the worksite-density
+live maximum ("up to 50") tripped A10 against KB 44's 50% cutoff, so the figure was dropped. Build
+needs `PYTHON=BIRD-Interact-ADK/.venv-adk/bin/python` (anaconda's psycopg2 is an empty namespace dir)
+and `BIRD_PG_PASSWORD` from `bird-atscale-models/utilities/.env`.
+
+**Deploy.** `scripts/deploy_models_noq.sh` clean; gates after deploy: noq 1/1, atscale 22/22, atscale_v12
+22/22 (the tuned and v12 catalogs untouched). Engine restarted (E-18). Probes exact against raw Postgres:
+981 cases, WDR > 20 on 327, certified 981 / title-case 334, visa-class split, top-3 employers 61/32/22.
+A gate failure right after deploy was A-71 again (stale exported SEMANTIC_LAYER_MCP_TOKEN), not the model.
