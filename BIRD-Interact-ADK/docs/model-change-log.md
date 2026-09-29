@@ -10508,3 +10508,7 @@ published; KB 44 not computable (no population column). Deployed, engine restart
 atscale_v12 22/22; probes exact against raw Postgres. **Not measured** - the paid n=1 will be run elsewhere. The 09-29 n=1
 figure (0.3737, M-112) belongs to a666a74e and does not describe this model. The 7a self-test set was written against
 the old brief (it skipped the deleted ids) and would need regenerating before any 7a use.
+
+**Pushed 2026-09-29:** local branch `no-questions` (261e4ce1) pushed to `AtScaleInc/bird-atscale-models` as branch
+**`blind-build`**. Push from the worktree with `git push atscaleinc no-questions:blind-build` (the worktree's `origin`
+is remapped to a fake URL for the sml-cli repository id). History includes the superseded a666a74e.
