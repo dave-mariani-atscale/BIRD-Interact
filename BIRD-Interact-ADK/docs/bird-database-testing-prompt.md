@@ -534,6 +534,16 @@ follow-up from a **stale earlier exploratory query** rather than the submission 
 — these differ exactly when the discriminating filter was added last, which is the normal
 case.
 
+### 9. A COLUMN COUNT loss is fixed by an ask on the projected object, not by a stated sentence
+
+Measured 2026-09-29, round 3 on branch `nocheat`: a companion-column sentence ("a listing is read
+with X, Y and this flag together") changed the projection in **0 of 3** paid tries (disaster `_4`
+twice, even as the description's first sentence; labor `_8`). The two shape levers that converted
+(cybermarket `_6`, cold_chain `_1`) were explicit closed asks on the object the agent actually
+projects. And an ask that bundles two questions gets half of it asked: cold_chain `_9`'s zone ask
+carried limits plus shape, and the agent asked only for limits on both runs. One ask, one axis,
+on the column the agent opens first — check `first focus` in `loop_step.py` to find it.
+
 ## Running a targeted run
 
 Write a script per run, with a header stating what changed, which task it should move, and
@@ -700,6 +710,11 @@ read any improvement. Then:
   tail run anyway. Measured 2026-09-24: `git revert --no-edit X -q; git commit --amend -m ...` ran the
   amend after the refused revert and rewrote X's own message, which left local main diverged from the remote. Chain
   a revert with `&&`, never `;`, and check `git log -1` before pushing. Never put the run launch on the same line as the deploy.
+- **Branch `nocheat`: every `build.sh` re-emits the stripped text.** The 2026-09-28 strip lives only
+  in the emitted YAML; `spec.py` still carries the original sentences. After any rebuild run
+  `utilities/nocheat/strip_all.py . <db>` and `strip_residual.py . <db>` from the models repo root,
+  then read `git diff -U0 -- <db>/'*.yml'` and confirm only the intended lines changed. Found
+  2026-09-29 when a one-sentence edit to disaster_relief produced a 107-line YAML diff.
 
 ## Non-negotiable
 
