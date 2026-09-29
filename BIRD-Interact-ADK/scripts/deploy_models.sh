@@ -26,6 +26,11 @@ set -euo pipefail
 ADK_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MODELS_DIR="${BIRD_MODELS_DIR:-$HOME/go/src/github.com/AtScaleInc/bird-atscale-models}"
 EXPECTED="${1:-22}"
+# The catalog to publish into, and so the schema list_models reports. Default is the one
+# every recorded run names. A branch with a different catalog.yml (e.g. blind-build's
+# bird_models_noq) MUST set this, or it publishes over the 22-model main catalog.
+CATALOG_NAME="${CATALOG_NAME:-bird_atscale_models_catalog_main}"
+echo "  catalog: $CATALOG_NAME"
 
 [ -d "$MODELS_DIR" ] || { echo "FAIL: models repo not found at $MODELS_DIR"; exit 1; }
 
@@ -131,8 +136,8 @@ echo
 echo "=== deploy ==="
 ATSCALE_API_URL=http://local.atscaleinternal.com:3001 \
 ATSCALE_API_TOKEN="$TOKEN" \
-  sml-cli atscale-deploy . --catalog-name=bird_atscale_models_catalog_main 2>&1 | tail -8
+  sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -8
 
 echo
 echo "=== post-deploy gate (Q-17b: a working run_query is NOT evidence of health) ==="
-bash "$ADK_DIR/scripts/gate_run.sh" "$EXPECTED"
+CATALOG_NAME="$CATALOG_NAME" bash "$ADK_DIR/scripts/gate_run.sh" "$EXPECTED"

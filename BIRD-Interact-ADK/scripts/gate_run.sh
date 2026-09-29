@@ -43,11 +43,12 @@ echo "  OK - services are newer than the code"
 echo
 echo "=== gate 2: Q-17b catalog health via list_models ==="
 source .venv-adk/bin/activate
-PYTHONPATH=. python - "$EXPECTED" <<'PY'
+PYTHONPATH=. python - "$EXPECTED" "${CATALOG_NAME:-bird_atscale_models_catalog_main}" <<'PY'
 import sys, re
 from shared.config import settings
 from shared.mcp_client import MCPClient, MCPEndpoint
 expected = int(sys.argv[1])
+catalog = sys.argv[2]
 cli = MCPClient(MCPEndpoint(url=settings.semantic_layer_mcp_url,
                             bearer_token=settings.semantic_layer_mcp_token))
 try:
@@ -57,13 +58,13 @@ except Exception as e:
              "      A working run_query is NOT evidence the catalog is healthy - "
              "that is exactly the Q-17b trap.")
 schemas = set(re.findall(r'bird_atscale_models_catalog\w*', out))
-models = sorted(set(re.findall(r'"table_schema":"bird_atscale_models_catalog_main","table_name":"([^"]+)"', out)))
+models = sorted(set(re.findall(r'"table_schema":"' + re.escape(catalog) + r'","table_name":"([^"]+)"', out)))
 print(f"  catalog schemas seen : {sorted(schemas)}")
-print(f"  models in _main      : {models}")
+print(f"  models in {catalog} : {models}")
 if "bird_atscale_models_catalog" in schemas:
     sys.exit("FAIL: an UNSUFFIXED catalog copy exists alongside _main (Q-17/Catalog-suffix).")
 if len(models) < expected:
-    sys.exit(f"FAIL: expected >= {expected} models in _main, found {len(models)}.")
+    sys.exit(f"FAIL: expected >= {expected} models in {catalog}, found {len(models)}.")
 print("  OK - catalog healthy")
 PY
 echo
