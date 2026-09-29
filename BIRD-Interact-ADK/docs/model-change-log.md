@@ -10185,3 +10185,64 @@ carefully from real data and still guessed wrong about caller intent, and one fr
 settled what no amount of reasoning would have. The sweep is the arbiter; the design turn proposes.
 
 No deployed model changed in this commit, no grader change, no benchmark run.
+- **Measured 2026-09-28** (`results/nocheat_baseline_20260928_171316`, n=1, $8.85): polar P1 0.600 /
+  P2 0.400 / reward **0.540** (recorded with the text 0.450); robot 0.600 / 0.300 / **0.510**
+  (recorded 0.55). The agent asked the same closed questions unprompted (robot `_1` `_5`, polar `_16`);
+  the directives were redundant. No measurable cost from removing findings 1, 2, 6 on these two.
+
+## 2026-09-28 — `nocheat` branch of bird-models-v12: cheating-review text stripped from all 22 models (NOT deployed)
+
+Follows the polar/robot test above (no measurable cost). Branch `nocheat` of
+`diannewood/bird-models-v12`, from main `7881d16`. Description strings only, 108 files; every
+non-description field byte-identical (YAML round-trip check); `sml-cli validate` clean; A8 and A10
+22/22. Scripts and a README in `utilities/nocheat/`.
+
+- Finding 1: every "withheld / masked by the benchmark", "searching returns nothing", "so that nobody
+  hunts for them" sentence and every "Withheld concepts" model-description block removed. Column-level
+  "INPUT TO A WITHHELD VERDICT: the KB defines X over ..." keeps the KB definition and drops "this
+  model publishes no such flag". KB-to-input-column indexes (cybermarket, labor, insider §4, fake_account)
+  kept with neutral headings.
+- Finding 2: ~140 closed-question / re-ask directives removed (the four round-2 templates, the robot
+  record-vs-robot template, and ~60 hand-written variants), replaced by a statement that both readings
+  are published, or that the value/cutoff/label/shape is the user's; live counts and facts kept.
+- Finding 6: 71 "graded"/"grader" sentences reworded (the string and the number are different values;
+  the two spellings differ only in case).
+- Finding 7: crypto_exchange Arbitrage Window's "0 of 1000 rows qualify (never exceeds 0.0471)" removed.
+- [PLAIN kept] No bare-name assignment, twin, dataset or metric changed.
+- Generators NOT updated: a rebuild of any model restores the stripped text. Port into spec.py first.
+- Deploying this branch replaces the models of record for every backend run on `atscale_v12`; another
+  session was committing organ_transplant to main the same day, so merge before deploying.
+
+## 2026-09-28 — v13 rebuild arm: measured, and the answer is no
+
+Three v12 databases (virtual_idol, insider_trading, organ_transplant) rebuilt from scratch under the
+current rules in one day, as a parallel arm in `diannewood/bird-models-v13` / catalog
+`bird_models_v13` / backend `atscale_v13`. `bird_models_v12` untouched throughout. Full write-up in
+`results/v13/`.
+
+**$0 ceilings, strict bare-name P1:** virtual_idol 12 vs 10 (+2), insider_trading 11 vs 12 (−1),
+organ_transplant 4 vs 7 (−3). Net −2 of 59.
+
+**Paid confirmation on the one database the ceiling said had won**, both arms on the same 16 tasks,
+same instrument, n=1: **P1 an exact tie at 8/19 each**; reward 0.3737 against 0.3579, a single
+phase-2 task. $8.21 total. Task level 3-3. Against v12's stale pre-retrofit 0.3263 the rebuild had
+looked like +4.7 pp; against a fair paired run it is +1.6 pp, so most of the apparent gain was the
+2026-09-27 retrofit.
+
+**The bare-name estimator overpredicted BOTH arms.** `P1 = 0.906 x bare ceiling` gave 10.9 and 9.1
+against actuals of 8 and 8 — conversion 67% and 80%, versus a backtested mean error of +0.02 tasks.
+It should be refitted per database against live conversion and quoted as a range, not a point.
+Every $0 projection made from it this session is optimistic by roughly 10-25%.
+
+This agrees with the 2026-09-26 insider_trading A/B, which found a from-scratch re-author tied on
+bare-name at three times the cost. Two independent tests now say the same thing: **iteration on an
+existing model beats replacing it.** The round-2 retrofit moved v12's virtual_idol ceiling from 8 to
+10 in one evening — the same order of gain the entire rebuild produced.
+
+Kept, because they are cheap and reusable: `Q-43` (a new silent engine defect — an outer WHERE or
+CASE-ORDER on an unprojected column defeats an inner ORDER BY ... LIMIT n); the join-predicate
+measurement rule and the whole-unit bare-name rule, both now in the build and testing prompts with
+their measurements; and `results/v13/03_contamination_incident.md`, which records a previous-model
+contamination that was caught, reverted and redone behind a tighter fence.
+
+No v12 model changed. No grader change.
