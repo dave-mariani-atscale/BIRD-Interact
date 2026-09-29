@@ -30,33 +30,24 @@ def block(start, end, new):
 # --- Firewall -----------------------------------------------------------------------
 block("Anything answer-bearing in `bird_interact_data.jsonl` is out of bounds while modeling:",
       "Two working rules that keep the build honest:",
-      """**No-questions arm: `bird_interact_data.jsonl` is out of bounds in full.** Not the answer
-keys only - the questions too: `amb_user_query`, `follow_up`, `user_query_ambiguity`, the
-ambiguity terms, `external_knowledge`, `high_level`, `output_type`. The one permitted touch is
-`utilities/extract_brief_noq.py`, which reads each Query record's integer
-`knowledge_ambiguity[*].deleted_knowledge` (with `category` used as a filter only) and emits
-`brief/noq_brief.json` - the deleted ids plus every KB id whose `children_knowledge` reaches one -
-and nothing else. `utilities/noq_gate.py` asserts every string in the brief is a KB entry name.
-Model only from the KB, the schema, the column meanings and the warehouse. Gold SQL is never read
-in this arm, not even to diagnose a failure.
+      """**No-questions arm: `bird_interact_data.jsonl` is out of bounds in full, and nothing is
+withheld.** Not the answer keys only - the questions too, and the `deleted_knowledge` ids
+(decided 2026-09-29: the first build of this arm read them, and that was not allowed). No script
+reads the task file and there is no brief. Every KB entry ships under the same rules as any
+other; the rules in this section and below about withheld, deleted or masked concepts, their
+signposts and the A10 gate belong to the other arms and do not apply here.
+`utilities/noq_gate.py` fails the build if a `brief/` exists or a model file names a task-file
+field. Model only from the KB, the schema, the column meanings and the warehouse. Gold SQL is
+never read in this arm, not even to diagnose a failure.
 
 """)
 block("- **`extract_brief.py` drops `deleted_knowledge` by design**",
       "- Derive the withheld set mechanically",
-      """- **The deleted ids are in `brief/noq_brief.json`** (`deleted_knowledge`), and
-  `depends_on_deleted` lists them plus every KB entry whose `children_knowledge` reaches one.
-  The rules in this section decide which of those are actually withheld.
+      """- **Not in this arm:** there is no deleted-id list, so nothing below is withheld.
 """)
-sub("""- Derive the withheld set mechanically from the brief's `deleted_knowledge` ids (the
-  extractor may copy that field — it is the tool's own filter input, an integer, not an
-  answer), closed over the KB's `children_knowledge` edges,""",
-    """- Derive the withheld set mechanically from the brief's `deleted_knowledge` ids,
-  closed over the KB's `children_knowledge` edges,""")
 block("- **Masking is per TASK; the model is one artifact. Census the cost before building.**",
       "**Select the flags from the KB, not from the task list.**",
-      """- **Masking is per task; the model is one artifact.** An id deleted on any Query task is
-  withheld from the whole model. This arm takes no per-task census - it would need the task
-  list - so it withholds the brief's set and nothing else.
+      """- **Masking census: not in this arm** - there is no deleted set to census.
 
 """)
 block("**Gold SQL can contradict its own knowledge base. Follow the KB.**",
@@ -249,7 +240,7 @@ reads the benchmark's questions either.
 sub("""  a shared clause. Where a permitted question states a constant, that is confirmation of the
   standard value, not a licence to fit.""", """  a shared clause.""")
 
-AUDIT = '## Rule audit — every v12 rule that read questions or gold\n\n| v12 rule (section) | Decision | noq form |\n| --- | --- | --- |\n| Sources: questions in `bird_interact_data.jsonl` for naming, synonyms, coverage | strip | Sources are schema, meanings, KB, warehouse |\n| Firewall: extract permitted question fields into `task_brief.json` | rewrite | `extract_brief_noq.py`: deleted ids only (Query tasks), `noq_gate.py` asserts KB-only strings |\n| Masking census: count USE vs DELETE per task | strip | Withhold the brief\'s deleted set, no census |\n| "Gold SQL can contradict its own KB" (wage-unit example) | strip | Gold never read; example was this database\'s |\n| Bare name "from the questions\' own vocabulary" | rewrite | From the KB term\'s name and definition; else the column meaning; else the plain SQL reader |\n| Which-object fork (measured on this database\'s follow-ups) | rewrite | Same rule, generic example; forks found from the model\'s own inventory |\n| Unit viability "on the screen the questions ask for"; gold disagreeing with itself | rewrite / strip | KB\'s own screen, or the whole population |\n| Rendering twins scanned from `amb_user_query` | rewrite | Only where the KB or column meaning names the rendering |\n| Enumerated-ladder completion "the question set\'s wording implies" | rewrite | The KB\'s wording plus the floor/zero rules |\n| Group-by numerics "scan the question set for per X" | rewrite | Every stored score, rate, ratio is groupable |\n| Rank twins "at the N the questions use"; rank "for every superlative in the task set" | rewrite | N = 1, 3, 5, 10; every KB score and headline measure |\n| Degenerate-date example (this database\'s dates/status) | rewrite | Generic wording, no figures |\n| Builds 18-20: sweep-selected bare name; `gold_diff` [DIAG] | strip | — |\n| "Do not publish a reading the simulator named without a $0 regression" | strip | No iteration |\n| "Move the plain name onto the reading the questions mean" (5 places) | rewrite | "... the reading the KB\'s own definition states" |\n| Bare-name move decided by a $0 regression sweep | strip | — |\n| "Premium ..." / "Firm names ..." / "self-represented" / "specialty-occupation" examples | rewrite | Generic examples (these were this database\'s) |\n| Pre-ship divisions "scan the follow-ups for what percentage" | rewrite | One share per count metric over its natural denominators |\n| Collision stated in the question\'s words; verbatim task term; short question phrase vs A8 | strip | State collisions in the KB\'s words |\n| Build-time discoverability list "the question wordings the task set uses" | rewrite | Paraphrases of KB definitions and column meanings |\n| A8 question-leakage gate | replace | `noq_gate.py` (A8 passes vacuously on a question-free brief) |\n| Acceptance 3: probes from `amb_user_query` | rewrite | Paraphrases of KB definitions and column meanings |\n| Ceiling sweep, ceiling test, population/value ceiling tests | strip | Kept only the engine facts: rank population fixed at build time; window before grouping; shared population |\n| After acceptance: reading runs, diagnosing failures, gold/harness defects, spending, steering | strip | Stops at acceptance |\n\n'
+AUDIT = '## Rule audit — every v12 rule that read questions or gold\n\n| v12 rule (section) | Decision | noq form |\n| --- | --- | --- |\n| Sources: questions in `bird_interact_data.jsonl` for naming, synonyms, coverage | strip | Sources are schema, meanings, KB, warehouse |\n| Firewall: extract permitted question fields into `task_brief.json` | strip | No brief; nothing read from the task file, not even deleted ids (2026-09-29: the first build read them, reverted) |\n| Masking census; withheld set from deleted ids; A10 gate | strip | Nothing withheld; every KB entry published |\n| "Gold SQL can contradict its own KB" (wage-unit example) | strip | Gold never read; example was this database\'s |\n| Bare name "from the questions\' own vocabulary" | rewrite | From the KB term\'s name and definition; else the column meaning; else the plain SQL reader |\n| Which-object fork (measured on this database\'s follow-ups) | rewrite | Same rule, generic example; forks found from the model\'s own inventory |\n| Unit viability "on the screen the questions ask for"; gold disagreeing with itself | rewrite / strip | KB\'s own screen, or the whole population |\n| Rendering twins scanned from `amb_user_query` | rewrite | Only where the KB or column meaning names the rendering |\n| Enumerated-ladder completion "the question set\'s wording implies" | rewrite | The KB\'s wording plus the floor/zero rules |\n| Group-by numerics "scan the question set for per X" | rewrite | Every stored score, rate, ratio is groupable |\n| Rank twins "at the N the questions use"; rank "for every superlative in the task set" | rewrite | N = 1, 3, 5, 10; every KB score and headline measure |\n| Degenerate-date example (this database\'s dates/status) | rewrite | Generic wording, no figures |\n| Builds 18-20: sweep-selected bare name; `gold_diff` [DIAG] | strip | — |\n| "Do not publish a reading the simulator named without a $0 regression" | strip | No iteration |\n| "Move the plain name onto the reading the questions mean" (5 places) | rewrite | "... the reading the KB\'s own definition states" |\n| Bare-name move decided by a $0 regression sweep | strip | — |\n| "Premium ..." / "Firm names ..." / "self-represented" / "specialty-occupation" examples | rewrite | Generic examples (these were this database\'s) |\n| Pre-ship divisions "scan the follow-ups for what percentage" | rewrite | One share per count metric over its natural denominators |\n| Collision stated in the question\'s words; verbatim task term; short question phrase vs A8 | strip | State collisions in the KB\'s words |\n| Build-time discoverability list "the question wordings the task set uses" | rewrite | Paraphrases of KB definitions and column meanings |\n| A8 question-leakage gate | replace | `noq_gate.py` (A8 passes vacuously on a question-free brief) |\n| Acceptance 3: probes from `amb_user_query` | rewrite | Paraphrases of KB definitions and column meanings |\n| Ceiling sweep, ceiling test, population/value ceiling tests | strip | Kept only the engine facts: rank population fixed at build time; window before grouping; shared population |\n| After acceptance: reading runs, diagnosing failures, gold/harness defects, spending, steering | strip | Stops at acceptance |\n\n'
 HEADER = """# Prompt: build an AtScale semantic model for a BIRD-Interact database — NO-QUESTIONS arm (v12-noq)
 
 **What this arm is.** The v12 build process with every input that comes from the benchmark's
@@ -268,7 +259,7 @@ catalog `bird_models_noq`, model name `<Db Title> NoQ`. The branch holds only th
 databases; the tuned models live on `main` and are out of bounds, as is their history.
 
 **Sources, complete list:** `<db>_schema.txt`, `<db>_column_meaning_base.json`, `<db>_kb.jsonl`,
-the live warehouse, and `<db>/brief/noq_brief.json` (deleted KB ids only), plus the one v12
+and the live warehouse - nothing from the task file, not even deleted KB ids - plus the one v12
 `spec.py` of a DIFFERENT database your packet names as a format reference for the `birdsml` spec
 API (read it for shape, never for content). Nothing else - no other semantic model, no `results/` write-up, no change-log entry, no kickoff, no memory note about an
 earlier build of this database.
@@ -281,7 +272,10 @@ which v12 examples came from which database, so **no build agent opens it**.
 with its measurement. They are generic lessons about the interface and about plain-SQL readers;
 dropping them would change the process being compared, not just its inputs.
 
-**Also changed outside this prompt:** the brief extractor and the A8 replacement live in the
+**Nothing is withheld.** Every rule below about withheld, deleted or masked KB concepts belongs to
+the other arms: here every KB entry is published under the ordinary rules.
+
+**Also changed outside this prompt:** the A8/A10 replacement (`noq_gate.py`) lives in the
 branch's `utilities/`; `utilities/` is v12's (`diannewood/bird-models-v12` at `7881d16`), so the
 emitter and ENGINE_NOTES match build 18 exactly.
 

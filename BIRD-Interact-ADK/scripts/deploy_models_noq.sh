@@ -5,8 +5,8 @@
 # A copy of scripts/deploy_models_v12.sh with three differences:
 #   - MODELS_DIR is the no-questions worktree, overridable with BIRD_MODELS_NOQ_DIR
 #   - the catalog is bird_models_noq (config/environment_backends.yaml, atscale_noq)
-#   - the A8 question-leakage gate is replaced by utilities/noq_gate.py (A8 passes vacuously
-#     on a question-free brief), and A10 runs on the brief's deleted ids with no census
+#   - A8 and A10 are replaced by utilities/noq_gate.py: this arm reads nothing from the task
+#     file, not even the deleted KB ids (decided 2026-09-29), so there is no brief to gate on
 # The pre-flight refuses anything but branch no-questions: sml-cli deploys what the REMOTE
 # branch holds, and deploying main from here would publish the 22 tuned models into this catalog.
 #
@@ -66,19 +66,15 @@ echo "=== validate (run from the repo ROOT: catalog.yml lives here) ==="
 sml-cli validate . 2>&1 | tail -3
 
 echo
-echo "=== no-questions gate (replaces A8) and A10 masked-threshold gate, per model ==="
+echo "=== no-questions gate (replaces A8 and A10), per model ==="
 G_FAILED=0
 for m in */; do
-  [ -f "${m}brief/noq_brief.json" ] || continue
+  [ -f "${m}generator/spec.py" ] || continue
   kb="$ADK_DIR/bird-interact-full/${m%/}/${m%/}_kb.jsonl"
   [ -f "$kb" ] || { echo "FAIL: no KB at $kb"; exit 1; }
   python3 utilities/noq_gate.py --model-dir "${m%/}" --kb "$kb" | tail -1 || G_FAILED=1
-  out="$(python3 utilities/masked_threshold_gate.py --model-dir "${m%/}" \
-          --brief "${m}brief/task_brief.json" --kb "$kb" 2>&1)" && rc=0 || rc=$?
-  printf '%s\n' "$out" | grep -vE "^\s*\[ok\]" | grep -vE "^\s*$" || true
-  [ "$rc" -eq 0 ] || G_FAILED=1
 done
-[ "$G_FAILED" -eq 0 ] || { echo "FAIL: a no-questions or masked-threshold gate failed - fix before deploying."; exit 1; }
+[ "$G_FAILED" -eq 0 ] || { echo "FAIL: a no-questions gate failed - fix before deploying."; exit 1; }
 
 echo "=== deploy to $CATALOG ==="
 NODE_OPTIONS="--require $ADK_DIR/scripts/sml_fetch_retry.cjs" \

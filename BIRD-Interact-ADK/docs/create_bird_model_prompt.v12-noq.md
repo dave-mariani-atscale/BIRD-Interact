@@ -16,7 +16,7 @@ catalog `bird_models_noq`, model name `<Db Title> NoQ`. The branch holds only th
 databases; the tuned models live on `main` and are out of bounds, as is their history.
 
 **Sources, complete list:** `<db>_schema.txt`, `<db>_column_meaning_base.json`, `<db>_kb.jsonl`,
-the live warehouse, and `<db>/brief/noq_brief.json` (deleted KB ids only), plus the one v12
+and the live warehouse - nothing from the task file, not even deleted KB ids - plus the one v12
 `spec.py` of a DIFFERENT database your packet names as a format reference for the `birdsml` spec
 API (read it for shape, never for content). Nothing else - no other semantic model, no `results/` write-up, no change-log entry, no kickoff, no memory note about an
 earlier build of this database.
@@ -29,7 +29,10 @@ which v12 examples came from which database, so **no build agent opens it**.
 with its measurement. They are generic lessons about the interface and about plain-SQL readers;
 dropping them would change the process being compared, not just its inputs.
 
-**Also changed outside this prompt:** the brief extractor and the A8 replacement live in the
+**Nothing is withheld.** Every rule below about withheld, deleted or masked KB concepts belongs to
+the other arms: here every KB entry is published under the ordinary rules.
+
+**Also changed outside this prompt:** the A8/A10 replacement (`noq_gate.py`) lives in the
 branch's `utilities/`; `utilities/` is v12's (`diannewood/bird-models-v12` at `7881d16`), so the
 emitter and ENGINE_NOTES match build 18 exactly.
 
@@ -111,15 +114,15 @@ deploying, and expect each `build.sh` to validate the entire repo at its last st
 
 ## Answer-key firewall — read before opening any JSONL
 
-**No-questions arm: `bird_interact_data.jsonl` is out of bounds in full.** Not the answer
-keys only - the questions too: `amb_user_query`, `follow_up`, `user_query_ambiguity`, the
-ambiguity terms, `external_knowledge`, `high_level`, `output_type`. The one permitted touch is
-`utilities/extract_brief_noq.py`, which reads each Query record's integer
-`knowledge_ambiguity[*].deleted_knowledge` (with `category` used as a filter only) and emits
-`brief/noq_brief.json` - the deleted ids plus every KB id whose `children_knowledge` reaches one -
-and nothing else. `utilities/noq_gate.py` asserts every string in the brief is a KB entry name.
-Model only from the KB, the schema, the column meanings and the warehouse. Gold SQL is never read
-in this arm, not even to diagnose a failure.
+**No-questions arm: `bird_interact_data.jsonl` is out of bounds in full, and nothing is
+withheld.** Not the answer keys only - the questions too, and the `deleted_knowledge` ids
+(decided 2026-09-29: the first build of this arm read them, and that was not allowed). No script
+reads the task file and there is no brief. Every KB entry ships under the same rules as any
+other; the rules in this section and below about withheld, deleted or masked concepts, their
+signposts and the A10 gate belong to the other arms and do not apply here.
+`utilities/noq_gate.py` fails the build if a `brief/` exists or a model file names a task-file
+field. Model only from the KB, the schema, the column meanings and the warehouse. Gold SQL is
+never read in this arm, not even to diagnose a failure.
 
 Two working rules that keep the build honest:
 
@@ -142,19 +145,16 @@ verbatim to the raw arm on every task, and the semantic arm has no KB tool at al
   Withholding a non-deleted cutoff hands the raw arm a concept for one coin that the
   semantic arm cannot have at all. Measured: eight tasks that had failed at phase 1 in
   every run scored 5.7/8 once six such flags shipped.
-- **The deleted ids are in `brief/noq_brief.json`** (`deleted_knowledge`), and
-  `depends_on_deleted` lists them plus every KB entry whose `children_knowledge` reaches one.
-  The rules in this section decide which of those are actually withheld.
-- Derive the withheld set mechanically from the brief's `deleted_knowledge` ids,
-  closed over the KB's `children_knowledge` edges, since a concept depending on a
+- **Not in this arm:** there is no deleted-id list, so nothing below is withheld.
+- Derive the withheld set mechanically from the brief's `deleted_knowledge` ids (the
+  extractor may copy that field — it is the tool's own filter input, an integer, not an
+  answer), closed over the KB's `children_knowledge` edges, since a concept depending on a
   withheld one leaks the same cutoff. Fail the build if any member is implemented.
   `utilities/masked_threshold_gate.py` is the portable version for models without a
   generator gate; wire it into the build rather than auditing by hand. It can legitimately
   report an entry as **inert** — masked only on a task category this backend does not run,
   and therefore published at no measurement cost.
-- **Masking is per task; the model is one artifact.** An id deleted on any Query task is
-  withheld from the whole model. This arm takes no per-task census - it would need the task
-  list - so it withholds the brief's set and nothing else.
+- **Masking census: not in this arm** - there is no deleted set to census.
 
 **Select the flags from the KB, not from the task list.** Publishing exactly the concepts
 the questions hit is question-informed selection even when each object is honest. The rule:

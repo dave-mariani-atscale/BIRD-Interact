@@ -8,8 +8,8 @@ Plan: `results/plan_no_questions_labor_certification_20260929.md`. Generator:
 | v12 rule (section) | Decision | noq form |
 | --- | --- | --- |
 | Sources: questions in `bird_interact_data.jsonl` for naming, synonyms, coverage | strip | Sources are schema, meanings, KB, warehouse |
-| Firewall: extract permitted question fields into `task_brief.json` | rewrite | `extract_brief_noq.py`: deleted ids only (Query tasks), `noq_gate.py` asserts KB-only strings |
-| Masking census: count USE vs DELETE per task | strip | Withhold the brief's deleted set, no census |
+| Firewall: extract permitted question fields into `task_brief.json` | strip | No brief; nothing read from the task file, not even deleted ids (2026-09-29: the first build read them, reverted) |
+| Masking census; withheld set from deleted ids; A10 gate | strip | Nothing withheld; every KB entry published |
 | "Gold SQL can contradict its own KB" (wage-unit example) | strip | Gold never read; example was this database's |
 | Bare name "from the questions' own vocabulary" | rewrite | From the KB term's name and definition; else the column meaning; else the plain SQL reader |
 | Which-object fork (measured on this database's follow-ups) | rewrite | Same rule, generic example; forks found from the model's own inventory |

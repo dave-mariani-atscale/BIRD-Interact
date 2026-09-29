@@ -10487,3 +10487,24 @@ and `BIRD_PG_PASSWORD` from `bird-atscale-models/utilities/.env`.
 22/22 (the tuned and v12 catalogs untouched). Engine restarted (E-18). Probes exact against raw Postgres:
 981 cases, WDR > 20 on 327, certified 981 / title-case 334, visa-class split, top-3 employers 61/32/22.
 A gate failure right after deploy was A-71 again (stale exported SEMANTIC_LAYER_MCP_TOKEN), not the model.
+
+## 2026-09-29 — labor_certification_applications NoQ REBUILT FRESH: nothing from the task file (branch no-questions 261e4ce1, NOT pushed)
+
+**Why.** Decided 2026-09-29: the arm must not use `deleted_knowledge` either. The first build (a666a74e) read the
+deleted KB ids and withheld KB 40, 41, 44, 51, 52 with an "ask the user" signpost; F1 designed the whole model knowing
+that set, so the spec was discarded rather than edited (an in-place F2 was started and stopped).
+
+**What changed.** Tooling: `utilities/extract_brief_noq.py`, `brief/` and the A10 step removed; `noq_gate.py` now fails
+on any `brief/` or a model file naming a task-file field; `deploy_models_noq.sh` gates with noq_gate only; the noq
+prompt (`scripts/make_noq_prompt.py`, regenerated) says nothing is withheld and the withheld/masked rules belong to
+other arms. Model: old spec and all emitted YAML deleted; `facts.md` kept (warehouse-only, never saw the brief); fresh
+F1 (Fable, new context, worktree git history fenced) then a Sonnet build loop (4 runs: model-description cut to the
+9000 cap, one G6 wording, one build.sh comment that named the task file).
+
+**Result.** 3 datasets (case 981, employer 546, attorney 386), 224 attributes, 215 metrics, 13 calculations. KB 40
+(Case Premium Wage Position, 327), 41 (Case Filing Window, 4 labels in use), 51 (Case Complexity Tier, Complex 212) and
+52 (Attorney Performance Rating, twinned on the certified spelling: 386 High any-spelling / 109-0-277 capitalised) now
+published; KB 44 not computable (no population column). Deployed, engine restarted (E-18), gates noq 1/1, atscale 22/22,
+atscale_v12 22/22; probes exact against raw Postgres. **Not measured** - the paid n=1 will be run elsewhere. The 09-29 n=1
+figure (0.3737, M-112) belongs to a666a74e and does not describe this model. The 7a self-test set was written against
+the old brief (it skipped the deleted ids) and would need regenerating before any 7a use.
