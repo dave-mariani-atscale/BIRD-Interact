@@ -10162,3 +10162,26 @@ Both in-flight F1 authoring turns were sent rules 1 and 2 directly rather than l
 docs, since a file edit races an agent that has already read it.
 
 No deployed model changed in this commit, no grader change, no benchmark run.
+
+## 2026-09-28 — correction to this morning's join-predicate rule
+
+The rule added earlier today said to evaluate KB rules that are join conditions against live data,
+and, where one fires on nothing, to publish a wider reading beside the literal one. **The first half
+holds; the second half was wrong and is withdrawn.**
+
+Measured on virtual_idol V13 the same afternoon. The design turn followed the rule, adding
+`(Any Time)` twins that dropped the five-minute bound and fired on 19 rows. The ceiling sweep then
+found that the twin FAILED against the reference, while the bare literal reading — the one returning
+nothing on all 821 rows — PASSED. The reference answer is consistent with the unsatisfiable rule
+returning nothing, so widening it was the wrong inference and would have cost the task had the sweep
+trusted the guidance.
+
+`docs/bird-database-testing-prompt.md` now says: measure the predicate, state in the description
+that it fires on nothing, publish the LITERAL reading bare, and let the $0 sweep decide whether any
+wider reading is wanted. A rule that cannot fire is not evidence that it was meant differently.
+
+Recorded because the failure mode is instructive rather than embarrassing: a design turn reasoned
+carefully from real data and still guessed wrong about caller intent, and one free sweep round
+settled what no amount of reasoning would have. The sweep is the arbiter; the design turn proposes.
+
+No deployed model changed in this commit, no grader change, no benchmark run.

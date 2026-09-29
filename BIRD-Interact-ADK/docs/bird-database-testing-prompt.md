@@ -114,7 +114,15 @@ between files?** Sonnet.
   time window, a proximity or a match condition between two rows, emit the COUNT of rows the
   predicate actually matches, at the KB's own number and at one or two wider settings beside it.
   A predicate that fires on nothing is a design problem to be surfaced before authoring, not a
-  sweep round to be spent later. **The integer-division check must be a mechanical
+  sweep round to be spent later. **Surfacing it is the rule; widening it is NOT** -- corrected the
+  same day, after the first version of this bullet nearly cost the task it was written for. On
+  virtual_idol V13 the design turn duly added an `(Any Time)` twin dropping the time bound, and the
+  sweep found that the twin FAILED against the reference while the bare literal reading -- the one
+  returning nothing on all 821 rows -- PASSED. The reference answer was consistent with the
+  unsatisfiable rule returning nothing. So: measure the predicate, state in the description that it
+  fires on nothing, publish the LITERAL reading under the bare name, and let the $0 sweep decide
+  whether any wider reading is wanted at all. Do not ship a widened twin on the assumption that a
+  rule which cannot fire must have been meant differently. **The integer-division check must be a mechanical
   sweep over EVERY ratio, not a judgement about which ones look like counts** — measured
   2026-09-23 on disaster_relief, the pass ran `pg_typeof` on three ratios, caught all three, and
   reported the *widened* reading for a fourth of identical `bigint / bigint` shape that collapses
