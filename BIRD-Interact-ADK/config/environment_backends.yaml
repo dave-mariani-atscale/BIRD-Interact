@@ -419,23 +419,3 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_v12_nocheat
         table: Robot Fault Prediction V12 NC
-
-  # Rebuild arm (2026-09-28, Dianne). From-scratch models for the three databases built in the
-  # earliest v12 builds (2026-09-19..22), before the process settled, so every v12-era model shares
-  # one authoring method. Own repo and catalog: diannewood/bird-models-v13 -> bird_models_v13.
-  # atscale_v12 is unchanged and stays deployed; every comparison is v13 against its v12 twin.
-  atscale_v13:
-    <<: *atscale
-    domains:
-      insider_trading:
-        catalog: atscale_catalogs
-        schema: bird_models_v13
-        table: Insider Trading V13
-      organ_transplant:
-        catalog: atscale_catalogs
-        schema: bird_models_v13
-        table: Organ Transplant V13
-      virtual_idol:
-        catalog: atscale_catalogs
-        schema: bird_models_v13
-        table: Virtual Idol V13

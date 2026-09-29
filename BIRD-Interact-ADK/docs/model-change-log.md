@@ -10246,3 +10246,24 @@ their measurements; and `results/v13/03_contamination_incident.md`, which record
 contamination that was caught, reverted and redone behind a tighter fence.
 
 No v12 model changed. No grader change.
+
+## 2026-09-28 — v13 rebuild arm retired
+
+Dianne's call once the paired run came back a tie: the arm bought nothing, so it comes out. Removed
+the `atscale_v13` backend from `config/environment_backends.yaml` (three domains) and
+`scripts/deploy_models_v13.sh`; services restarted and `atscale_v12` re-gated clean at 22 models.
+Nothing routes to `bird_models_v13` any more.
+
+The `bird_models_v13` catalog still exists inside the engine — `sml-cli` has no undeploy path — but
+it is inert with no backend pointing at it. Same position as `bird_models_v12_nocheat`.
+
+**Kept deliberately**, because the negative result is the deliverable and it cost a day to get:
+`results/v13/` (the comparison baseline, the measurement findings, both build write-ups, the
+contamination incident and the final result with the paid confirmation);
+`scripts/run_virtual_idol_v13_baseline.sh` and `scripts/run_virtual_idol_v12_paired.sh` with their
+predictions written before the runs; `results/virtual_idol_v13_baseline_*` and
+`results/virtual_idol_v12_paired_*`; tracker row `Q-43`; and the two build-prompt rules with their
+measurements attached.
+
+Anyone asking "should we rebuild the weak models from scratch?" should read
+`results/v13/05_RESULT.md` before spending a day finding out again.
