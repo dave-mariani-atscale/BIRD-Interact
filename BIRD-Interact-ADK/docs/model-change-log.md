@@ -10391,3 +10391,42 @@ sufficient), marker re-sweep leaves only stored values ("Rejected"), engine note
 where the port landed in the spec — `apply.py` reports NOSPEC for the rest, and ETF's SQL
 comments and fake_account's template-built sentences will word slightly differently after a
 regenerate; re-run `verify.sh` after any `build.sh`.
+
+## 2026-09-29 — `no-cheat` pass 2: live warehouse figures stripped from all 22 tuned models (75d4062, NOT deployed)
+
+**What.** On top of 48f712f, every live warehouse figure in published text is gone and the
+qualitative fact stays in words: population counts → ratio words (none / a few / a minority /
+about half / most / nearly all / every), grain sizes → "every unit", ranges / means / totals /
+per-entity and per-category values / "Live counts" lines / live dates / named top-N entities
+→ deleted or reduced to the comparative claim already in the sentence. KB thresholds, weights,
+band edges, formula constants, scales, units, format strings, engine facts and stored labels
+stay. Objects, names, SQL expressions and "Ask for it as" lists untouched. Diff: 2614 YAML
+files, +14581/−15912; 57 generator files, +6911/−18021.
+
+**Why.** Dianne's call after the pass-1 report: 1896 unflagged "N of M" counts remained; the
+estimate was −1 to −3 pp if numbers go and words stay, larger if whole sentences went. So:
+"strip numbers, keep words".
+
+**How.** `utilities/nocheat/figures.py` listed 10,098 numbered sentences; eight forked agents
+rewrote ~6,900 of them through per-model rule scripts (`utilities/nocheat/scripts/`, four
+independent rule engines) plus hand dicts, applied by `apply.py` so YAML and generator specs
+move together; template sentences ported at template level (`cov()`, `_cross_link_grain_twins`,
+`ASK`/`FIN` constants, organ_transplant's `{stat}` placeholders). Residue passes closed the last
+12 "N of M" sentences (polar, robot) and three named-entity answers (planets "Kepler-131 c").
+
+**Verified.** specs parse, `sml-cli validate` clean, A8 + A10 22/22, `figures.py` re-run shows
+only keep-class numbers, "N of M" sentences 0. Structural diff of parsed YAML (every key except
+description) caught one block-scalar indentation break in `archeology_scan/models` (the
+numbered grain lines had become top-level keys) — fixed; no object name or SQL expression
+changed. Cosmetic residue accepted: a few doubled spaces from re-wrapped raw substitutions,
+"every series"-style plurals.
+
+**Judgement calls recorded by the agents (kept as words, not figures):** structural facts of
+one or two ("a single constructor-result row", "no fan has more than two interactions");
+"at most 7 outcomes"-style caps in mental_health; the 60-day cap in reverse_logistics (it is
+the filter, not data); illustrative scale values ("0.25 would mean a quarter"); insider's
+"dates fall within a single recent year".
+
+**Not done.** Not pushed, not deployed, not measured. Rebuild caveat unchanged: `apply.py`'s
+NOSPEC lines and the forks' spec ports are the gaps; ETF, virtual_idol and mental_health carry
+profile sentences that exist only in main's YAML and simply vanish on a regenerate.
