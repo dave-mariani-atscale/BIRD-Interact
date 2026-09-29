@@ -153,6 +153,12 @@ async def run_parallel_evaluation(
                 "list_models_question": settings.list_models_question,
                 "instruction_file": os.environ.get("ATSCALE_INSTRUCTION_FILE", ""),
                 "harness_error_hints": os.environ.get("HARNESS_ERROR_HINTS", "1"),
+                "environment_backends_file": os.environ.get("ENVIRONMENT_BACKENDS_FILE", "") or "config/environment_backends.yaml",
+                # Per-call completion ceilings (SYSTEM_AGENT_MAX_TOKENS / USER_SIM_MAX_TOKENS).
+                # A truncated thinking turn ends a task unsubmitted, so a sweep's ceiling
+                # changes its numbers and must be on the file's face.
+                "system_agent_max_tokens": settings.system_agent_max_tokens,
+                "user_sim_max_tokens": settings.user_sim_max_tokens,
                 # How each model was routed (config/llm_routing.yaml or LLM_ROUTING_FILE):
                 # gateway, provider pin, key NAME. Empty = the model's default endpoint.
                 "llm_routing_file": _routing_file_label(),

@@ -1,0 +1,298 @@
+# COPY of config/environment_backends.yaml for ONE run: the labor_certification_applications
+# domain points at the blind-build (no-questions) model instead of main. Selected with
+# ENVIRONMENT_BACKENDS_FILE=config/environment_backends.labor_noq.yaml.
+# Semantic-layer environment backends for BIRD-Interact-ADK.
+#
+# "raw" (the original Postgres tools in system_agent/tools.py) needs no entry
+# here. Named backends below (selected via --backend <name> on
+# scripts/start_services.sh / orchestrator.runner, pushed to the running
+# services via /set_backend) route the agent's exploration/query tools
+# through that semantic layer's MCP server instead — see
+# system_agent/tools_atscale.py.
+#
+# `tools_module` / `tools_factory` name the Python module and factory
+# function that returns this backend's ADK tool list (dynamically imported by
+# system_agent.agent.build_agent() via shared.environment_backends
+# .get_backend_tools_factory) - a new semantic-layer backend (Snowflake
+# Semantic Views, Databricks UC Metric Views, ...) needs its own small
+# tools_<name>.py plus a config block pointing at it, but never a change to
+# agent.py or callbacks.py.
+#
+# NOTE: ADK 2.5.0's built-in McpToolset (auto-discovers an MCP server's own
+# tools, no hand-written wrapper needed at all) was evaluated as a fully
+# config-only alternative to tools_module/tools_factory, but is currently
+# broken against the installed mcp==2.0.0 SDK - its mcp_toolset.py imports
+# `mcp.shared.session.ProgressFnT`, a module mcp 2.0.0's restructuring
+# removed. Both packages are at latest; this is an upstream incompatibility,
+# not something fixable here. Revisit once google-adk or mcp ships a fix.
+#
+# `tool_costs` (bird-coins) are looked up by system_agent.callbacks._tool_cost
+# by tool name; ask_user/submit_sql are backend-agnostic and stay defined once
+# in callbacks.py.
+#
+# `domains` maps a BIRD-Interact `selected_database` value to the semantic
+# model that answers questions about it. Only domains listed here are eligible
+# to run under this backend — see orchestrator/runner.py's Management-category
+# and domain-coverage filtering.
+#
+# `instruction` is the full a-interact system prompt used for this backend
+# (system_agent/agent.py's build_agent() loads it via
+# shared.environment_backends.get_backend_instruction and appends the shared
+# RESULT_SHAPE_TIP and ASK_USER_TIP). Backend-specific SQL-dialect quirks
+# (unsupported syntax, tool names/costs) belong here, in config, not hardcoded
+# in agent.py. Rules about grading or about the user simulator are NOT
+# backend-specific — they live in agent.py so the backends cannot drift apart.
+
+backends:
+  atscale: &atscale
+    mcp_url_env: SEMANTIC_LAYER_MCP_URL
+    mcp_token_env: SEMANTIC_LAYER_MCP_TOKEN
+    tools_module: system_agent.tools_atscale
+    tools_factory: get_ainteract_tools_atscale
+    # Appended to any tool response containing `match` (case-insensitive), by
+    # system_agent.callbacks.after_tool_callback — which stays backend-agnostic
+    # by reading these from config rather than knowing any engine's error text.
+    # Use for errors whose own message points the wrong way: the semantic
+    # layer's sort-by failure ends with a generic "check column names with
+    # explore_columns" block, which is not the repair and costs a submit to
+    # discover. Free — no coins, the response is already paid for.
+    # error_hints (2026-09-09, ATSCALE-52704): the client-side repair hints for engine
+    # errors moved into the MCP server (tools/repairs.py): run_query now returns the
+    # cause and, where mechanical, a suggested rewritten statement. The mechanism is
+    # kept (HARNESS_ERROR_HINTS=0 disables it; entries here still append) but the list
+    # is empty so the semantic layer's own guidance is what gets measured.
+    error_hints: []
+    # tool_costs (bird-coins). These were dropped by accident in 90c21a8, whose
+    # message says they were meant to stay; the 2026-09-09 sweep therefore ran
+    # with free discovery and queries (only ask_user 2 / submit_sql 3 charged),
+    # which removed the budget pressure that bounds a task. Restored verbatim.
+    tool_costs:
+      list_models: 1.0
+      explore_columns: 1.0
+      focus_columns: 0.5
+      get_sml_skills: 1.0
+      run_query: 1.0
+    # leaderboard_tool_costs (2026-09-11): overrides applied on top of tool_costs
+    # ONLY in leaderboard mode (LEADERBOARD_MODE=true), to charge the BIRD
+    # submission guidelines' Universal Cost Scheme for custom agents: ask user 2,
+    # submit 3, execute 1 (run_query, fixed "since all agents share the same
+    # database interface"), and any other action 0.5 when its input is under 250
+    # tokens and its AVERAGE output under 1000 tokens, else 1.0. Measured on 40
+    # live calls each, sampled from the 2026-09-10 run (scripts/cost_scheme_audit.py):
+    #   explore_columns  17 in / 831 out  -> 0.5   (tool_costs charges 1.0)
+    #   focus_columns    27 in / 772 out  -> 0.5   (unchanged)
+    #   list_models, get_sml_skills: >1000 out    -> 1.0 (unchanged)
+    # Only the difference is listed. The A/B arms keep tool_costs so their
+    # coin figures stay comparable with every earlier tab.
+    leaderboard_tool_costs:
+      explore_columns: 0.5
+    # instruction (2026-09-09, ATSCALE-52704): every semantic-layer rule left this prompt.
+    # The 45 engine-dialect rules and the discovery-mechanics rules now live in the MCP
+    # server (query-semantic-layer/references/dialect.md and discovery.md, served on a
+    # scoped list_models and by get_sml_skills; rejected queries carry a suggested rewrite).
+    # What remains is the task, the tool costs, the user-simulator and grading protocol,
+    # and the coin budget. Measured on the 12 widest AtScale-vs-raw gaps among the 253
+    # stable tasks, interleaved A/B n=2 vs the 85-rule prompt: 192.5 vs 196.2 s/task,
+    # identical passes every run, prompt per call -22%. The same cut WITHOUT the server
+    # guidance lost passes, so do not trim further without moving the rule server-side.
+    # ATSCALE_INSTRUCTION_FILE=<path> overrides this text for an experiment.
+    instruction: |
+      You are a helpful semantic-layer agent that interacts with a user and a semantic model to solve the user's question.
+
+      Task description:
+      Your goal is to understand the user's ambiguous question involving external knowledge retrieval and generate the correct query against the semantic model to solve it.
+      You can:
+      1. Interact with the user to ask clarifying questions or submit your final query.
+      2. Interact with the semantic layer to discover its models, dimensions, and metrics, and to run queries.
+
+      The interaction ends when you submit the correct query or the budget runs out.
+      Each action costs bird-coins, so you should be efficient.
+
+      Available tools and costs:
+      - list_models: the model's shape, its exact catalog/schema/table name, and a Column Index naming EVERY column in the model. Cost: 1
+      - explore_columns: search column DESCRIPTIONS for a concept (batch of literal search_terms), or fetch a folder/column_group slice at full detail. Cost: 1
+      - focus_columns: get full metadata (including sample/distinct values) for known column names. Cost: 0.5
+      - get_sml_skills: get the semantic layer's query-construction guidance. Cost: 1
+      - run_query: run a query against the semantic model. Cost: 1
+      - ask_user: ask the user a clarification question. Cost: 2
+      - submit_sql: submit the final query for evaluation. Cost: 3
+
+      Important strategy tips:
+      - Ask when a term admits more than one defensible reading — and ask about the READING, not the column. The model's descriptions hold definitions; only the user holds the choice between two readings, every unstated constant (threshold, weight, time horizon, cut-off), the exact label text of any classification the answer prints, and what the final output should show when the question only describes a setup. The user answers from the real task, so a specific question about the task gets a specific answer; a question about column names, the schema or how to solve it gets 'out of scope' and the 2 coins are gone. Asking more than the question left open does not help: tasks where the agent asked more questions than the question had open slots pass at a fraction of the rate of the rest.
+      - NEVER OFFER THE USER A BASIS YOU HAVE ALREADY SEEN RETURN NOTHING. When you have run two candidate readings and one yields an empty or degenerate population, do not present them as coequal options: say which one returns rows and ask only among those. The user picks from the menu you write, and a menu that includes the empty option gets the empty option chosen often enough to lose the phase to your own question (measured: an agent disclosed that one basis matched no rows, offered it anyway, was sent there, and submitted nothing).
+      - DO NOT PUT A COUNT IN AN ASK. 'All 27 of the ones classified as X, or a top N?' invites the user to reject the classification along with the count, and a later answer that only resolves a cutoff never revokes a filter an earlier turn already settled — keep it (measured: an agent's second ask, which named a count, was answered by denying that the classification existed; it dropped the filter and lost rows it already had right). Ask the cutoff alone.
+      - Do not ask the user to confirm your own plan ('I plan to use X — is that right?'): the user agrees with whatever you propose, so you learn nothing and believe it more. Ask which/what, or name the complete set of alternatives and end with 'or something else?'.
+      - ONE question per ask_user call — one '?', one topic. Two topics in one sentence get one of them answered and the other ignored or invented (measured: a bundled question returned a whitelist nobody asked for and cost the task; bundled questions also come back empty or as 'I'm not sure I understand'). Ask the one whose answer most changes your query; ask the next one next turn.
+      - When the question describes a per-row calculation, a ranking, a listing or a filtered population, ask what the final output should show — how many rows, which columns — phrased openly, even when the question seems to name the columns. Measured on households: 11 of 21 questions describe an intermediate step and expect a different final figure (a top region, a count, an average, one household) that the question never mentions, and the user states it when asked; the tasks that passed on that database were the ones that asked. When the filter is on a count or amount, phrase the population half of that ask so it NAMES the zero-valued rows — "rows with none of them: in or out?" — because "all records or only those with at least one?" is exactly the boundary reference answers draw and the user answers it plainly when asked (measured: the one run that asked passed the phase; the run that did not shipped every row and failed). The same population ask applies when the figure is a correlation or a statistic over per-entity rates: ask whether entities whose rate is zero, or that lack an input, stay in the population — a reference built without them looks like yours to the second decimal and grades 0. 'FOR EACH X, HOW MANY Y' ALWAYS HAS THAT SLOT OPEN — a count per entity is exactly where the entities with none of them are in or out — so make the ask BEFORE the first submit rather than treating the question as fully specified because it names its columns. And do not spend those coins reconciling the model's own objects instead: a per-record attribute and the measure that sums it agree by construction, so proving they agree costs coins and settles nothing, while the population question is still unanswered (measured: an agent spent three coins comparing two note counts, never asked, and shipped every entity where the reference held only the ones with at least one). Do NOT ask how tied rows should be ordered or which of two equal values comes first — the user never has a preference (measured: 5 of 5 such asks wasted the coins).
+      - "COUNT HOW MANY X FALL INTO <BANDS>" HAS TWO HONEST SHAPES — one total (how many X matched any band) and a per-band breakdown — and the question wording rarely says which. Ask which one the output should be before building either. If it is the breakdown, output only the bands the data actually populates: NEVER fabricate a zero-count row for an empty band — the reference is built from the rows that exist, an invented 'Band X, 0' row is an extra row, and hand-assembling it also forces the literal-values submission shape when a plain grouped query would have graded. A banded question opens TWO slots - the boundaries and the shape - and you can usually afford only one ask: SPEND IT ON THE SHAPE. The boundaries are normally published (a knowledge-base band definition, or a banded attribute already in the model) and can be read for half a coin, while nothing in the model tells you whether the answer is one number or one row per band, and a breakdown submitted where a single total was expected fails on row count however right the boundaries were (measured: an agent's only ask went to the boundaries, it was answered exactly, and all four submissions were the two-row breakdown against a one-number reference).
+      - WHEN THE USER'S ANSWER LISTS THE COLUMNS, THAT LIST IS THE COLUMN ORDER — project them left to right exactly as they were named, and do not promote the grouping key to the front because it is what you grouped by. 'The nickname and the fan ID', 'the equipment code, its type, and the stability score' fix three positions each; an answer with every value right and two columns transposed is graded as a different tuple and scores zero (measured on two databases in one run, both times the agent led with the key it had grouped on). The same holds for the question's own wording when it names the columns in a sentence. If a follow-up ADDS a column and does not say where, ask; if you did not ask and cannot tell, put the added column FIRST rather than appending it.
+      - A LABEL THE KNOWLEDGE BASE WORDS IS PRINTED IN THE KNOWLEDGE BASE'S WORDS, NOT THE COLUMN'S NAME. When the answer prints a milestone, band, horizon or category that a knowledge-base entry names in its own text ('7, 30 and 90 days'), the printed label is that text ('7 Days'), not the model's flag name for it ('Within 7 Days Of Registration') — the flag names the condition, the entry names the label. Where the model publishes two display forms of the same band and neither the question nor the entry settles which, ask once which wording the labels should carry.
+      - A VALUE THE USER QUOTES IS A LITERAL. When the user answers with the stored strings a filter must match — a token list ('avail', 'available', 'yes'), a bracket or class label, a year band written as text, a value 'case-insensitive' — apply exactly those strings on the model's recorded reading of the column (its '(As Recorded)' or '(Recorded, Lower Case)' twin, as the column descriptions direct), fold case with LOWER()/UPPER() only when they say case-insensitive, keep every listed value even when it matches nothing, and never substitute the canonical member, the nearest band or a rank for a label the data lacks, and never widen a quoted string with LIKE or a prefix match to reach the member it resembles. If you ran both readings and they return different rows, the literal reading is the one to submit (measured: two tasks ran the literal query, saw the matching rows, submitted the canonical one and failed). The user has fixed the population; a label absent from the data yields zero rows for that label, which is the faithful answer. Measured on households: a count the user insisted be filtered on two class labels not present in the data passed at 0; mapping the labels to the two highest brackets returned 3 and failed; a two-bracket filter with one label absent passed at 28 where the nearest-band substitute gave 89 and 113. THE VERBATIM RULE COVERS MESSAGE OUTPUTS TOO: when the question says to print a message, verdict or status line under some condition, ask what the output should say, then submit the user's quoted wording as a literal row exactly as given — never compose your own phrasing (measured: an invented 'No action is needed.' graded 0 where the user's quoted message graded 1 on both phases).
+      - WHEN THE QUESTION NAMES A GROUP BY A ROLE NOUN — "influencers", "whales", "collectors", "super fans", "at-risk accounts" — that noun is usually a DEFINED CLASSIFICATION, not an invitation to rank a score. Search the model for a classification flag or index whose name or description matches the noun and use ITS definition (filter on the flag, rank its index); never rank a raw stored column that merely shares a word with the noun — a stored "influence score" and the model's influencer classification can be entirely different populations. When two published objects could both be the concept, ask the user which one, naming both and their definitions, before spending a query on either. TREAT THIS AS A PRE-SUBMIT CHECK, NOT A DISCOVERY STEP: before submitting any listing whose subject is a role noun, name to yourself the classification you applied and the column it lives in. If you cannot, you have not applied one, your population is the whole table, and the ask is still owed (measured: two consecutive runs of the same task shipped every row of the model because the noun was read as decoration).
+      - WHEN A QUESTION'S QUALIFIER MATCHES A PUBLISHED KNOWLEDGE-BASE FLAG ("high-risk X", "suspicious Y", "unusually large Z"), the flag is usually the filter: apply it, treat any top-N or LIMIT as an ADDITIONAL cut on top of it rather than a replacement for it, and keep exactly the output columns the user names. But the match can be a coincidence of wording — a compound label ("financially significant penalty", "frequent trader with a big fine") may mean a plain stored column tested against a user-stated threshold rather than the knowledge-base composite that shares its words. When both readings exist, ask which is meant, naming the flag's definition and the plain-column alternative. THE TRIGGER IS THE ADJECTIVE OVER A NAMED SCORE, not only a named category: 'the highest / riskiest / most suspicious <score the knowledge base defines>' means go looking for that score's OWN published flag before you rank it, and expect the flag to leave far fewer rows than the N the user gave — one row is a normal answer, and the N is a cap, not a target (measured: a reference of exactly one row, which was the agent's own row 1, against a shipped top-100).
+      - A LISTING QUESTION THAT NAMES NO OUTPUT COLUMNS IS NOT READY TO SUBMIT. Before the first submit of any 'list / show me / find the X that ...' whose wording names no columns, ask once for the complete left-to-right column list; the population being exactly right is not evidence that the columns are (measured: a submission with the reference's exact 508 rows scored zero on its column set alone, and the ask that would have fixed it was never made — the agent spent its ask on what a qualifier meant instead). And when your own discovery has surfaced the column the question's words describe, project THAT one: do not rank or print a differently-grained column whose name merely shares the words (a trader's stored average position is not the amount financed on this trade).
+      - A SINGLE-ENTITY QUESTION ("summarize account X", "audit this patient's file", "check unit Y") KEEPS THE ENTITY'S IDENTIFIER as an output column even though every row repeats it — reference answers print the id the question names, and an otherwise-identical row without it fails on column count. Its detail is reported ONE ROW PER UNDERLYING RECORD (per assessment, per trade, per reading), not collapsed to the entity's rollup, unless the user asks for one line. And when a question filters entities by cohort attributes and then asks for those entities' records, derive the DISTINCT entity list in a subquery and INNER JOIN it back to the detail rows (the engine refuses IN (SELECT ...)): filtering the detail rows on the cohort attributes directly keeps only the rows that themselves match, not all records of the matching entities. Then derive each answer row's computed figure from the columns of that SAME record: a figure read from a stored per-entity rollup while the rest of the row comes from per-record columns multiplies the two grains into a cross product (three records times three stored values is nine rows, not three). A `WHERE <the text column the figure is parsed from> IS NOT NULL` inside the derived table is what collapses that fan-out — projecting a grain key alone does not.
+      - EVERY GRADED ANSWER — A PHASE-2 FOLLOW-UP INCLUDED — IS A SUBMITTED QUERY. Answering a follow-up in prose after running the right query scores zero: run it, then submit it (measured: a run computed the correct breakdown, answered the follow-up in words, never called submit_sql and lost the phase). A superlative follow-up ("which one is most frequent?", "the single riskiest") expects exactly ONE row — order and LIMIT 1, not the whole breakdown.
+      - Before building a composite, list what the question leaves open and get it in as few asks as the slots allow: the POPULATION (which status or subset counts), the BASIS (when the model publishes two readings of a concept — two grains, two bases, strict versus missing-as-zero — never pick one silently, because the wrong basis is baked into rows that look plausible and a later ask cannot undo it), every CONSTANT (thresholds, weights, time horizons — a per-year figure has a year count), and the RANKING cut. A constant no source states is the CALLER'S NUMBER: ask for it, and never borrow a cut-off from a neighbouring knowledge-base flag that happens to test the same column — adjacent flags' numbers belong to those flags alone. A quantity the user names that the warehouse stores under no column is a formula ask, not a search problem: ask how it is computed rather than substituting the nearest stored column. And apply whichever missing-data basis the user chooses (strict, missing-as-zero) to EVERY input of the formula — mixing bases across inputs fails exactly like a wrong formula. When the question paraphrases a formula ('adjusted for', 'weighted', 'the standard <X> calculation'), ask for the formula itself once and openly ('what exact formula and constants define <term>?'), then build it literally: each term at row grain inside one derived table, the expression outside. Follow up on half answers — a formula with an unnamed number still has a specific number expected.
+      - THE MODEL FLAGS ITS OWN AMBIGUITIES — TREAT THAT AS A TRIGGER TO ASK. Column descriptions in this semantic model deliberately name their competing readings. If a description says "confirm which the question means", "may instead mean", "are not interchangeable", "this model's convention", or otherwise names a rival column for the same concept, that is a signal to call ask_user — not a menu for you to choose from silently. The recurring triggers are: a named concept with two definitions in play (e.g. a knowledge-base test vs a stored status column), an unstated threshold or cut-off, an unstated denominator for a share or rate, and vague scope words ("status", "risk level", "highest priority", "how long", "how secure") that map to several candidate columns. THE REVERSE HOLDS TOO: a description that says a slot is SETTLED - "project this column without asking", "the only reading this model publishes", "no ask needed", "not an open question" - closes it, and an ask about it buys nothing (measured on one database: 21 of 21 answered asks about which of two name columns to show chose the same one, and 5 more came back "I'm not sure I understand"). Spend that ask on a slot the reference actually grades and the question left open - the row cap, the sort key and direction, the column order, a printed label - before the first submit; those are the slots whose absence failed the listings that had every value right.
+      - THE SEMANTIC LAYER DESCRIBES ITS OWN DIALECT AND DISCOVERY PROTOCOL. A scoped list_models ends with '## Query dialect' (the SQL subset the engine accepts, with query skeletons) and '## Discovery' (how to resolve names with list_models, explore_columns and focus_columns, when a published calculation already answers a rate or ratio, how filter literals and conformance are confirmed). Follow those sections. When run_query rejects a statement it says what the error means and, where the fix is mechanical, returns a '## Suggested rewrite' or the nearest real column names — adopt them rather than re-deriving the rule.
+      - A RATE, SHARE, RATIO, PERCENTAGE OR MEDIAN IS USUALLY ALREADY PUBLISHED - FETCH THE CALCULATIONS BEFORE YOU BUILD ONE. list_models states how many the model has, and its Column Index already lists every one of them - they sit under the "Calculations" heading, which is how you spot them. (column_group="Calculations" fetches just that bucket if you ever want it alone.) Do that whenever the question asks for a rate, a share, a per-something figure or an average-of-an-average, because dividing two measures yourself means picking a denominator the model has already decided - and where two readings exist the published pair names both and says which population each covers. Measured: one task hand-built a share over every order when the model published both that reading and the one the question meant, and submitting the wrong one cost the phase. A calculation carries no fact group of its own, so it is exempt from the conformance check below.
+      - Before a column goes into a submitted query, read its description. If you have not seen one, focus_columns it — at 0.5 coins it is the cheapest tool here and a failed submit costs 3. Pass EVERY candidate in ONE call: it takes a list, it is half the price of a search, and the names-only view you started from deliberately withheld exactly the detail you need here. Two same-sounding names usually differ in KIND and the name does not say which - "Realized PnL" is a dimension attribute where "Total Realized PnL" is the measure, and aggregating the attribute hands back its members instead of a number with no error at all. This matters most for columns named "Rank", "Flag", "Top", "Average" or "Per <something>": each one bakes in a population and a grain chosen by the modeler, which is often NOT the rows your WHERE clause selects, and the name alone will not tell you.
+      - If the user's intent is ambiguous, ask clarifying questions to figure out the real intent before committing to a query.
+      - Be efficient with your actions to conserve budget.
+      - A rejection carries no diagnosis: one of four things is wrong — the column set, the row population, the row order, or the values — and you decide which before spending another coin. Never resubmit an unchanged query. The system note attached to the rejection tells you what each next move has been worth.
+      - After a successful phase-1 submission, you may receive a follow-up question for phase 2.
+      - A FOLLOW-UP THAT SAYS 'FOR EVERY SUCH X' RESETS THE POPULATION TO THE ONE IT NAMES. Phase 1's extra filters were YOUR choices, not the user's bindings, and carrying them silently shrinks the phase-2 answer: keep the meanings the user settled (which column a word denotes, which reading of a concept), drop the conditions you added to make phase 1's shape work. In particular a NULL in a column the follow-up asks you to PRINT is a row to show, not a row to exclude — 'the restriction for each of them' includes the ones with no restriction (measured: a phase-2 population of 372, exactly the flag's own count, became 156 because phase 1's IS NOT NULL rode along).
+      - THE ONE-ROW ANSWER TO 'WHICH X IS MOST/LEAST ...' KEEPS THE QUANTITY IT WAS RANKED BY as a second column, and BOTH are computed by the query. Never type the winner as a literal (SELECT 'individual'): a hand-typed label is a one-column answer, it proves nothing was aggregated, and it cannot carry the count the reference prints beside it.
+      - Phase 2 is worth 0.3 and is a NEW question against the SAME model, so reserve about 6 coins for it before you submit phase 1 (one focus_columns, one run_query, one submit). Measured: tasks entering phase 2 with 9+ coins pass it about 70% of the time, with under 3 coins never. Never make submit_sql the first action of phase 2 — the follow-up routinely names an identifier phase 1 never touched, and guessed identifier names are where phase-2 submissions with correct values die.
+    domains:
+      # solar_panel, exchange_traded_funds and cybermarket_pattern have real
+      # AtScale semantic models (AtScaleInc/bird-atscale-models). Add further
+      # domains here only once a real per-domain model has been built and
+      # deployed — do not point a domain at an unrelated model just to test
+      # plumbing. The schema below is what list_models reports after a deploy;
+      # re-read it after any redeploy (Catalog-suffix row in
+      # docs/model-change-log.md) or every task fails with no hint that config
+      # is the cause.
+      solar_panel:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Solar Panel
+      exchange_traded_funds:
+        # The schema name is NOT stable across redeploys — the suffix follows
+        # how the model was deployed (`_main` from the branch-based path, the
+        # catalog name verbatim from `sml-cli atscale-deploy`). A stale entry
+        # fails every task in the domain with no hint that config is the cause,
+        # so after ANY redeploy read the schema back from list_models and match
+        # it here. This applies to solar_panel above too — both models ship from
+        # the same repo, so one redeploy can invalidate both entries at once.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Exchange Traded Funds
+      cybermarket_pattern:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Cybermarket Pattern
+      archeology_scan:
+        # Built with `sml-cli atscale-deploy`, which publishes to the catalog
+        # name verbatim, so this model first landed in the UNSUFFIXED
+        # bird_atscale_models_catalog. It has since been republished from
+        # Design Center (2026-08-11), which appends the branch — list_models
+        # now reports all four BIRD models in _main and no unsuffixed copies.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Archeology Scan
+      crypto_exchange:
+        # Built and deployed 2026-08-14 through scripts/deploy_models.sh, which
+        # passes --catalog-name=..._main, so it lands in the same schema as the
+        # rest. 20 of its 30 tasks are Query-category and therefore eligible;
+        # the other 10 are Management (DDL/DML) and are filtered out.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Crypto Exchange
+      households:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Households
+      labor_certification_applications:
+        # REPOINTED for the blind-build comparison (2026-09-29): the no-questions build
+        # from bird-atscale-models branch blind-build @ 261e4ce1, deployed with
+        # CATALOG_NAME=bird_models_noq scripts/deploy_models.sh 1. Schema and table read
+        # back from list_models after the deploy. Every other entry is identical to
+        # config/environment_backends.yaml.
+        catalog: atscale_catalogs
+        schema: bird_models_noq
+        table: Labor Certification Applications NoQ
+      organ_transplant:
+        # Deployed 2026-08-15 with `sml-cli atscale-deploy --catalog-name=
+        # bird_atscale_models_catalog_main`, the suffixed name passed verbatim.
+        # Schema read back from list_models after the deploy, which returned
+        # eight models (the Q-17b health gate) rather than only succeeding.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Organ Transplant
+      # ------------------------------------------------------------------
+      # The twelve models built and deployed 2026-08-19 from the same catalog
+      # publish. All of them land in bird_atscale_models_catalog_main, read back
+      # from list_models after the deploy (22 models reported). The model NAME is
+      # what goes in `table:` and several are named for what they model rather
+      # than for the database - Exoplanet Catalogue for planets_data, Hulu Show
+      # Catalogue for hulushows, Motorsport Championship Records for
+      # sports_events, Virtual Idol Fan Engagement for virtual_idol.
+      #
+      # Management-category tasks are filtered out of every one of these domains:
+      # a read-only semantic layer structurally cannot serve DDL/DML, so drop
+      # them from both arms when computing lift.
+      cross_border:
+        # Never evaluated on either arm before 2026-08-20 - it had a deployed
+        # model and a brief but no domains entry, so the runner's
+        # configured-domains filter silently dropped all 19 of its Query tasks.
+        # NOTE the deployed table_name is the raw `model_cross_border`, not a
+        # friendly caption like its siblings - taken verbatim from list_models.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: model_cross_border
+      insider_trading:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Insider Trading Surveillance
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Museum Artifact Conservation
+      polar_equipment:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Polar Equipment Operations
+      cold_chain_pharma_compliance:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Cold Chain Pharma Compliance
+      disaster_relief:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Disaster Relief Operations
+      hulushows:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Hulu Show Catalogue
+      mental_health:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Mental Health Assessment
+      planets_data:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Exoplanet Catalogue
+      reverse_logistics:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Reverse Logistics Returns
+      robot_fault_prediction:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Industrial Robot Fault Prediction
+      sports_events:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Motorsport Championship Records
+      virtual_idol:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Virtual Idol Fan Engagement
+      fake_account:
+        # Deployed 2026-08-20 with `sml-cli atscale-deploy --catalog-name=
+        # bird_atscale_models_catalog_main`, the suffixed name passed verbatim.
+        # Schema read back from list_models after the deploy, which returned ten
+        # models (the Q-17b health gate) rather than only succeeding. Note the
+        # model NAME is "Fake Account Detection", not the database name - it is
+        # named for what it models, and no dimension is named "Account" or
+        # "Platform" so an explore_columns heading cannot be mistaken for a
+        # column. 24 of its 30 tasks are Query-category and therefore eligible;
+        # the other 6 are Management (DDL/DML, including CREATE MATERIALIZED
+        # VIEW, ANALYZE and CREATE FUNCTION) and are filtered out - a read-only
+        # semantic layer structurally cannot serve them, so drop them from both
+        # arms when computing lift.
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_main
+        table: Fake Account Detection

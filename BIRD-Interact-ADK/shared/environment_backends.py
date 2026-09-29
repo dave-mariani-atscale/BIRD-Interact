@@ -17,7 +17,13 @@ from sqlglot import expressions as exp
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "environment_backends.yaml"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# ENVIRONMENT_BACKENDS_FILE points a run at another copy of this config (e.g. one database's
+# domain entry repointed at a different catalog). Relative paths resolve against the project
+# root; the file used is recorded in each results file's deviations block.
+_CONFIG_PATH = Path(os.environ.get("ENVIRONMENT_BACKENDS_FILE", "").strip() or "config/environment_backends.yaml")
+if not _CONFIG_PATH.is_absolute():
+    _CONFIG_PATH = _PROJECT_ROOT / _CONFIG_PATH
 
 _cache: Dict[str, Any] = {}
 
