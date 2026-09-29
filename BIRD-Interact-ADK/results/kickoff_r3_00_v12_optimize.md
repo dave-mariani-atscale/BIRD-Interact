@@ -67,6 +67,8 @@ Record the split at close: `python3 scripts/session_cost.py --session`.
 
 ## FENCE — every Fable or Sonnet brief carries this paragraph verbatim
 
+**SUPERSEDED 2026-09-29 (Dianne): no model change may be motivated by `gold_diff` output.** Not a `[DIAG]` change, not a RENAME TO PLAIN settled by a sweep, not an ask or companion sentence whose options or columns were found by diffing against gold, not an object published because gold passes on it. Those are findings 2 and 3 of `results/v12_cheating_review_20260928.md`, and every round-3 change of that kind was reverted the same day. `gold_diff` MEASURES (sweeps, verdicts, ceilings); a model change must be derivable from the KB, the warehouse and the agent's trajectory alone, and its commit must say which of those motivated it. Round 3 was run before this rule and all of its model changes were withdrawn; a re-run of this kickoff must carry the rule into every brief.
+
 Forbidden BY PATH: `bird-interact-full/bird_interact_data.jsonl`; the keys `sol_sql`,
 `follow_up.sol_sql`, `sql_snippet`, `test_cases`, `conditions`, `preprocess_sql`, `clean_up_sqls`;
 `results/bird_full_run_*/results/grading_audit_this_run.jsonl`. The only task data you may open is

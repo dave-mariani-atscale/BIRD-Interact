@@ -1,5 +1,32 @@
 # Round 3 — v12 optimization, 2026-09-29
 
+## WITHDRAWN 2026-09-29 — every round-3 model change reverted (Dianne: remove anything the cheating review would flag)
+
+Every lever this round was triggered by a `gold_diff` diagnosis, which is finding 2/3 of
+`results/v12_cheating_review_20260928.md`. All six surviving change commits were reverted
+(bird-models-v12 `13f3665..6a0cf0d`); the models are byte-identical to `0c6a4f0` again. `main` was
+fast-forwarded to `nocheat` and deployed; gate 22/22. **The tables further down describe models that
+no longer exist for five databases. This table is the current state:**
+
+| database | P1 | P2 | reward | recorded before round 3 | Δ pp | basis |
+|---|---|---|---|---|---|---|
+| cross_border | 12/19 | 10/19 | **0.600** | 0.479 | +12.1 | measured 09-29; no round-3 change |
+| fake_account | 17/24 | 14/24 | **0.671** | 0.7125 | −4.2 | measured 09-29; no round-3 change |
+| sports_events | 12/20 | 9/20 | **0.555** | 0.565 | −1.0 | measured 09-29; no round-3 change |
+| museum_artifact | 6/20 | 4/20 | **0.270** | 0.315 | −4.5 | measured 09-29; no round-3 change |
+| disaster_relief | 4/12 | 4/12 | **0.333** | 0.3917 | −5.8 | measured 09-29; the withdrawn edits were description-only on `_4 _9`, which failed |
+| cybermarket_pattern | 14/20 | 11/20 | **0.655** | 0.655 | 0 | the 09-28 run, on exactly `0c6a4f0` |
+| cold_chain_pharma_compliance | 11/18 | 9/18 | **0.5778** | 0.5778 | 0 | the 09-28 run, on exactly `0c6a4f0` |
+| insider_trading | 8/21 | 7/21 | **0.367** (est.) | 0.3286 | +3.8 | 09-29 close minus the withdrawn `_11` |
+| hulushows | 12/20 | 9/20 | **0.555** (est.) | 0.645 | −9.0 | 09-29 close minus the withdrawn `_19` |
+| households | 3/21 | 3/21 | **0.143** (est.) | 0.112 | +3.1 | 09-29 close minus the withdrawn `_17` |
+
+The three estimates assume the withdrawn task reverts to 0 and every other task scores as it did in the
+09-29 close. Everything the Δ column shows is now the 09-27 retrofit, the engine-note fixes and n=1
+noise; **round 3 itself leaves no lasting model change**. Its durable output is the findings below and
+the rule that stops this recurring: on `nocheat`, no model change may be motivated by `gold_diff`
+output (`docs/bird-database-testing-prompt.md`, top of Method).
+
 **Benchmark spend: $50.15 of $100** (sum of `llm_usage.total.cost_usd` over 14 runs, 200 task-runs, $0.251/task)
 
 ## Arm

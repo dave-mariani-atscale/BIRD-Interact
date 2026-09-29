@@ -329,6 +329,14 @@ order of how much they can move a number:
 Rows 19 and 20 were bought on 2026-09-28 and are no longer dashes. Both ran on the **nocheat**
 arm (branch `nocheat` @`0c6a4f0` = main `7881d16` + the description-only strip), n=1.
 
+**2026-09-29 ROUND 3 WITHDRAWN.** Every round-3 model change was reverted the same day (all were
+gold_diff-triggered, finding 2/3 of the cheating review). Current state, per
+`results/optimize_r3_20260929/RESULT.md` top table: cross_border 0.600, fake_account 0.671,
+sports_events 0.555, museum_artifact 0.270, disaster_relief 0.333 (measured, still valid);
+cybermarket 0.655 and cold_chain 0.5778 (the 09-28 rows stand); insider_trading 0.367, hulushows
+0.555, households 0.143 (estimates: 09-29 close minus the withdrawn task). The table below records
+what was measured on the since-reverted models.
+
 **2026-09-29 ROUND 3 — supersedes the rows below for these ten databases.** One task at a time on
 branch `nocheat` (end `f007a0c`), n=1, $50.15 benchmark. Full record `results/optimize_r3_20260929/RESULT.md`.
 

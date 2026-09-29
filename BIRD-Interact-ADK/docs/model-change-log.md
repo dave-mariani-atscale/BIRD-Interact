@@ -10458,3 +10458,11 @@ script refuses to run if origin does not resolve to the -noquestions URL.
 written by one Opus call from the KB and schema only: `results/noq_selftest_lca/questions_20260929.json`,
 sha256 `25027ce38085f8e829ac0475de6e589440fe51ca1e5c6405699d87c0e731d085`. Contamination check
 (6-gram overlap with the real questions, counts only): 0 of 20.
+- **ROUND 3 WITHDRAWN, same day** (Dianne: remove any change the cheating review would flag). Every
+  surviving round-3 change was motivated by `gold_diff` output — review finding 2 (closed questions
+  whose options were found with gold) or 3 (objects/readings that exist because gold projects them).
+  Reverted: cybermarket `_6 _9` (6a0cf0d), cold_chain `_1` (63c377e, 13f3665), households `_17`
+  (7cf5ec8), hulushows `_19` (c99775a), insider_trading `_11 _15` + the E-22 dimension rename
+  (233ce1b). Net model diff against `0c6a4f0` is empty. `main` fast-forwarded to `nocheat` and
+  deployed from `main`. New rule for this branch: no model change may be motivated by `gold_diff`
+  output; `gold_diff` measures, it does not design.

@@ -1009,6 +1009,7 @@ pin each grain's distinct entity count in the dry-run so a dropped parent fails 
   still never enters the model in any form. Every change carries one lever tag, `[PLAIN]`,
   `[DIAG]` or `[KB]`, so the two decisions are measured separately: the `GOLD_DIFF DIAGNOSIS
   ALLOWED` block in the same kickoffs.
+  **SUPERSEDED 2026-09-29 (Dianne): no model change may be motivated by `gold_diff` output.** Not a `[DIAG]` change, not a RENAME TO PLAIN settled by a sweep, not an ask or companion sentence whose options or columns were found by diffing against gold, not an object published because gold passes on it. Those are findings 2 and 3 of `results/v12_cheating_review_20260928.md`, and every round-3 change of that kind was reverted the same day. `gold_diff` MEASURES (sweeps, verdicts, ceilings); a model change must be derivable from the KB, the warehouse and the agent's trajectory alone, and its commit must say which of those motivated it. This supersedes both the RENAME TO PLAIN and the GOLD_DIFF DIAGNOSIS decisions above.
 - Any measure computed over a subset of rows must expose its support set, and both pieces must
   be visible to the discovery API — never hidden. Ship the count of entities that actually
   entered the computation (the regression n, the non-null count) and, where a caller would

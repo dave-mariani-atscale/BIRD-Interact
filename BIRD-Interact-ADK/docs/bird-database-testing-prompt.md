@@ -406,6 +406,8 @@ except on v12 builds 18–20 (decided 2026-09-26), where a finding may motivate 
 tagged `[DIAG]`; gold SQL still never enters the model. See the kickoff's `GOLD_DIFF DIAGNOSIS
 ALLOWED` block for the tag vocabulary and the $0 ablation that measures it.
 
+**SUPERSEDED 2026-09-29 (Dianne): no model change may be motivated by `gold_diff` output.** Not a `[DIAG]` change, not a RENAME TO PLAIN settled by a sweep, not an ask or companion sentence whose options or columns were found by diffing against gold, not an object published because gold passes on it. Those are findings 2 and 3 of `results/v12_cheating_review_20260928.md`, and every round-3 change of that kind was reverted the same day. `gold_diff` MEASURES (sweeps, verdicts, ceilings); a model change must be derivable from the KB, the warehouse and the agent's trajectory alone, and its commit must say which of those motivated it.
+
 Read the finding, not the rows: `ROW ORDER` is an `ORDER BY` defect, `VALUES ROUNDING`
 is a ROUND/CAST defect, a row-count difference with the non-numeric columns matching is
 a measure or filter defect and not a join one. `--phase 2` for the follow-up. `--sql
