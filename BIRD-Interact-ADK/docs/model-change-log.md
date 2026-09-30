@@ -10560,3 +10560,39 @@ restatement removed. A8/A10 22/22, validate clean, banned-word grep 0, structura
 mechanism probes ran (`results/r4/probe_*`, ≤$25); Dianne's full run on another machine supplies the
 number. Tooling: `utilities/r4/{census,apply}.py` on the branch; edits are YAML-only, so re-run apply.py
 after any `build.sh`. First apply pass (tag `r4-pass1`) over-deleted 365 figures and was rebuilt (R4-02).
+
+## 2026-09-30 — all 22 tuned models: ng930 re-author of the no-gold strip under the 09-30 cheating rules (AtScaleInc/bird-atscale-models branch no-gold-930-logic, freeze 80b87164, deployed to bird_atscale_models_catalog_ng930)
+
+**Why.** Dianne: optimize the no-gold tuned models the way r4 optimized the v12 models
+(`results/ng930/RULES.md` = the r4 rules on the tuned estate), and fix the no-gold run's COUNT(*) collapse.
+The COUNT(*) root cause turned out to be the MCP server, not the models: `list_models` matched tables by name
+only, so a second catalog with the same table names doubled every listing and the server dropped the
+query-rules card (ATSCALE-52049, fixed on develop 08-21 / PR #116, cherry-pick #137; the benchmark branch
+`feedback-memory-combined` forked before it). Reproduced here beside main, fixed here by rebuilding the :3003
+image with the cherry-pick (memory `mcp-list-models-duplicates-beside-main`).
+
+**What changed.** Base `no-gold_leakage` (03bdb465). (1) Pass 2 of the strip (live figures → ratio words)
+reverted whole — 2,614 YAML files, descriptions only (rule 11). (2) The 620 pass-1 text sites re-decided per
+site by 14 Fable calls (`results/ng930/plan_<model>.tsv`): 106 KB-grounded asks restored as one neutral
+single-axis sentence with live counts (fake_account 17, insider 13, hulushows 11, polar 8, mental_health 8);
+80 verdict/withheld sentences rewritten as guidance or concept statements; 201 sentences restored minus
+the answer-value figures (cheat-list kind 1, e.g. sports 6720 sessions, planets per-entity maxima,
+reverse_logistics warehouse totals); 210 kept stripped; 3 plain descriptions. (3) Masked-concept guard v2
+over 1,786 digit sentences on masked-term objects: 94 figures removed (cutoff values, counts at a masked
+cutoff, per-entity answers). (4) Rule-9 sweep on 12 twin pairs: 3 renamed — disaster_relief bare
+`Mass Casualty Incident` (+ Count) = staffed-events reading, `(All Events)` beside it; planets_data bare
+`Planet Distance Light Years` (+ Mean) = flag-clean reading, `(All Recorded)` beside it; sports_events bare
+`Qualifying Specialist Rate` = last-part basis. (5) Cross-model rules (rule 8, `rules_xmodel.md`) on all 22:
+the v12 ENGINE_NOTES block verbatim (was in 0/22), a schema-agnostic qualified-FROM sentence, the
+missing-input policy sentence, the stored-spellings sentence with a per-model count from a $0 probe over
+each dataset's SQL; six `<Entity> Count` metrics on solar_panel; households "COUNT() over an identifier is
+rejected" and organ "NULLIF" (both false on pr9967) removed. (6) Two re-ask sentences dropped (rule 6).
+Edits go to YAML and generator specs through `utilities/nocheat/apply.py`; 32 re-inserted sentences are
+YAML-only — re-run `utilities/ng930/apply.py` + `xmodel.py` after any `build.sh`. A8/A10 22/22, validate
+clean, banned-word grep 0 (domain allow-list), structural diff = the renames + six metrics. Descriptions
+now 5.0k–11.7k chars (`xmodel_lengths.tsv`); the four above 10k read back untruncated from list_models.
+
+**Result.** Deployed 15:05 beside main as `bird_atscale_models_catalog_ng930` (backend `atscale_ng930`),
+gate passed, name check passed. **Not scored in this session** — mechanism probes only (`results/ng930/probe_*`,
+≤$25); the full run is Dianne's on another machine, which must run an MCP with #137 or a single catalog per
+table name. Probes (70 task-runs, $22.92, MCP with #137): restored asks fired 28/35 after one iteration, renames 8/11 (two more settled by probes: labor Average Wage Differential Rate, mental_health GEAS/GSSI Pooled), guidance 14/15, COUNT(*) canaries 3/3; estate-wide 1 COUNT(*) call, 0 unqualified-FROM, 0 precision errors. Freeze 80b87164 (tag `ng930-freeze`). Tooling `utilities/ng930/`.

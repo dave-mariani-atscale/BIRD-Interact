@@ -433,3 +433,98 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_noq
         table: Labor Certification Applications NoQ
+
+  # ng930: AtScaleInc/bird-atscale-models branch no-gold-930-logic (the no-gold tuned models re-authored
+  # under the 09-30 cheating rules), deployed beside main as catalog bird_atscale_models_catalog_ng930
+  # via CATALOG_NAME=... scripts/deploy_models.sh from the -ng930 worktree. Same object names as atscale.
+  atscale_ng930:
+    <<: *atscale
+    domains:
+      solar_panel:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Solar Panel
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Exchange Traded Funds
+      cybermarket_pattern:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Cybermarket Pattern
+      archeology_scan:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Archeology Scan
+      crypto_exchange:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Crypto Exchange
+      households:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Households
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Labor Certification Applications
+      organ_transplant:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Organ Transplant
+      cross_border:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: model_cross_border
+      insider_trading:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Insider Trading Surveillance
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Museum Artifact Conservation
+      polar_equipment:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Polar Equipment Operations
+      cold_chain_pharma_compliance:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Cold Chain Pharma Compliance
+      disaster_relief:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Disaster Relief Operations
+      hulushows:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Hulu Show Catalogue
+      mental_health:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Mental Health Assessment
+      planets_data:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Exoplanet Catalogue
+      reverse_logistics:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Reverse Logistics Returns
+      robot_fault_prediction:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Industrial Robot Fault Prediction
+      sports_events:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Motorsport Championship Records
+      virtual_idol:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Virtual Idol Fan Engagement
+      fake_account:
+        catalog: atscale_catalogs
+        schema: bird_atscale_models_catalog_ng930
+        table: Fake Account Detection
