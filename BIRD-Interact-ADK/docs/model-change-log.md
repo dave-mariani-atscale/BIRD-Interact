@@ -10512,3 +10512,23 @@ the old brief (it skipped the deleted ids) and would need regenerating before an
 **Pushed 2026-09-29:** local branch `no-questions` (261e4ce1) pushed to `AtScaleInc/bird-atscale-models` as branch
 **`blind-build`**. Push from the worktree with `git push atscaleinc no-questions:blind-build` (the worktree's `origin`
 is remapped to a fake URL for the sml-cli repository id). History includes the superseded a666a74e.
+
+## 2026-09-30 — cold_chain_pharma_compliance B2 arm, initial build (diannewood/bird-models-b2, catalog bird_models_b2, freeze 3984f00)
+
+**Why.** B2 arm of the authoring-mechanism test: `create_sml_model` generates the YAML, then Fable refines it
+in place using only the served `sml-reference-model` / `sml-essentials` skills, under the same v12 BIRD
+rules (`results/b2_arm/packet_b2.md`). Built hands-off, $0 benchmark spend.
+
+**What changed.** Generated baseline 10c5b74 (4 datasets, 5 dimensions, 1 metric; failed `sml-cli validate`
+on `jsonb` types and phantom join columns) replaced by Fable refinement 4f88989: 6 datasets (derived
+`Shipment Detail` joining the five 1:1 satellites, sensor link and device), 6 dimensions, 65 metrics, 11
+calculations. No key links shipments to batches/products/vehicles/carriers, so those ship as islands and
+CPI is unpublished. Two gate fixes: A8 reword (3c196bb), A10 judged false positive allowlisted in
+`generator/masked_allow.json` (5d59d97; KB 2's own 60-minute cutoff). Freeze 3984f00 is an empty commit on 5d59d97.
+
+**Result.** Deployed; smoke gates 1, 2, 4, 5, 7 pass, gate 3 partial. Open defects left unfixed at freeze
+(no Fable call remained): double-precision sum noise (D1), four discoverability misses (D2), all devices
+Current so the reliability score reads -40 (D3). **Not measured.** Process defects: F1 wrote nothing (15
+calls spent on reads) and was redone as Fable call 2; the arm server's restart recipe drops
+`ATSCALE_MCP_SKILLS_DIR` (read by `os.getenv`, not from `.env`) and the engine API is only reachable via
+`http://localhost/engine`. See `results/b2_arm/pass_2026-09-30.md`.
