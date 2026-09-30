@@ -136,13 +136,15 @@ between files?** Sonnet.
   a description or a name changed as one line for Opus — **all of them in ONE list, not one per
   turn**, since a gate loop that bounces a single wording fix at a time burns an Opus turn each
   time. **Ceiling-sweep rounds two onward**, against this table: `COLUMN COUNT` → change the
-  projection to the count and order gold names, and (decided 2026-09-26, builds 18–20) put a
-  companion-column sentence and a shape ask on the projected object; `ROW COUNT` with every
+  projection to the count and order gold names **in the sweep query only** — a companion-column
+  sentence or shape ask whose columns came from that finding is not shipped (§ What counts as
+  cheating, 2026-09-30); `ROW COUNT` with every
   expected row already present → a threshold the question does not state, so try the
   caller-supplied value; `ROW ORDER` → an ORDER BY defect; `VALUES` on the right shape → the
-  population or the wrong twin, so swap the published twin or restrict to the coverage flag — and
-  when the swapped twin passes, rename it bare (decided 2026-09-26, builds 18–20: the `RENAME TO
-  PLAIN` block in the kickoff); `VALUES ROUNDING` → a cast. Escalate to
+  population or the wrong twin, so swap the twin the sweep query reads or restrict to the coverage
+  flag — and when the swapped twin passes, moving the plain name onto it is allowed (ruled
+  2026-09-30; the twin itself must already exist on KB or warehouse grounds); `VALUES ROUNDING` →
+  a cast. Escalate to
   Opus only a finding that needs an object the model does not publish. Deploy,
   `scripts/gate_run.sh`, run scripts and launches, `llm_usage` summaries, sheet and change-log and
   kickoff writes, the propagation grep audits. Reports are 20 lines or fewer and it never decides
@@ -236,6 +238,9 @@ not with answers.
 | `scripts/clause_fidelity.py` | battery: inbound vs dispatched, dropped clauses |
 | `scripts/regrade_sweep.py` | re-score recorded submissions under the current grader (`regrade_flags.py` no longer exists) |
 | `scripts/gold_diff.py` | model vs gold: row count, columns, values, order, rounding — without showing you gold |
+| MCP `run_query` + Postgres on `<db>_template` | anything gold_diff does not answer |
+| `scripts/failing_sql.py <results.json>` | every query the agent wrote, its verdict, and the asks it made |
+| `--mode oracle`, `orchestrator.test_harness` | plumbing checks with zero LLM calls |
 
 Two things about `--sweep` that cost a cycle each on 2026-09-22, both still true:
 
@@ -257,10 +262,6 @@ harness loss to re-run, not as a zero — it is invisible in the results JSON an
 only in `logs/db_environment.out`. All 15 recorded occurrences are on exchange_traded_funds, whose
 gold queries hold the template longest (tracker E-03); on a database with that profile, run at
 `--concurrency 1`.
-
-| MCP `run_query` + Postgres on `<db>_template` | anything gold_diff does not answer |
-| `scripts/failing_sql.py <results.json>` | every query the agent wrote, its verdict, and the asks it made |
-| `--mode oracle`, `orchestrator.test_harness` | plumbing checks with zero LLM calls |
 
 Set `GRADING_AUDIT_PATH` on every run so it stays re-gradable offline later.
 
@@ -406,7 +407,7 @@ except on v12 builds 18–20 (decided 2026-09-26), where a finding may motivate 
 tagged `[DIAG]`; gold SQL still never enters the model. See the kickoff's `GOLD_DIFF DIAGNOSIS
 ALLOWED` block for the tag vocabulary and the $0 ablation that measures it.
 
-**SUPERSEDED 2026-09-29 (Dianne): no model change may be motivated by `gold_diff` output.** Not a `[DIAG]` change, not a RENAME TO PLAIN settled by a sweep, not an ask or companion sentence whose options or columns were found by diffing against gold, not an object published because gold passes on it. Those are findings 2 and 3 of `results/v12_cheating_review_20260928.md`, and every round-3 change of that kind was reverted the same day. `gold_diff` MEASURES (sweeps, verdicts, ceilings); a model change must be derivable from the KB, the warehouse and the agent's trajectory alone, and its commit must say which of those motivated it.
+**SUPERSEDED 2026-09-29 (Dianne), refined 2026-09-30: no SINGLE-OBJECT model change may be motivated by `gold_diff` output.** Not a `[DIAG]` change, not an ask or companion sentence whose options or columns were found by diffing against gold, not an object published because gold passes on it. Those are findings 2 and 3 of `results/v12_cheating_review_20260928.md`, and every round-3 change of that kind was reverted 2026-09-29. `gold_diff` MEASURES (sweeps, verdicts, ceilings); a model change must be derivable from the KB, the warehouse and the agent's trajectory alone, and its commit must say which of those motivated it. Two refinements ruled 2026-09-30: (a) a `gold_diff` finding MAY be used to investigate whether it reveals a non-benchmark rule that applies across ALL models — a dialect, rounding or naming convention a real semantic layer would adopt anyway — and that rule may then ship estate-wide; it may not ship to the one object the finding was about; (b) moving the plain name onto an existing reading after a sweep settles it is allowed again (see § What counts as cheating).
 
 Read the finding, not the rows: `ROW ORDER` is an `ORDER BY` defect, `VALUES ROUNDING`
 is a ROUND/CAST defect, a row-count difference with the non-numeric columns matching is
@@ -544,7 +545,9 @@ twice, even as the description's first sentence; labor `_8`). The two shape leve
 (cybermarket `_6`, cold_chain `_1`) were explicit closed asks on the object the agent actually
 projects. And an ask that bundles two questions gets half of it asked: cold_chain `_9`'s zone ask
 carried limits plus shape, and the agent asked only for limits on both runs. One ask, one axis,
-on the column the agent opens first — check `first focus` in `loop_step.py` to find it.
+on the column the agent opens first — check `first focus` in `loop_step.py` to find it. The ask's
+options must come from the KB or the question text, never from the columns `gold_diff` reported
+(the round-3 asks that converted were withdrawn for exactly that; § What counts as cheating).
 
 ## Running a targeted run
 
@@ -717,6 +720,26 @@ read any improvement. Then:
   `utilities/nocheat/strip_all.py . <db>` and `strip_residual.py . <db>` from the models repo root,
   then read `git diff -U0 -- <db>/'*.yml'` and confirm only the intended lines changed. Found
   2026-09-29 when a one-sentence edit to disaster_relief produced a 107-line YAML diff.
+
+## What counts as cheating — Dianne's rulings, 2026-09-30
+
+The kinds are those of the 2026-09-28 review (`results/v12_cheating_review_20260928.md`) and the
+cheating chart built from it. Where a kind is not listed here, the review's verdict stands: gold
+or task IDs, printed answer values, naming the benchmark, printing a hidden cutoff, and asks whose
+options came from gold (with re-ask pressure) are all **not allowed**; asks about an ambiguity
+found in the KB, and task questions read at build time, are allowed.
+
+| kind | ruling | what it means in the pass |
+|---|---|---|
+| Talks about the grader | **Never** the word "grader" or "graded" in a description. Where the sentence stripped of it reads as general guidance about the data ("these two spellings name the same thing"), it is allowed. | Grep the emitted YAML for `grader|graded`; rewrite each hit as a statement about the data, or delete it. |
+| Object built because gold used it | **Not allowed for a single object.** `gold_diff` MAY be used to investigate whether the finding reveals a non-benchmark rule that applies across all models; such a rule may ship estate-wide. | A finding is a question ("is this a general rule?"), never a ticket for the one object it was found on. Commit says which of KB / warehouse / trajectory / cross-model rule motivated it. |
+| Plain name placed on the reading gold used | **Allowed.** Reverses the 09-29 ban on sweep-settled RENAME TO PLAIN. | The reading must already exist on KB or warehouse grounds; only the bare name moves. Rename the entity's degenerate dimension in the same commit (E-22). |
+| Several readings published side by side | **Allowed.** | Twins are what a semantic layer does. The tuning of *which* twins exist still cannot come from gold (row above). |
+| Live warehouse counts | **Allowed and encouraged.** | Every "N carry a value" figure comes from a live count against the warehouse, never from gold or a sibling figure. The one exception stands: a figure that could only be produced by evaluating a withheld formula. |
+
+The 2026-09-28/29 strip (branch `nocheat`, and the tuned models' `no-cheat` branch) removed some
+text these rulings now allow — live figures reduced to words, plain-name moves. Whether any of it
+is restored is Dianne's decision, not a pass's.
 
 ## Non-negotiable
 
