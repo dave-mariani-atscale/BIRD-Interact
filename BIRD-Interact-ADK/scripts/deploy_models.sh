@@ -20,6 +20,16 @@
 #
 # Deploying publishes the WHOLE catalog: every BIRD model goes out together.
 #
+# Validate and deploy run on a STAGED copy holding only the SML project: catalog.yml
+# plus every top-level folder with a non-empty models/ directory (the BIRD databases),
+# with the git metadata sml-cli resolves the repository from. sml-cli reads every YAML
+# file under the project root and rejects any ${VAR} it cannot classify as a template
+# variable, so the repo's Docker compose files (verification/compose, scripts/) made
+# every branch containing them undeployable. Selecting the models by what they contain
+# rather than excluding named tooling folders means a new tooling folder cannot break
+# deploys again - the same rule verification/build/fetch-models.sh applies. The gates
+# still read the repo itself. DEPLOY_DRY_RUN=1 stops before the publish.
+#
 # Usage: scripts/deploy_models.sh [expected_model_count]   (default 22)
 set -euo pipefail
 
@@ -57,8 +67,25 @@ fi
 echo "  OK - $BRANCH matches origin at $(git rev-parse --short HEAD)"
 
 echo
-echo "=== validate (run from the repo ROOT: catalog.yml lives here) ==="
-sml-cli validate . 2>&1 | tail -3
+echo "=== stage the SML project (catalog.yml + folders with a models/ directory) ==="
+[ -f catalog.yml ] || { echo "FAIL: no catalog.yml at $MODELS_DIR"; exit 1; }
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/sml-deploy.XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
+cp -p catalog.yml "$STAGE"/
+cp -Rp .git "$STAGE"/          # a directory in a clone, a gitdir pointer file in a worktree
+STAGED=()
+for d in */; do
+  d="${d%/}"
+  if [ -d "$d/models" ] && [ -n "$(ls -A "$d/models" 2>/dev/null)" ]; then
+    cp -Rp "$d" "$STAGE"/ && STAGED+=("$d")
+  fi
+done
+echo "  staged ${#STAGED[@]} model folders; left out: $(for d in */; do d="${d%/}"; [[ " ${STAGED[*]} " == *" $d "* ]] || printf '%s ' "$d"; done)"
+[ "${#STAGED[@]}" -ge "$EXPECTED" ] || { echo "FAIL: staged ${#STAGED[@]} model folders, expected at least $EXPECTED"; exit 1; }
+
+echo
+echo "=== validate (the staged SML project) ==="
+( cd "$STAGE" && sml-cli validate . 2>&1 | tail -3 )
 
 echo
 echo "=== A8 question-leakage gate, per model ==="
@@ -134,9 +161,13 @@ done
 
 echo
 echo "=== deploy ==="
-ATSCALE_API_URL=http://local.atscaleinternal.com:3001 \
-ATSCALE_API_TOKEN="$TOKEN" \
-  sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -8
+if [ -n "${DEPLOY_DRY_RUN:-}" ]; then
+  echo "  DEPLOY_DRY_RUN set - stopping before the publish (staged, validated, gated)."
+  exit 0
+fi
+( cd "$STAGE" && ATSCALE_API_URL=http://local.atscaleinternal.com:3001 \
+  ATSCALE_API_TOKEN="$TOKEN" \
+  sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -8 )
 
 echo
 echo "=== post-deploy gate (Q-17b: a working run_query is NOT evidence of health) ==="
