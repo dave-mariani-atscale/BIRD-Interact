@@ -10532,3 +10532,31 @@ Current so the reliability score reads -40 (D3). **Not measured.** Process defec
 calls spent on reads) and was redone as Fable call 2; the arm server's restart recipe drops
 `ATSCALE_MCP_SKILLS_DIR` (read by `os.getenv`, not from `.env`) and the engine API is only reachable via
 `http://localhost/engine`. See `results/b2_arm/pass_2026-09-30.md`.
+
+## 2026-09-30 — all 22 v12 models: r4 re-author under the 09-30 cheating rules (diannewood/bird-models-v12 branch r4, 7af7dcf, deployed to bird_models_v12)
+
+**Why.** The 09-28 `nocheat` strip (0c6a4f0) removed 289 description sites by regex, deleting KB-grounded
+asks and live counts along with the benchmark-aware, grader-aware and gold-sourced text. Dianne's 09-30
+rules (`results/r4/RULES.md`) allow asks about KB/warehouse ambiguities, live counts, twins side by side
+and sweep-settled bare names, and forbid the word "grader", benchmark references, hidden cutoffs and
+gold-sourced asks with re-ask pressure. This pass re-decides every stripped site under those rules.
+
+**What changed.** Description text on all 22 models, plus two renames. Per site (Fable, 10 design calls):
+119 asks restored as one neutral single-axis sentence each with live counts (robot 38, organ 20, polar 20,
+solar 12, insider 7 …); 105 grader/withheld sentences rewritten as guidance or concept statements
+(virtual_idol 33, insider 34); 14 gold-found asks reduced to plain descriptions; 41 kept stripped; the
+withdrawn round-3 cybermarket `_9` hunk readopted. Renames settled by the $0 sweep (rule 9): ETF bare
+`Sector Weight` now the percent reading (`Sector Weight (Fraction)` beside it); insider bare
+`Insider Network Strength` now the verbatim string (`(Per Trader)` numeric beside it) — the [PLAIN]
+part of 3b2c68d. Cross-model rules (rule 8): numeric-precision/sort engine notes added to archeology_scan
+and exchange_traded_funds; one missing-record-convention sentence and one case-folded-spellings sentence
+on every model. Masked-concept guard v2: 126 figures at a masked CUTOFF removed estate-wide (count at the
+cutoff, the cutoff itself, per-entity outputs — e.g. insider "217 exceed 0.75", planets flag Yes-counts,
+solar Soiling "NONE above 15"); ranges and means of masked formulas kept. Stale counts fixed (insider
+922→992, 703→698), mental_health's 39 `Yes on ? of N` placeholders filled (R4-03), ETF Golden Cross
+restatement removed. A8/A10 22/22, validate clean, banned-word grep 0, structural diff = the two renames.
+
+**Result.** Deployed 12:20, gate passed, E-18 name check passed. **Not scored in this session** — only
+mechanism probes ran (`results/r4/probe_*`, ≤$25); Dianne's full run on another machine supplies the
+number. Tooling: `utilities/r4/{census,apply}.py` on the branch; edits are YAML-only, so re-run apply.py
+after any `build.sh`. First apply pass (tag `r4-pass1`) over-deleted 365 figures and was rebuilt (R4-02).
