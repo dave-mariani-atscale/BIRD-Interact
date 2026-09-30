@@ -14,6 +14,7 @@ import argparse, collections, datetime, glob, json, os, re, sys
 # $/MTok: input, output, cache read, cache write
 PRICES = {
     "claude-fable-5-1": (10, 50, 0.25, 12.5),
+    "claude-opus-5-5": (4, 20, 0.2, 5),
     "claude-opus-5": (5, 25, 0.5, 6.25),
     "claude-sonnet-5": (2, 10, 0.2, 2.5),
     "claude-haiku-4-5": (1, 5, 0.1, 1.25),
