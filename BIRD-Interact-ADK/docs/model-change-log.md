@@ -10596,3 +10596,58 @@ now 5.0k–11.7k chars (`xmodel_lengths.tsv`); the four above 10k read back untr
 gate passed, name check passed. **Not scored in this session** — mechanism probes only (`results/ng930/probe_*`,
 ≤$25); the full run is Dianne's on another machine, which must run an MCP with #137 or a single catalog per
 table name. Probes (70 task-runs, $22.92, MCP with #137): restored asks fired 28/35 after one iteration, renames 8/11 (two more settled by probes: labor Average Wage Differential Rate, mental_health GEAS/GSSI Pooled), guidance 14/15, COUNT(*) canaries 3/3; estate-wide 1 COUNT(*) call, 0 unqualified-FROM, 0 precision errors. Freeze 80b87164 (tag `ng930-freeze`). Tooling `utilities/ng930/`.
+
+## 2026-10-01 — ng930 tuned models (AtScaleInc/bird-atscale-models branch no-gold-930-logic): nine landed commits reviewed, one reverted, five KB-grounded levers, one rule-9 rename (10567122 → e453667b, deployed to bird_atscale_models_catalog_ng930)
+
+**Why.** Dianne: an optimization run on `no-gold-930-logic` from the colleague_1001 re-run
+(`results/colleague_1001/RESULTS.md`: Query P1 69.02% vs 72.68% for 09-10 main, 26 tasks lost,
+10 gained), after reviewing the model changes that had already landed. Nine commits had landed on
+the branch today (1eaf7d74..10567122, none recorded here): ATSCALE-53922 rank `ALL(...)` lists
+(ETF `Fund Composite Score Rank (Within Category)` removed as a global rank; mental_health clinician
+rank and virtual_idol fan ranks completed), and seven description commits aimed at the lost tasks
+(hulushows series names, museum vulnerability/ERF, planets separate name+star columns, sports session
+type and rounding, mental_health facility populations, insider ATI vs ASS ask, labor visa-class ask,
+cold_chain point scores, archeology mesh labels and ordering, ETF report shape).
+
+**Review of the landed commits.** One is gold-derived and was reverted (06fcec88): bf98ab7d's
+four cold_chain `Average ... Point Score` metrics (route risk 8/5/2, certification 10/8/4,
+qualification 9/7/5, GDP 9/6/3, with dataset CASE columns) are exactly the proxy scales this log
+records (entry of 2026-08-27, "Gold `_10`'s Supply Chain Resilience Score invents four 0-10 proxy
+scales") — KB 30 names ART/RRD/SBP/SMC, none stored, and the model's own text says so. Single
+object, gold-found: not allowed under the 09-30 rulings (M-113). cold_chain_10 had passed P1 only on
+them (13:32 canary run) and is 0/2 without them, which is where the colleague re-run had it. The same
+commit's `Resource Adequacy And Adherence Correlation` printed the whole-warehouse coefficient
+0.324601, the value mental_health_2 asks for (rule 2): figure stripped, metric kept (KB term CRAA).
+Flagged, not reverted: the museum "pair it with Artifact Count (Rated For Environmental Risk) and
+filter ... IS NOT NULL" companion-column sentence and the sports "return Session Type alone"
+projection sentence are shape text whose commits cite trajectories and briefs; their provenance is
+Dianne's to confirm. Everything else reviewed is KB- or trajectory-grounded.
+
+**What changed (2942e443, e453667b).** Description-only except the last: solar_panel both ADR
+readings — KB 11 multiplies ADR as published, no division by 100 (the trajectory divided it);
+polar_equipment both PTEC readings — KB 55's report lists VPC, ESI and PTEC per vehicle (the
+trajectory projected the coefficient alone); hulushows `Film Clips` — stored names Film_Clips /
+FilmClip_Vol beside the published ones (the simulator named FilmClip_Vol and the agent substituted
+Clips Total); planets_data inclusive retrograde twin — KB 31 is strict, the strict-vs-inclusive ask
+is closed. Then, after a $0 rule-9 sweep (host star name PASSES as the name column, Companion Letter
+FAILS, the carried ask never fired in three runs), the plain `Planet Name` alias now reads
+`host_star_name`; the combined star+letter string stays as the `Planet` level
+(`_attach_agent_aliases` now writes a correct prefix when the alias column differs from the level's).
+Edits are in the generator specs AND the YAML; the 32 YAML-only ng930 sentences are untouched.
+
+**Result (n=2 targeted, memory off, Sonnet 5, corrected grading; $6.58 benchmark).**
+`results/ng930_opt_1001_iter1_20261001_153011` and `..._iter2_20261001_160156`:
+solar_panel_2 0 → 1.0 (2/2, no /100 written), polar_equipment_16 0 → 1.0 (2/2, VPC+ESI projected),
+hulushows_19 1/2 (the pass asked "general or film clips", the simulator said film, Film Clips
+projected; the fail never asked), mental_health_2 0/2 (its stored submission passes at $0, but the
+simulator answered "a single summary row" both times against the per-facility reference — simulator
+cap, B-109), planets_data_2 0/2 then 0/2 after the rename (mechanism fired 1/2: the agent dropped the
+`Orbital Velocity IS NOT NULL` filter once and projected the `Planet` level instead of `Planet Name`
+once; capped at three paid iterations). Canaries: planets_data_1 and _18 2/2, mental_health_3 and
+cold_chain_10 unchanged from the re-run; solar_panel_11 kept P1 and lost P2 in both repeats on a
+per-snapshot-vs-per-plant grain answer the ADR sentence does not touch (its passing baseline reduced
+per plant) — recorded, not reverted; Dianne's call. Fourteen of the 26 lost tasks are
+simulator/reference-bound at $0 (B-109); two are agent variance. Net at n=2: two tasks converted,
+one flaky, so roughly +0.5 pp Query P1 on the 410-task arm — the 15-task gap to main is mostly in
+B-109's simulator-decided choices, which main's text settles and which the no-gold rules forbid
+restoring from gold. Session: Fable, `scripts/session_cost.py --session` in the report.
