@@ -10965,7 +10965,9 @@ why they "matched".
 Mechanism fired on every run: MKT projected 2/2, Social Butterfly filter 2/2, median twin projected 2/2.
 - cold_chain_7: P1 2/2, P2 1/2 (r5: P2 never submitted). Run 1 still spent 11 explore_columns calls.
 - fake_account_24: P1 2/2, P2 0/2. The population is now right; 11 of 12 cells match. One median is 0.05 against 0.06,
-  likely the percentile sketch (compression 100) being approximate. A $0 exact-median check is owed before any change.
+  checked at $0 the same day: the engine median equals Postgres percentile_cont exactly (Forum 0.065363, Microblog
+  0.066525), and the exact Video Platform median of the zero-filled population is 0.0537. The reference needs >= 0.055,
+  so it uses another population. Capped; no compression change.
 - virtual_idol_12: P1 2/2, P2 0/2. All 4 fans over 30 days returned; the reference has 1 row. Capped.
 - sports_7 (NULLIF note): run 1 1.0, run 2 0 (P1: the simulator chose the sample stddev; variance).
 Reward 2.75/4 mean vs r5 2.8 for these four: flat. P1 7/8 (r5 4/4), P2 2/8 (r5 0/4).
