@@ -10954,6 +10954,9 @@ virtual_17 and insider_8 (the alternative reading comes only from the reference)
 YAML and generators both. Probed live: the r5 search lists now return MKT and Social Butterfly, and the median twin
 runs (Forum 0.0654 vs strict 0.0806).
 
-**Also found (no change):** the r5 search misses on multi-word search strings do not reproduce on this machine's MCP
-(strings are split into words). The colleague's r5 machine behaves differently, which matters for baseline comparisons.
-Unmeasured.
+**Also found (no change; corrected the same day):** the r5 search misses on multi-word search strings are NOT a
+difference between machines. Both run MCP 930149b (`x-atscale-mcp-version` here; `mcp:bird-develop-rebase` PR #169 @
+930149b in the colleague's RESULTS.md) and engine pr10556. The misses come from the harness: `system_agent/tools_atscale.py`
+wraps a bare string as ONE phrase, so a comma list in a string ("lemon, inefficient, chronic downtime") never matches.
+In r5 that was 18 of 20 comma strings; space-only phrases missed 42 of 102. Direct MCP probes bypass the wrapper, which is
+why they "matched". Unmeasured.
