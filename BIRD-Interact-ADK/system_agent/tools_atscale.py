@@ -147,7 +147,7 @@ async def list_models(tool_context: ToolContext) -> str:
         if question:
             args["question"] = question
     args = dict(args)
-    if settings.leaderboard_mode:
+    if settings.aggregates_bypassed:
         # A model load pre-samples every text dimension in the model; those engine
         # queries are hinted only if this call asks. Same flag as run_query.
         args["disable_aggregates"] = True
@@ -260,7 +260,7 @@ async def focus_columns(columns: List[str], tool_context: ToolContext) -> str:
     if err:
         return err
     args = {**domain, "columns": columns}
-    if settings.leaderboard_mode:
+    if settings.aggregates_bypassed:
         # focus_columns issues one distinct-value preview query per dimension
         # column, which makes it the most numerous engine path in a run. Left
         # unhinted it teaches the engine aggregates even when every graded query
@@ -302,7 +302,7 @@ async def run_query(query: str, tool_context: ToolContext) -> str:
         logger.warning("run_query blocked (wrong model): %s", query)
         return violation
     args = {"query": query}
-    if settings.leaderboard_mode:
+    if settings.aggregates_bypassed:
         # Leaderboard mode: the engine must neither read nor learn an aggregate
         # table for anything the agent runs, so the outbound SQL of every query
         # (and of the graded re-execution, db_environment/server.py) reads only

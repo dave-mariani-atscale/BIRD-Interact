@@ -113,6 +113,7 @@ async def health():
         "model": settings.system_agent_model,
         "environment_backend": settings.environment_backend,
         "leaderboard_mode": settings.leaderboard_mode,
+        "aggregates_bypassed": settings.aggregates_bypassed,
         "cost_scheme": cost_scheme_name(),
         "adk_available": runtime.available,
         "adk_error": runtime.error,

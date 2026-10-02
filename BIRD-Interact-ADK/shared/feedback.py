@@ -272,7 +272,7 @@ def record_submission_verdict(
                     # rejects produces no exchangeId line and the verdict is
                     # dropped — there is no stored SQL to protect or poison.
                     args = {"query": sql, "question": question}
-                    if settings.leaderboard_mode:
+                    if settings.aggregates_bypassed:
                         # Same bypass every other run_query carries in
                         # leaderboard mode. This one is a BACKGROUND thread, so
                         # its aggregates land a second or two after submit_sql

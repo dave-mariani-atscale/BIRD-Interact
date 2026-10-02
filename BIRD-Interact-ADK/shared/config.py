@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     # this flag than its own, so a half-switched stack cannot score a run.
     # scripts/run_leaderboard.sh is the one-command entry point.
     leaderboard_mode: bool = False
+    # Keep the AtScale engine from READING or BUILDING aggregate tables for anything a run sends, outside
+    # leaderboard mode too (env DISABLE_AGGREGATES). Same per-request bypass leaderboard mode uses - every
+    # run_query, list_models presample, focus_columns preview, grading re-execution and feedback write-back
+    # carries disable_aggregates=true, which the MCP server turns into use_aggs(false) generate_aggs(false).
+    # Needs the server's per_query_disable_aggregates (on by default). Off by default, so runs before
+    # 2026-10-02 - main 09-10 included - planned against aggregates the engine built during the run.
+    disable_aggregates: bool = False
     # The agent under test in leaderboard mode. Opus 4.6 first, so the run
     # compares directly with Anthropic's Claude-Opus-4.6 entry (33.0% phase-1
     # success, Claude-Haiku-4-5 simulator); override with LEADERBOARD_AGENT_MODEL.
@@ -311,6 +318,11 @@ class Settings(BaseSettings):
     @property
     def data_dir(self) -> Path:
         return PROJECT_ROOT / f"bird-interact-{self.dataset}"
+
+    @property
+    def aggregates_bypassed(self) -> bool:
+        """Whether every engine query a run sends asks for no aggregate reads and no aggregate builds."""
+        return self.leaderboard_mode or self.disable_aggregates
 
     @property
     def data_path(self) -> str:

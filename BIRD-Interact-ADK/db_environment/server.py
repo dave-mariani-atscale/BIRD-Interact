@@ -186,7 +186,7 @@ def _run_query_via_semantic_layer(query: str) -> str:
         args: dict = {"query": query}
         if settings.feedback_memory:
             args["log_exchange"] = False
-        if settings.leaderboard_mode:
+        if settings.aggregates_bypassed:
             # The outbound SQL of THIS execution is what the submission carries;
             # with aggregates on it reads aggregates.as_agg_* tables the BIRD
             # evaluator does not have (seen live 2026-09-11: a passing answer
@@ -623,6 +623,7 @@ async def health():
     return {"status": "healthy", "service": "db_environment",
             "environment_backend": settings.environment_backend,
             "leaderboard_mode": settings.leaderboard_mode,
+            "aggregates_bypassed": settings.aggregates_bypassed,
             "grading": {"regime": settings.grading_regime,
                         "corrections": list(active_grading_corrections())}}
 
