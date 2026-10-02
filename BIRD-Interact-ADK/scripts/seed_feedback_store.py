@@ -5,8 +5,9 @@ Replays each recorded submission through the SAME two tool calls the harness
 makes during a run: run_query(pred_sql, question) to create the exchange, then
 record_feedback with the recorded verdict (source=end_user_explicit, rater
 bird_simulator, the deployment rater token). The store that results is what the
-run itself would have left behind — agent SQL and simulator verdicts only,
-never gold.
+run itself would have left behind: agent SQL plus the grader's pass/fail
+against gold (recorded as the user's verdict). No gold SQL or result is stored,
+but every verdict is derived from it.
 
 Purpose: offline diagnosis of the memory serving gates (probe_memory_blocks.py)
 when a run's store was not retained. Only run against a store you have backed

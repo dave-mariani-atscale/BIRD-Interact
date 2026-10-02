@@ -7,10 +7,16 @@ backend, the harness:
   2. captures the `exchangeId: <uuid>` line the MCP server appends to run_query
      results — and STRIPS it before the agent sees the response, so the
      agent-visible surface is byte-identical to a flag-off run,
-  3. records the simulated user's verdict about each submission (accepted ->
-     correct, rejected -> incorrect) against the matching exchange via the
-     server's record_feedback tool, fire-and-forget on a daemon thread, with
-     the task's ask_user clarifications attached to the verdict's note.
+  3. records the GRADER's verdict on each submission (passed against the task's
+     gold SQL -> correct, failed -> incorrect) against the matching exchange via
+     the server's record_feedback tool, fire-and-forget on a daemon thread, with
+     the task's ask_user clarifications attached to the verdict's note. It is
+     sent as source=end_user_explicit, so ONE pass certifies the query shape
+     and later tasks are shown it: the memory learns from gold-graded outcomes
+     (disclosed in docs/leaderboard-submission-methodology.md, item 4; review
+     tracker item 4). It was described here as "the simulated user's verdict"
+     until 2026-10-01, which it never was - the simulator's reply is only the
+     note's text.
 
 Integrity notes (binding — see the PRD's Section 7 and the harness tracker):
   - Nothing here changes what the agent sees, pays, or can do: record_feedback
@@ -221,10 +227,12 @@ def _submission_note(state: MutableMapping[str, Any], message: str) -> str:
 def record_submission_verdict(
     state: MutableMapping[str, Any], sql: str, passed: bool, message: str
 ) -> None:
-    """Record the simulated user's verdict about a submission, fire-and-forget.
+    """Record the grader's verdict on a submission, fire-and-forget.
 
-    The simulated user explicitly told the agent the answer was right/wrong, so
-    source=end_user_explicit. When no exchange matches the submitted SQL (the
+    `passed` is the /submit grade against the task's gold SQL and test cases,
+    not a judgement by the simulated user; the simulator's reply only becomes
+    the note. It is sent as source=end_user_explicit, the privileged source, so
+    one "correct" certifies the shape for later tasks. When no exchange matches the submitted SQL (the
     agent edited it after its last run_query — trim-then-submit), one is created
     for it here by running the submitted SQL through run_query with the task
     question, so the verdict always lands on the SQL that was actually graded.

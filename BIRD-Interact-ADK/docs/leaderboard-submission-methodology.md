@@ -114,6 +114,16 @@ whichever you consider correct; we simply did not want to hand you the higher nu
 without saying where it comes from. The mechanism is described in a draft whitepaper
 we are finishing and can share with you.
 
+What that memory learns from needs stating plainly, because it is your grader. Each
+submission is graded by the harness's copy of your evaluator against the task's gold
+SQL, and that pass or fail is recorded as the user's verdict on the query; one
+"correct" verdict certifies the query's shape, and certified shapes are shown to the
+agent on later tasks. The memory therefore learns from gold-graded outcomes: in the
+first run from earlier tasks of the same sweep, and in the second and third runs also
+from run 1's answers to the same questions. The agent never sees gold SQL, results or
+test cases, only which of its own earlier queries were accepted. The store is emptied
+before the first run of every sweep, and the reset is logged beside its results.
+
 **5. The scaffold was developed against this public dataset.** Our agent instruction
 and the 22 semantic models were built and tuned while measuring against
 BIRD-Interact-Full. Gold SQL was not used to create the semantic models. This differs
