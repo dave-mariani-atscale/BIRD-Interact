@@ -34,6 +34,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger(__name__)
 
 
+def harness_git_state() -> Dict[str, Any]:
+    """The harness commit this run started from, and whether tracked files were
+    modified on top of it. Captured once at run start: a commit landing
+    mid-sweep must not relabel a run that began on the one before it.
+
+    Recorded because the 2026-09 leaderboard results carried no commit at all,
+    so which code produced a submitted run had to be reconstructed from commit
+    timestamps afterwards (review tracker item 18), and two sweeps turned out to
+    have run on uncommitted code. `dirty_files` lists tracked files only;
+    untracked scratch files never reach the services' import path.
+    """
+    import subprocess
+    repo = str(PROJECT_ROOT)
+
+    def git(*args: str) -> str:
+        # rstrip only: a porcelain line starts with a status column that may be a space.
+        return subprocess.run(["git", "-C", repo, *args], capture_output=True,
+                              text=True, timeout=10).stdout.rstrip("\n")
+
+    try:
+        sha = git("rev-parse", "HEAD").strip()
+        dirty = [line[3:] for line in git("status", "--porcelain", "--untracked-files=no").splitlines() if line]
+    except Exception as e:  # noqa: BLE001 - provenance must never fail a run
+        return {"commit": "", "error": f"{type(e).__name__}: {e}"}
+    return {"commit": sha, "dirty": bool(dirty), "dirty_files": dirty[:50]}
+
+
 def _cost_scheme_name() -> str:
     # Lives in system_agent.callbacks (needs google-adk); the runner only names it.
     return "universal_cost_scheme" if settings.leaderboard_mode else "harness_default"
@@ -106,6 +133,7 @@ async def run_parallel_evaluation(
     # long-lived and don't know about runs, so their usage rows are attributed
     # to a run by timestamp — sound because runs are sequential (see --repeat).
     run_started = time.time()
+    harness_state = harness_git_state()
     # Stamped once here, not per _save(), so incremental saves keep
     # appending to this run's own file instead of starting a new one.
     output_path = timestamped_output_path(output_path)
@@ -126,6 +154,9 @@ async def run_parallel_evaluation(
             # lets a finished run be re-scored offline without a re-run.
             "run_started": run_started,
             "run_finished": time.time(),
+            # Which harness code produced this file (commit at run start, plus
+            # whether tracked files were modified on top of it).
+            "harness": harness_state,
             # HOW PARALLEL THIS RUN WAS. Per-task `elapsed_seconds` includes time
             # queued behind the other tasks in flight, so it is only comparable
             # between runs at the SAME concurrency: the 2026-08-20 waves ran the

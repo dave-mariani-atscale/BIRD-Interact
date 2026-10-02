@@ -750,7 +750,19 @@ def remove_distinct(sql_list: List[str]) -> List[str]:
     Still splits on " " rather than re-tokenising, so whitespace handling is byte for
     byte what upstream produces and the output changes for these two operators and
     for nothing else.
+
+    UPSTREAM REGIME (leaderboard mode): upstream's function, verbatim - every token
+    equal to "distinct" goes, operators included. Keeping DISTINCT ON / IS DISTINCT
+    FROM was ungated from 7918f29 (2026-08-23) until 2026-10-01, so it was live in
+    every leaderboard sweep and in the "upstream" replay: museum_artifact_5 and _7
+    passed for us where BIRD's evaluator, whose cleaning turns their gold into a
+    syntax error, scores them 0 (review tracker item 6). A leaderboard number has
+    to be the one the board's own code produces, so the carve-out above is now a
+    corrected-regime behaviour only.
     """
+    if settings.grading_regime == "upstream":
+        # evaluation/src/eval_bird_interact.py remove_distinct, verbatim.
+        return [" ".join(t for t in q.split(" ") if t.lower() != "distinct") for q in sql_list]
     cleaned = []
     for query in sql_list:
         tokens = query.split(" ")
@@ -1083,7 +1095,17 @@ def ex_base_external_pred(pred_res, sol_sqls, db_name, conn, conditions=None) ->
     # is one task is the point — the strip is not worth the risk of making a
     # correct answer unpassable, and outside those 43 golds the code path here
     # is byte-identical, so nothing else can move.
-    sol_sqls = remove_round(remove_comments(sol_sqls))
+    #
+    # UPSTREAM REGIME (leaderboard mode): gold DOES go through remove_distinct, as
+    # upstream's test_case_default strips it from both sides. Everything above is
+    # an argument for the corrected regime; it was ungated from 780f6d7
+    # (2026-08-26) until 2026-10-01, so museum_artifact_6 passed live in every
+    # leaderboard sweep and failed only in the replay (review tracker item 6).
+    # Under the upstream regime the live verdict now matches the replay's.
+    if settings.grading_regime == "upstream":
+        sol_sqls = remove_round(remove_distinct(remove_comments(sol_sqls)))
+    else:
+        sol_sqls = remove_round(remove_comments(sol_sqls))
     gt_res, gt_err, gt_to, gt_desc = execute_queries(sol_sqls, db_name, conn)
     if gt_err or gt_to:
         return 0

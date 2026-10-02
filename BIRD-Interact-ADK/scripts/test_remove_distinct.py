@@ -106,6 +106,37 @@ def run_unit() -> int:
     return failures
 
 
+def run_upstream_regime() -> int:
+    """Under the upstream regime (leaderboard mode) the carve-outs are OFF:
+    remove_distinct must equal upstream's evaluation/src/eval_bird_interact.py
+    function on every case and on every gold in the dataset, because a
+    leaderboard number has to be the one the board's own code produces
+    (review tracker item 6). The corrected-regime cases above still hold."""
+    src = (Path(__file__).resolve().parents[2] / "evaluation/src/eval_bird_interact.py").read_text()
+    ns: dict = {}
+    exec(src[src.index("def remove_distinct"):src.index("def remove_round_functions")], ns)
+    upstream = ns["remove_distinct"]
+    cases = [c[0] for c in UNIT_CASES]
+    data = Path(settings.data_path)
+    if data.exists():
+        for line in data.open():
+            t = json.loads(line)
+            for s in (t.get("sol_sql") or []), ((t.get("follow_up") or {}).get("sol_sql") or []):
+                cases += [s] if isinstance(s, str) else [q for q in s if q]
+    saved = settings.leaderboard_mode
+    settings.leaderboard_mode = True
+    try:
+        assert settings.grading_regime == "upstream"
+        bad = [q for q in cases if remove_distinct([q]) != upstream([q])]
+    finally:
+        settings.leaderboard_mode = saved
+    print(f"  [{'ok' if not bad else 'FAIL'}] upstream regime equals upstream's remove_distinct "
+          f"on {len(cases)} SQL strings ({len(bad)} differ)")
+    for q in bad[:3]:
+        print(f"          differs on: {q[:120]}")
+    return 1 if bad else 0
+
+
 def run_live() -> int:
     """Every affected gold, cleaned exactly as the graders clean it.
 
@@ -252,6 +283,8 @@ def main() -> int:
 
     print("unit:")
     failures = run_unit()
+    print("upstream regime (leaderboard mode):")
+    failures += run_upstream_regime()
     if not args.unit_only:
         print("live (gold must execute after cleanup):")
         failures += run_live()
