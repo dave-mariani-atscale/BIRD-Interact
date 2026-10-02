@@ -10959,4 +10959,13 @@ difference between machines. Both run MCP 930149b (`x-atscale-mcp-version` here;
 930149b in the colleague's RESULTS.md) and engine pr10556. The misses come from the harness: `system_agent/tools_atscale.py`
 wraps a bare string as ONE phrase, so a comma list in a string ("lemon, inefficient, chronic downtime") never matches.
 In r5 that was 18 of 20 comma strings; space-only phrases missed 42 of 102. Direct MCP probes bypass the wrapper, which is
-why they "matched". Unmeasured.
+why they "matched".
+
+**Result (n=2, memory off, Sonnet 5; $2.03 from llm_usage, cache_read nonzero; `results/phaseb_1002_run0{1,2}_*.json`).**
+Mechanism fired on every run: MKT projected 2/2, Social Butterfly filter 2/2, median twin projected 2/2.
+- cold_chain_7: P1 2/2, P2 1/2 (r5: P2 never submitted). Run 1 still spent 11 explore_columns calls.
+- fake_account_24: P1 2/2, P2 0/2. The population is now right; 11 of 12 cells match. One median is 0.05 against 0.06,
+  likely the percentile sketch (compression 100) being approximate. A $0 exact-median check is owed before any change.
+- virtual_idol_12: P1 2/2, P2 0/2. All 4 fans over 30 days returned; the reference has 1 row. Capped.
+- sports_7 (NULLIF note): run 1 1.0, run 2 0 (P1: the simulator chose the sample stddev; variance).
+Reward 2.75/4 mean vs r5 2.8 for these four: flat. P1 7/8 (r5 4/4), P2 2/8 (r5 0/4).
