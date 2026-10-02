@@ -10726,3 +10726,43 @@ route). _9 P2 stays R2-40 (reference floor 0.01 vs the KB formula's negatives, w
 formula matches gold on _12). Tracker: M-114 (pass), B-110 (new cap), notes on B-109 (_3 _7 _8
 were not simulator-bound), R2-40, B-95. Not a scoring number — two n=1 repeats on a hand-picked
 subset; the arm needs its full run.
+
+## 2026-10-02 — hulushows, planets_data (AtScaleInc/bird-atscale-models branch no-gold-930-logic, 2b311eb3 → 832ecf0a, deployed to bird_atscale_models_catalog_ng930): whole-task pass on the tasks main passes and ng930 fails
+
+**Why.** Same pass shape as the cross_border entry above, on the next two deficit databases in
+`results/colleague_1001`. Candidates were the tasks main0910 passes (majority) that the re-run
+fails at P1 or P2: hulushows _6 _19 (P1), _2 _3 _11 (P2); planets_data _2 _18 (P1), _12 (P2).
+Diagnosis was $0 (`loop_step.py --no-gold`, then `gold_diff.py` verdicts, diagnosis only). The
+baseline predates the 10-01 commits: 7314748f/2942e443 had already put levers on hulushows _6 and
+_19, planets _18 was already 2/2 after e453667b, and planets _2 was capped at three paid iterations
+on 10-01. So new levers were written only for hulushows _3 _11 and planets _12.
+
+**What changed (descriptions only; YAML and generator spec edited together).**
+- `Group Tiers Per Show` (hulushows, db697a35): states that its tier count is the media-holding span
+  (Series Tiers With Media, 5 on 30 series), not Distinct Tiers Linked (7 on every series), and that
+  a ratio beside a listing showing Distinct Tiers Linked is that column over Series Entry Count.
+  Motivation is model-internal: the model's own Series Tiers With Media text says "spans" means the
+  linked count, and _11's P2 projected the linked count beside a ratio built on the other.
+- `Visually Empty Show` (hulushows, db697a35 + 832ecf0a): a listing of these records is one row
+  per Content Key (the Content Title convention, already on the clip flags), and a leading rule-7
+  ask about which records count as highly rated: all 234 or only the top score. KB 70 says
+  "among top-rated shows" and defines no cutoff; the trajectory took the top-score reading without asking.
+- `Discovery Method` / `TTV Observation` (planets_data, ef6b2e47): KB 50 defines the TTV method as
+  a link to the 'ttv' facility, which is TTV Observation (225 planets), not the Discovery Method
+  'TTV' label (15 planets). This is stated at the front of Discovery Method, the object the agent
+  focuses first. In the trajectory the agent filtered the label twice before reaching the facility link.
+- Rule-2 strips: "114 distinct host stars" (TTV Observation, TTV Star Count, Distinct Observed Star
+  Count; planets _12's P1 answer) and "4.78311932, on Vikings" (Visually Empty Show, Maximum User
+  Score; hulushows _3's P1 answer) were printed answer values. The re-author pass missed them.
+
+**Result (memory off, Sonnet 5 / Sonnet 5, corrected grading; $2.91 benchmark for 11 task-runs).**
+`results/hulushows_opt_1002_iter1_20261002_075339.json`, `planets_data_opt_1002_iter1_20261002_080500.json`,
+`hulu_planets_opt_1002_rep2_20261002_083937.json`. The six tasks re-run in rep2 went from 2.8/6 in
+colleague_1001 to **5.7/6**: hulushows _2 _3 _11 _19 and planets _12 at 1.0, and _6 at 0.7.
+_11 P2 converted 2/2. _3's ask fired, the simulator chose all 234, and P2 passed. planets _12 was
+1.0 both runs, with P1 passing on the first submit. _19 failed iter1 (the simulator chose one row per
+title, 109 rows), then passed rep2. _2 P2 passed: STRING_AGG with ORDER BY is now accepted on this
+engine build, so the baseline refusal is gone. _6 P2 is 1/2: the failing run carried P1's columns
+forward and used Series Average Episodes, not the (All Entries) twin (B-95 coin flip). That is the
+wall. Engine OOM (Java heap) twice during deploy + gate (E-25). Tracker: M-115, E-25, note on B-95.
+Not a scoring number: n=1 and n=2 on a hand-picked subset. The arm needs its full run.
