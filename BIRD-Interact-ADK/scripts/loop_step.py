@@ -82,7 +82,7 @@ def report(results_path: str, task, want_gold: bool, expects):
         if s["tool"] == "submit_sql":
             sql = (s.get("args") or {}).get("sql") or ""
             res = str(s.get("result") or "")
-            verdict = "PASS" if "correct" in res.lower() and "not correct" not in res.lower() else "fail"
+            verdict = "PASS" if "correct!" in res.lower() and "failed" not in res.lower() else "fail"
             out.append(f"   submit p{phase} {verdict}: {_where(sql)}")
             if "Phase 1 correct" in res:
                 phase = 2
