@@ -165,9 +165,20 @@ if [ -n "${DEPLOY_DRY_RUN:-}" ]; then
   echo "  DEPLOY_DRY_RUN set - stopping before the publish (staged, validated, gated)."
   exit 0
 fi
-( cd "$STAGE" && ATSCALE_API_URL=http://local.atscaleinternal.com:3001 \
+# Over IPv4: local.atscaleinternal.com is a localhost alias that resolves to ::1 first, and
+# Docker Desktop's IPv6 port forward drops a large publish body, which sml-cli reports only as
+# an opaque "FetchError: The request failed". The same body over 127.0.0.1 is accepted. Not a
+# guarantee: on 2026-10-01 one IPv4 publish also failed with FetchError before reaching the api
+# container (engine busy restarting) and the next attempt succeeded, so re-run once before digging.
+# DEPLOY_LOG_LINES widens the sml-cli output kept below when a failure needs reading.
+# A FetchError can also be a CLIENT give-up on a publish the server completed: on 2026-10-01 22:32
+# the api logged `POST /v1/public/catalogs 201 ... Deployed catalog` while sml-cli printed FetchError,
+# and two retries never reached the api. Before retrying, check `docker logs api | grep 'Deployed
+# catalog'` and whether the live descriptions already carry the change; if so run gate_run.sh alone.
+SML_API_URL="${SML_API_URL:-http://127.0.0.1:3001}"
+( cd "$STAGE" && ATSCALE_API_URL="$SML_API_URL" \
   ATSCALE_API_TOKEN="$TOKEN" \
-  sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -8 )
+  sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -${DEPLOY_LOG_LINES:-8} )
 
 echo
 echo "=== post-deploy gate (Q-17b: a working run_query is NOT evidence of health) ==="
