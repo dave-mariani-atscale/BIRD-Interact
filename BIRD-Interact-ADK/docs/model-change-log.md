@@ -10903,3 +10903,22 @@ N+1 bucket text ignored).
 population, a different choice). crypto_10 0.7 / 0: run 2 read Bid Size / Ask Size and filtered to one
 market again, which led to 3a8f1590. **Unmeasured after 3a8f1590**, held because the phase-2
 session started a run.
+
+## 2026-10-02 — all 22 ng930 models (AtScaleInc/bird-atscale-models branch no-gold-930-logic, 4370cf39 → 203439b2, deployed to bird_atscale_models_catalog_ng930): STRING_AGG ORDER BY engine note corrected; Phase A P2 diagnosis
+
+**Why.** Phase A of `results/plan_p2_coins_and_p2_bothfail_1002.md` ($0, `results/p2_coins_1002/`) read the r5 engine
+errors and found ENGINE_NOTES claim on every model false: "an ORDER BY inside the STRING_AGG call is accepted too and
+orders the result". The MCP refuses it before dispatch (`STRING_AGG(... ORDER BY ...) is not supported. Remove the ORDER
+BY; element order then follows the warehouse.`) on 9 r5 tasks in 6 databases. Probed with `scripts/outbound_sql.py` on
+hulushows: the ORDER BY form is refused, the same query without it dispatches. Cross-model rule (engine behaviour), not
+gold-motivated.
+
+**What changed.** The sentence now reads "STRING_AGG over a FROM-subquery that projects the rows is accepted, but an ORDER
+BY inside the STRING_AGG call is refused before the query is dispatched, and element order then follows the warehouse."
+In all 22 emitted model YAMLs and all 22 generators (spec.py / model_spec.py / generate.py), so a rebuild keeps it.
+Verified live via `list_models`: 22/22 ng930 models serve the new sentence. Not changed: `bird_models_no_gold_930` still
+serves the old claim; NULLIF (Q-28) is still absent from the notes.
+
+**Phase A result (tracker M-120).** 88 P1-pass/P2-fail tasks: only 9 never submitted P2 (all entered at -1 coins), not
+~50; 40 capped, 15 model, 3 cross-model, 20 harness below Dianne's gate, 10 unowned. No harness lever clears the gate.
+Coin saver only; no task is expected to flip on this commit alone. Unmeasured.
