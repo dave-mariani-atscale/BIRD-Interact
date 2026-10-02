@@ -10651,3 +10651,25 @@ simulator/reference-bound at $0 (B-109); two are agent variance. Net at n=2: two
 one flaky, so roughly +0.5 pp Query P1 on the 410-task arm — the 15-task gap to main is mostly in
 B-109's simulator-decided choices, which main's text settles and which the no-gold rules forbid
 restoring from gold. Session: Fable, `scripts/session_cost.py --session` in the report.
+
+## 2026-10-01 — polar_equipment (AtScaleInc/bird-atscale-models branch no-gold-930-logic): Vehicle Safe For Operation twin on the converted VPC reading
+
+**Change.** New dimension `Vehicle Safe For Operation (Speed Converted To Km/h)` beside `Vehicle Safe For
+Operation`: the KB 15 safe flag with the Vehicle Performance Composite taken on the speed-converted reading.
+41 of the 342 units with a converted composite are 'Yes' (stored reading: 5). The existing flag's description
+names the twin. `Tire Pressure kPa` reads `tires.pressure_kpa`, same as the original flag.
+
+**Why.** polar_equipment_10 (ng930 refusal-subset pass 2026-10-01): the model published the VPC on both speed
+readings but the safe flag on one only, so the agent hand-wrote a converted filter that failed. Fable's read
+expected this twin to remove the contradiction but likely not to convert the task. No tracker row.
+
+**How.** Hand-spliced into `datasets/equipment_detail.yml` and `dimensions/equipment_profile.yml` and carried in
+`generator/spec.py`, `spec_dims.py`, `sql_defs.py`. A `build.sh` regenerate fails gate G6 (KB 50 named in the
+operations description) and would drop YAML-only text (engine-notes block, wording edits in equipment_record
+and equipment_profile), so the YAML is NOT regenerated: the generator now carries this change but not the
+branch's other YAML-only edits. `sml-cli validate` passes; dry-run 193 pinned constants.
+
+**Considered and not built (same pass).** reverse_logistics_9 all-shapes date twin: the failure is a tie at row
+100/101, and the 254 year-only returns sort below the top 100, so the twin cannot change it (R2-36 capped).
+polar_equipment_19 "which station link" ask: the communication and weather links never disagree (0 of 850 units
+with both; weather adds 9 units), so the premise was false.
