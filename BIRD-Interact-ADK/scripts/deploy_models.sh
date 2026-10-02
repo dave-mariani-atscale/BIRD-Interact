@@ -176,9 +176,57 @@ fi
 # and two retries never reached the api. Before retrying, check `docker logs api | grep 'Deployed
 # catalog'` and whether the live descriptions already carry the change; if so run gate_run.sh alone.
 SML_API_URL="${SML_API_URL:-http://127.0.0.1:3001}"
-( cd "$STAGE" && ATSCALE_API_URL="$SML_API_URL" \
-  ATSCALE_API_TOKEN="$TOKEN" \
-  sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -${DEPLOY_LOG_LINES:-8} )
+# The catalog publish has two routes. The host route is sml-cli on this Mac posting through Docker
+# Desktop's port forward. On 2026-10-02 four consecutive host publishes of a 11.7 MB body died with
+# FetchError and NOT ONE reached the api container (no POST in its log), while the same staged
+# project published first time from INSIDE the `api` container, where sml-cli talks to :3001 over
+# loopback and no port forward is involved. The container route copies the staged project and the
+# host's sml-cli install into the api container (node 22 is there; git is not, and sml-cli shells
+# `git remote get-url origin` to find the repository, so a tiny shim answers it with this clone's
+# values). DEPLOY_VIA_CONTAINER=1 takes the container route directly; otherwise it is the fallback
+# after a host FetchError that the api log shows never arrived.
+DEPLOY_T0="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+api_deployed() { docker logs --since "$DEPLOY_T0" api 2>&1 | grep -q "Deployed catalog"; }
+deploy_in_container() {
+  local cli="${SML_CLI_DIR:-$(dirname "$(dirname "$(readlink -f "$(command -v sml-cli)")")")}"
+  [ -f "$cli/bin/run.js" ] || { echo "FAIL: sml-cli package not found at $cli (set SML_CLI_DIR)"; return 1; }
+  local origin branch sha
+  origin="$(git -C "$MODELS_DIR" remote get-url origin)"; branch="$(git -C "$MODELS_DIR" rev-parse --abbrev-ref HEAD)"; sha="$(git -C "$MODELS_DIR" rev-parse HEAD)"
+  cat > "$STAGE/.git-shim" <<EOF
+#!/bin/sh
+# git stand-in for sml-cli inside the api container (no git there); answers for $branch@${sha:0:8}
+case "\$*" in
+  "remote get-url origin"*|"config --get remote.origin.url"*) echo "$origin" ;;
+  "rev-parse --abbrev-ref HEAD"*) echo "$branch" ;;
+  "rev-parse HEAD"*) echo "$sha" ;;
+  *) echo "git shim: unhandled: \$*" >&2; exit 0 ;;
+esac
+EOF
+  docker exec -u 0 api sh -c 'rm -rf /tmp/smlproj /tmp/sml-cli /tmp/bin && mkdir -p /tmp/bin' || return 1
+  docker cp "$STAGE" api:/tmp/smlproj && docker cp "$cli" api:/tmp/sml-cli || return 1
+  docker exec -u 0 api sh -c 'mv /tmp/smlproj/.git-shim /tmp/bin/git && chmod 755 /tmp/bin/git' || return 1
+  docker exec -u 0 -e PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin -e HOME=/tmp \
+    -e ATSCALE_API_URL=http://127.0.0.1:3001 -e ATSCALE_API_TOKEN="$TOKEN" api \
+    sh -c "cd /tmp/smlproj && node /tmp/sml-cli/bin/run.js atscale-deploy . --catalog-name='$CATALOG_NAME' 2>&1 | tail -${DEPLOY_LOG_LINES:-8}"
+  docker exec -u 0 api sh -c 'rm -rf /tmp/smlproj /tmp/sml-cli /tmp/bin' || true
+}
+if [ -n "${DEPLOY_VIA_CONTAINER:-}" ]; then
+  echo "  DEPLOY_VIA_CONTAINER set - publishing from inside the api container"
+  deploy_in_container
+else
+  ( cd "$STAGE" && ATSCALE_API_URL="$SML_API_URL" \
+    ATSCALE_API_TOKEN="$TOKEN" \
+    sml-cli atscale-deploy . --catalog-name="$CATALOG_NAME" 2>&1 | tail -${DEPLOY_LOG_LINES:-8} )
+  if ! api_deployed; then
+    echo "  host publish did not reach the api (no 'Deployed catalog' in its log since $DEPLOY_T0) - retrying from inside the api container"
+    deploy_in_container
+  fi
+fi
+if api_deployed; then
+  echo "  api log confirms: $(docker logs --since "$DEPLOY_T0" api 2>&1 | grep -o 'Deployed catalog: [0-9a-f-]*' | tail -1)"
+else
+  echo "FAIL: no 'Deployed catalog' in the api log since $DEPLOY_T0 - the catalog was NOT published"; exit 1
+fi
 
 echo
 echo "=== post-deploy gate (Q-17b: a working run_query is NOT evidence of health) ==="
