@@ -10932,3 +10932,28 @@ dispatches and returns NULL on a zero divisor. Cross-model rule (engine behaviou
 **What changed.** After the STRING_AGG sentence: "NULLIF is refused before the query is dispatched, so a divide-by-zero
 guard is written CASE WHEN <b> = 0 THEN NULL ELSE <a> / <b> END." In the 22 emitted YAMLs and the 22 generators. Verified
 live: 22/22 ng930 models serve it. Unmeasured.
+
+## 2026-10-02 — fake_account, cold_chain_pharma_compliance, virtual_idol ng930 (no-gold-930-logic 0c10b426 → e89bb6dc, deployed to bird_atscale_models_catalog_ng930): Phase B model levers from the P2 diagnosis
+
+**Why.** Phase B of `results/plan_p2_coins_and_p2_bothfail_1002.md`. Of the 14 candidate levers from Phase A, 3 survived
+the no-gold vet (KB + trajectory only). Dropped: mental_10/_11 (only the sweep picks an EAS basis), organ_18 (KB 50 is
+the per-match reading the agent used), museum_8 (P1 passed with zero Over Exposure rows, so the empty P2 is consistent),
+organ_2 (P2 entered at 2 coins; an ask would leave no submit), solar_5, virtual_7, disaster_9 (stated text ignored),
+virtual_17 and insider_8 (the alternative reading comes only from the reference).
+
+**What changed.**
+- fake_account: new `Median Content Impact Score (Missing Inputs As Zero)`. The strict median now names its 402-account
+  population and says a median beside an average comes from that average's population. Trajectory _24: the user chose
+  the missing-as-zero population, P2 asked for the median beside it, and only the strict median existed. Dropped the
+  false "expect this metric to error" sentence (the metric ran in that trajectory and in a live probe).
+- cold_chain: the MKT dimension and metric carry KB 26's wording, "the overall effect of temperature fluctuations during
+  storage or transit". Trajectory _7: 12 explore_columns calls, the phrase "effect of temperature" among them, never
+  reached MKT.
+- virtual_idol: Social Butterfly carries KB 29's "exceptionally well-connected". Trajectory _12: "connected" searches
+  never reached it.
+YAML and generators both. Probed live: the r5 search lists now return MKT and Social Butterfly, and the median twin
+runs (Forum 0.0654 vs strict 0.0806).
+
+**Also found (no change):** the r5 search misses on multi-word search strings do not reproduce on this machine's MCP
+(strings are split into words). The colleague's r5 machine behaves differently, which matters for baseline comparisons.
+Unmeasured.
