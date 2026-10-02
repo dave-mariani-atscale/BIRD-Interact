@@ -1,0 +1,13 @@
+# Modified-harness n=3 (prepared 2026-10-02): the only change from the shipped empty default is a 180 s
+# per-request timeout on the Sonnet 5 calls (agent and user simulator are the same model string).
+#
+# Why: in the 2026-10-02 59-task check (09:44-11:02) 16 agent turns, in six bursts between 10:03 and 10:43,
+# each took 615-667 s - an Anthropic request that returned nothing until LiteLLM's default 600 s timeout
+# fired, after which num_retries=5 (shared/llm.py) retried and the task carried on. Every other turn in that
+# run took under 180 s (623 turns, median 15 s; no gap between 180 s and 600 s at all), so 180 s cuts off
+# only the hung requests and caps each stall at three minutes instead of ten.
+#
+# Selected by LLM_ROUTING_FILE; the runner copies the resolved entry into each results file's deviations.
+routes:
+  anthropic/claude-sonnet-5:
+    timeout: 180

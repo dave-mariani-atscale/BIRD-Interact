@@ -38,6 +38,7 @@ shared/_legacy_*.py
 scripts/[0-9]*run.sh
 scripts/run_*.sh
 !scripts/run_leaderboard.sh
+!scripts/run_nogold930_n3.sh
 # One-off task lists for --tasks, same reason as the runner scripts above
 scripts/tasks_*.txt
 # One-off scorers written for a single run's output layout
