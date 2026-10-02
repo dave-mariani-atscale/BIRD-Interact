@@ -10922,3 +10922,13 @@ serves the old claim; NULLIF (Q-28) is still absent from the notes.
 **Phase A result (tracker M-120).** 88 P1-pass/P2-fail tasks: only 9 never submitted P2 (all entered at -1 coins), not
 ~50; 40 capped, 15 model, 3 cross-model, 20 harness below Dianne's gate, 10 unowned. No harness lever clears the gate.
 Coin saver only; no task is expected to flip on this commit alone. Unmeasured.
+
+## 2026-10-02 — all 22 ng930 models (no-gold-930-logic 203439b2 → 0c10b426, deployed to bird_atscale_models_catalog_ng930): NULLIF engine note
+
+**Why.** NULLIF was absent from ENGINE_NOTES (Q-28). r5: 4 tasks in 3 databases hit the refusal; sports_events_7 lost P2
+on a NULLIF submit. Probed with `scripts/outbound_sql.py` on hulushows: NULLIF refused before dispatch; the CASE form
+dispatches and returns NULL on a zero divisor. Cross-model rule (engine behaviour), not gold-motivated.
+
+**What changed.** After the STRING_AGG sentence: "NULLIF is refused before the query is dispatched, so a divide-by-zero
+guard is written CASE WHEN <b> = 0 THEN NULL ELSE <a> / <b> END." In the 22 emitted YAMLs and the 22 generators. Verified
+live: 22/22 ng930 models serve it. Unmeasured.
