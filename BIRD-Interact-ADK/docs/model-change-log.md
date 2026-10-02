@@ -10673,3 +10673,56 @@ branch's other YAML-only edits. `sml-cli validate` passes; dry-run 193 pinned co
 100/101, and the 254 year-only returns sort below the top 100, so the twin cannot change it (R2-36 capped).
 polar_equipment_19 "which station link" ask: the communication and weather links never disagree (0 of 850 units
 with both; weather adds 9 units), so the premise was false.
+
+## 2026-10-02 — cross_border (AtScaleInc/bird-atscale-models branch no-gold-930-logic, 41b67022 → 2b311eb3, deployed to bird_atscale_models_catalog_ng930): whole-task pass on the eight solvable-but-failing tasks
+
+**Why.** Dianne: a different optimisation shape — pick one database with several tasks that main
+proves solvable but ng930 fails, and iterate each whole task (P1, P2, coins) n=1 until the wall.
+cross_border was the largest deficit in `results/colleague_1001` (P1 13/19 vs main 17; four tasks
+_3 _6 _7 _8 pass P1+P2 on main and fail both here; four more _2 _9 _12 _16 lose P2 only).
+Diagnosis was $0: `loop_step.py --no-gold` on the stored trajectories, then `gold_diff.py` for a
+verdict per stored submission (diagnosis only, under the 09-30 rulings: no object was built,
+renamed or steered from a finding; every change below was written from the KB and the
+trajectory and is listed with its motivation in commit 2b311eb3).
+
+**What changed (descriptions only; generator spec carries every sentence it already held, the
+three CBRF/CDVR/RES ask sentences and the DSI-shape ask stay YAML-only like the other ng930
+re-inserted asks).**
+- `Is High-Pressure Data Flow` / `Is Overloaded Data Flow`: a rule-7 ask between the two KB
+  flags where the wording does not name one, each option naming the flag's inputs and
+  populations. Trajectory: the agent took the name match (KB 42) for a question listing KB 18's
+  two inputs and never asked.
+- `Cross Border Risk Factor (CBRF)` / `(CDVR)` / `Risk Exposure Score (RES)`, their Control-As-
+  Percent / Control-As-Fraction twins and the four Average metrics: the shared "differ only in
+  arithmetic" sentence and the three ask sentences now state the division itself (by 0.85 or by
+  85 for a stored 85) instead of the words percent / fraction. Trajectory: the ask fired and the
+  simulator's reply reused the model's words with the opposite sense.
+- `Data Subject Request Load (DSRL)` / `(DSRP)`: the "plainer name does not settle" statement is
+  now a rule-7 ask (KB 8 and KB 34 share the request wording). Trajectory: the one ask went to
+  the output shape.
+- `Vendor Risk Tier` / `Vendor Reliability Index (VRI)`: a question that restates KB 6 + KB 16 in
+  its own words means the published tier; filter, group and count on it. Trajectory: the P2
+  recomputed the bands by hand with its own labels.
+- `Data Sensitivity Classification`: stored values spelled out; "classified as 'Critical'" means
+  the stored value, not a Critical-named KB flag (stored-spellings convention); Also-called
+  gains "classified as Critical". Trajectory: the agent searched the quoted word, found nothing,
+  and used Is Critical Data Flow Risk.
+- `Data Sensitivity Index (DSI)` / `Maximum Data Sensitivity Index`: the two-shapes sentence
+  becomes a neutral ask (figure alone, or Profile Trace beside the value). Trajectory: two
+  submits on one shape, then the other, before P2 began with 1.5 coins.
+
+**Result (n=1 × 2, memory off, Sonnet 5 / Sonnet 5, corrected grading; $3.96 benchmark for 12
+task-runs).** `results/cb_opt_1002_iter1_20261002_070731.json` and `..._rep2_20261002_071715.json`:
+the six touched tasks went from 1.4/6 reward in colleague_1001 (four at 0, _2 and _12/_16 at 0.7)
+to **6.0/6 and 5.7/6** — P1 12/12, P2 11/12. Every ask fired in both runs and the simulator
+answered usably, except _8 where it answered the division wrong both times (divide by 85) and the
+agent recovered on its third submit (coins 22 → 0). _12 P2 passes on the second submit both runs
+(the Critical flag first, then the classification twin). _16 P2 1/2: the fail projected volume and
+classification beside id and score (B-95 column set). The wall: _6 matches gold's months and
+values and differs only in listing them in calendar order — the rank calc already says the order
+is the user's choice and the agent never reads it; turning that into an ask is gold-informed and
+is **not shipped** (B-110, Dianne's call; a cross-model ranked-listing sort ask would be the rule-8
+route). _9 P2 stays R2-40 (reference floor 0.01 vs the KB formula's negatives, while the same
+formula matches gold on _12). Tracker: M-114 (pass), B-110 (new cap), notes on B-109 (_3 _7 _8
+were not simulator-bound), R2-40, B-95. Not a scoring number — two n=1 repeats on a hand-picked
+subset; the arm needs its full run.
