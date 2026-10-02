@@ -10766,3 +10766,38 @@ engine build, so the baseline refusal is gone. _6 P2 is 1/2: the failing run car
 forward and used Series Average Episodes, not the (All Entries) twin (B-95 coin flip). That is the
 wall. Engine OOM (Java heap) twice during deploy + gate (E-25). Tracker: M-115, E-25, note on B-95.
 Not a scoring number: n=1 and n=2 on a hand-picked subset. The arm needs its full run.
+
+## 2026-10-02 — insider_trading, mental_health, cross_border (AtScaleInc/bird-atscale-models branch no-gold-930-logic, 832ecf0a → 1a178063, deployed to bird_atscale_models_catalog_ng930): whole-task pass from the r5 baseline
+
+**Why.** Dianne's r5 bundle (`results/colleague_1002`, models 41b67022) is the new baseline. The
+merged r5/r5b results are split into `by_database/<db>_r5.json` on the local schema. Candidates are
+tasks the main 09-10 majority passes and r5 fails, on the five databases recommended from it:
+insider_trading _1 _2 _4, mental_health _13 _16, organ_transplant _8 _13, cross_border _1 _5 _18
+(the ones not covered by the morning's pass), hulushows _10 _15. Diagnosis was $0 (`loop_step.py
+--no-gold` + `gold_diff.py`, diagnosis only). organ _8 _13 and mental _16 passed in r4, and no
+change landed on those databases between e453667b and 41b67022, so their r5 losses are run variance.
+
+**What changed (descriptions only; YAML and generator spec together).**
+- insider_trading `Daily Trading Volume` (932feb4d): a leading ask, since "trade amount" is not a
+  stored column - this volume, Margin-Financed Trade Amount, or Average Position Size Value. The
+  which-amount ask already sat on the other two objects; the trajectory used this one without asking.
+- insider_trading `Sentiment-Driven Leakage Risk (SDLR)` (932feb4d): the three-option ask becomes
+  one axis - KB 70's cutoff of 1000 (High SDLR Transaction) or a ranking with no cutoff.
+- mental_health `Patient Mean Treatment Cost Effectiveness` (81c86b6a): a leading single-axis grain
+  ask - one row per assessment or one per patient. The trajectory took patient means; the existing
+  "ask if the question does not" sat at the end of the sibling object.
+- cross_border `Vendor Security Rating` (1a178063): a rule-7 ask - the stored letter or KB 24's
+  4-to-1 value. Both twins are published; the trajectory printed the letter without asking.
+
+**Result (memory off, Sonnet 5 / Sonnet 5, corrected grading; $2.93 benchmark for 8 task-runs).**
+`results/insider_trading_opt_1002_iter1_20261002_091132.json`, `multi_opt_1002_iter2_20261002_091833.json`,
+`multi_opt_1002_rep3_20261002_092742.json`. cross_border_18 0 → **1.0** on 2/2. insider _1 and _2 0 → 0.7 on 1/2
+each: _1's ask fired 2/2 and picked the matching reading, and the fail projected other columns;
+_2's ask fired 1/2. mental_16 0 → 0.7 on 1/2: the grain ask fired 2/2 with a per-assessment
+answer, and the fail added Assessment and hours columns. P2 walls: insider_1 (a "distribution" read
+as summary statistics; the reference lists rows), insider_2 (dropped P1's proximity filter), and
+mental_16 (coins spent on four asks). No gold-free lever for insider_4 (B-111: KB 62's mimicry half
+selects nothing on the stored scale), mental_13 (the simulator chose the left-join default),
+cross_border_5 (the simulator said Partial is not missing), hulushows_10 (gold not runnable on
+the template) or hulushows_15 (variance). Tracker: M-116, B-111, note on B-95. Not a scoring
+number: n=1 and n=2 on a hand-picked subset.

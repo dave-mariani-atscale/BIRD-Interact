@@ -119,7 +119,7 @@ def main():
         tasks = [t for t in tasks if t["task_id"] in a.task_ids or t["task_id"].split("_")[-1] in a.task_ids]
     hdr = run if isinstance(run, dict) else {}
     print(f"# {a.results}  backend={hdr.get('backend')} regime={hdr.get('deviations_as_graded', {}).get('regime')} "
-          f"memory={hdr.get('deviations', {}).get('feedback_memory')} agent={str(hdr.get('agent_model'))[:40]}")
+          f"memory={(hdr.get('deviations') if isinstance(hdr.get('deviations'), dict) else {}).get('feedback_memory')} agent={str(hdr.get('agent_model'))[:40]}")
     for t in sorted(tasks, key=lambda x: int(x["task_id"].split("_")[-1])):
         print(report(a.results, t, not a.no_gold, a.expect))
 
