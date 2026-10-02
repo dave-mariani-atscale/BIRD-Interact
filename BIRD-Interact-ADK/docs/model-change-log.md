@@ -10831,3 +10831,75 @@ That is a cross-model candidate, not shipped without evidence from more than one
 (c005e0a, in every per-run backends file) carries insider_trading_1's reference row count (508) and its
 chosen reading ("a trader's stored average position is not the amount financed on this trade"). Both
 fail the 09-30 rules. A rewrite is proposed in the session and is Dianne's call, because it changes the harness for every arm.
+
+## 2026-10-02 — cross_border + hulushows ng930 (no-gold-930-logic 094323ad, a78da888; deployed to bird_atscale_models_catalog_ng930): developer list from the combined-check run; count-beside-average is a non-rule
+
+**Why.** The other developer's combined check (`results/colleague_1002_cbd/`, 59 tasks n=1 on
+`dm/ng930-cross-border` f3d180b2) listed four follow-ups. Their two commits (ee68405e Vendor Security
+Rating Value as "rating score" + DTE Success As Fraction twin; 9645adbc cybermarket names KB 26) were
+fast-forwarded into no-gold-930-logic first and ship in this deploy.
+
+**What changed.**
+- `Cross Border Risk Factor (CBRF)` / `Cross Border Data Volume Risk (CDVR)`: the two YAML-only ask
+  sentences (raw vs control-adjusted, then the division) are replaced by a statement that the plain
+  name is KB 9 / KB 33's reading over KB 2, control effectiveness as a fraction of 1; the twins are for
+  a question that names their arithmetic. Generator gains CBRF_FACT / CDVR_FACT. Trajectory: on 10-02
+  the ask fired and the simulator chose divide-by-85 in both runs; the bare name passed r4/r5 unasked.
+  The Risk Exposure Score (RES) ask is unchanged (its bare name is the other reading, and it did not fire on _8).
+- `Distinct Tiers Linked` / `Tiers With Media Count`: both carry the schema link words (show_rollups /
+  rollups tierkey) for the membership count, with live counts re-checked in Postgres (7 linked on all
+  1000; media on 7 tiers for 716, 5 for 284). Trajectory: hulushows_16's simulator answered in those words.
+- `Multitier Syndicated Show`: opened with "holds media in three or more tiers"; KB 41 / KB 76 say
+  "made available in / appears in". It now reads the membership count and names Distinct Tiers
+  Linked as the count beside it (values unchanged, Yes on all 1000). Trajectory: dev_list run 1 asked
+  about the flag, the simulator said use it, and the agent took the media twin.
+
+**Checked, not changed.**
+- cross_border_6: Average Audit Finding Severity and Remediation Due Month Severity Rank recomputed from
+  KB 7 in Postgres (`cross_border`, AFS > 0.5, per-row mean, dense rank): 2025-04 1.837, 2025-03 1.548,
+  2025-05 1.294, identical to the published objects. Today's stored P1 has identical rows to the
+  reference and differs only in order. B-110 stands.
+- hulushows_13 P2: `Large-Scale Title` prints Yes/No and the reference prints 1/0 (918/918 cells); the
+  failing CASE 1/0 submit was also ordered by Content ID on an order-graded P2. A grader-shape coin
+  flip; no edit.
+
+**Result (n=2 each, memory off, Sonnet 5; $1.84 for 6 task-runs).** cross_border_8 1.0 / 1.0 (the
+CBRF ask no longer fires; `results/dev_list_1002_run0{1,2}_*.json`). hulushows_16 after 094323ad:
+0 / 0.7. Run 1 went through the flag, which led to a78da888. Run 2's P2 failed on an unordered STRING_AGG
+against an alphabetical list (gold shape, not shipped). After a78da888: 1.0 / 1.0
+(`results/dev_list_1002_h16b_*.json`).
+
+**Count-beside-average: a non-rule.** Tested at $0 with `gold_diff.py --sql` (both count readings)
+over every sweep task whose reference pairs an average with a count. Agree (count covers only the
+averaged rows): labor_certification _10 P1 and _1 P2; reverse_logistics _10 and _13 P2; cold_chain_4 P2
+(9/9 rows match, and the reference drops the 3 groups with no averaged value); disaster_relief_10
+(weak: groups with no CQI dropped). Contradicts: polar_equipment_17 P2 (the reference counts 38 active
+units, CORI averages 36). Uninformative (both readings pass): cross_border_14, polar_15, museum_14.
+Rule 8 needs no contradiction, so nothing ships.
+
+## 2026-10-02 — crypto_exchange, fake_account, polar_equipment ng930 (no-gold-930-logic 239a755e, 3a8f1590, 4370cf39; deployed): r5 variance tasks
+
+**Why.** The twelve r5 losses that passed in r4 with no model change were read against their r4 runs
+(Sonnet subagents, no gold beyond sweep verdicts). Three drifts can be settled in model text.
+Not changed: solar_18 (latest-snapshot vs ever, no KB grain), robot_4 (column set), reverse_17 (ask
+framing), disaster_12 / sports_7 (engine refusal on submit), fake_account_3 (existing TEI text ignored),
+sports_1 (population is a gold choice), organ_8 (both-present population, no KB), organ_13 (existing
+N+1 bucket text ignored).
+
+**What changed.**
+- crypto_exchange `Liquidity At Best Quote`, then `Bid Size` / `Ask Size`: KB 10's "current best bid
+  or ask" is each order's own market's row, so a Whale Order screen needs no filter to one market or
+  Market Snapshot and spans all 970 orders. Trajectory: _10 filtered to the market of the
+  highest-numbered snapshot (1 row).
+- fake_account `Security Risk Score (SRS)`: count accounts under an SRS screen with Accounts With A
+  Computable SRS or COUNT(DISTINCT Account); a flat COUNT of the attribute is a wrong count with no error
+  (probed live). Trajectory: _6 P2 submitted the flat count.
+- polar_equipment `Extreme Weather Readiness Status (EWRS)`: "very few units clear" becomes the live
+  count, Not Ready on all 1000 units, with 22 of 872 units holding a Ready reading on the bridge.
+  Trajectory: _11 submitted the unit-grain 0 three times.
+
+**Result (n=2, memory off, Sonnet 5; $1.95, `results/variance_1002_run0{1,2}_*.json`).** polar_11
+1.0 / 1.0. fake_account_6 1.0 (P2 used COUNT DISTINCT) / 0 (P1 took the Missing Inputs As Zero
+population, a different choice). crypto_10 0.7 / 0: run 2 read Bid Size / Ask Size and filtered to one
+market again, which led to 3a8f1590. **Unmeasured after 3a8f1590**, held because the phase-2
+session started a run.
