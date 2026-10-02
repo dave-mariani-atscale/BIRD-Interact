@@ -43,11 +43,36 @@ fi
 # reads only base tables. Nothing to flip on the MCP server; the runner's
 # pre-flight checks the server understands the parameter (/configz).
 
+# Cold start (review tracker items 2 and 4). Run 1 is the "cold" figure, so it
+# must begin with an EMPTY feedback-memory store, and the sweep must be able to
+# prove it: until 2026-10-01 nothing here reset the store, and the 09-11/09-12
+# sweeps' cold start could only be inferred afterwards from list_models sizes.
+# reset_feedback_store.sh stops the services, backs up and truncates all three
+# mcp_feedback tables, verifies zero and restarts the MCP server; its report is
+# kept beside the results. The raw backend writes no feedback, so it is skipped.
+# KEEP_FEEDBACK_STORE=1 skips the reset on purpose (a deliberately warm run) and
+# says so in the same file.
+RESET_LOG="results/${TAG}_${BACKEND}_feedback_reset.txt"
+if [ "${KEEP_FEEDBACK_STORE:-0}" != "1" ] && [ "$BACKEND" != "raw" ]; then
+    echo "== resetting the feedback-memory store for a cold run 1 -> $RESET_LOG"
+    { date -u +"reset at %Y-%m-%dT%H:%M:%SZ"; bash "$PROJECT_DIR/scripts/reset_feedback_store.sh"; } 2>&1 | tee "$RESET_LOG"
+else
+    echo "== feedback store NOT reset (KEEP_FEEDBACK_STORE=${KEEP_FEEDBACK_STORE:-0}, backend=$BACKEND): $(bash "$PROJECT_DIR/scripts/reset_feedback_store.sh" --status)" | tee "$RESET_LOG"
+fi
+
 echo "== leaderboard mode: restarting services with LEADERBOARD_MODE=true"
 bash "$PROJECT_DIR/scripts/start_services.sh"
 
 echo "== services report:"
 for p in 6000 6001 6002; do curl --noproxy '*' -s "http://127.0.0.1:$p/health"; echo; done
+
+# The store must still be empty at the moment run 1 starts (a service restart or a
+# stray probe in between would otherwise warm it unnoticed).
+if [ "${KEEP_FEEDBACK_STORE:-0}" != "1" ] && [ "$BACKEND" != "raw" ]; then
+    store="$(bash "$PROJECT_DIR/scripts/reset_feedback_store.sh" --status)"
+    date -u +"at run start %Y-%m-%dT%H:%M:%SZ: $store" | tee -a "$RESET_LOG"
+    [ "$store" = "exchange=0 feedback=0 certified_query=0" ] || { echo "feedback store is not empty at run start - refusing" >&2; exit 1; }
+fi
 
 echo "== running: backend=$BACKEND repeat=$REPEAT concurrency=$CONCURRENCY -> $OUTPUT"
 "$PYTHON_BIN" -m orchestrator.runner --mode a-interact --backend "$BACKEND" \
