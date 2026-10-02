@@ -10801,3 +10801,33 @@ selects nothing on the stored scale), mental_13 (the simulator chose the left-jo
 cross_border_5 (the simulator said Partial is not missing), hulushows_10 (gold not runnable on
 the template) or hulushows_15 (variance). Tracker: M-116, B-111, note on B-95. Not a scoring
 number: n=1 and n=2 on a hand-picked subset.
+
+## 2026-10-02 — all 22 ng930 models (AtScaleInc/bird-atscale-models branch no-gold-930-logic, ffbe1bf0, deployed to bird_atscale_models_catalog_ng930): engine note on counts over an empty selection; sequential pass over the remaining r5 databases
+
+**Why.** Continuing the r5-baseline pass over the databases left after insider/mental/cross_border.
+A $0 sort first set aside the losses that are run variance: those that passed in r4 when nothing
+changed on that database between e453667b and 41b67022. That covers solar_18, robot_4, crypto_10,
+reverse_17, disaster_12, fake_account_3/_6 and sports_1/_7. The rest were diagnosed at $0.
+
+**What changed.** One cross-model engine note (rule 8), added after the missing-input policy in all 22
+model descriptions, and in the three generators (crypto_exchange, households, solar_panel) that carry
+the engine notes inline: "a published count or total metric over a selection that matches no rows
+returns NULL, not 0, while COUNT(DISTINCT <key column>) over the same selection returns 0; ... write
+COALESCE(<count metric>, 0) or COUNT(DISTINCT <key column>)". Probed live on pr10556 against
+households: Households With Available Cable and Household Count return NULL under a filter that
+matches nothing, and COUNT(DISTINCT House Number) returns 0. Trajectory: households_4 P2 submitted the NULL.
+
+**Result ($0.53, households_4 --repeat 2).** The run that reached P2 passed it with COUNT(DISTINCT) =
+0 (1.0). The other run failed P1 on the floor-area derivation the simulator dictates.
+
+**No gold-free lever (B-111 notes).** households_17 and _5 P2: the KB 21 labels are not stored, and the
+simulator mapped them to the top brackets. virtual_idol_1: the simulator said "nickname only".
+polar_10 P2: the reference uses the stored-speed flag after P1 passed on the converted reading.
+solar_14 P2: a tie at the minimum. labor_4, robot_3, museum_1/_9 P2: carry-forward and order (B-95).
+cold_chain_4 P2's only difference is a count beside an average that covers the averaged population.
+That is a cross-model candidate, not shipped without evidence from more than one task.
+
+**Also reviewed, not changed.** The harness P1 rule "A LISTING QUESTION THAT NAMES NO OUTPUT COLUMNS"
+(c005e0a, in every per-run backends file) carries insider_trading_1's reference row count (508) and its
+chosen reading ("a trader's stored average position is not the amount financed on this trade"). Both
+fail the 09-30 rules. A rewrite is proposed in the session and is Dianne's call, because it changes the harness for every arm.
