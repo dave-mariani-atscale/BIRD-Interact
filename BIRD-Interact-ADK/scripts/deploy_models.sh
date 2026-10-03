@@ -186,7 +186,9 @@ SML_API_URL="${SML_API_URL:-http://127.0.0.1:3001}"
 # values). DEPLOY_VIA_CONTAINER=1 takes the container route directly; otherwise it is the fallback
 # after a host FetchError that the api log shows never arrived.
 DEPLOY_T0="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-api_deployed() { docker logs --since "$DEPLOY_T0" api 2>&1 | grep -q "Deployed catalog"; }
+# Count, never `grep -q`: grep -q exits on the first match, docker logs then dies of SIGPIPE, and under
+# set -o pipefail the pipeline reports failure for a publish that succeeded (2026-10-02 21:50).
+api_deployed() { [ "$(docker logs --since "$DEPLOY_T0" api 2>&1 | grep -c "Deployed catalog")" -gt 0 ]; }
 deploy_in_container() {
   local cli="${SML_CLI_DIR:-$(dirname "$(dirname "$(readlink -f "$(command -v sml-cli)")")")}"
   [ -f "$cli/bin/run.js" ] || { echo "FAIL: sml-cli package not found at $cli (set SML_CLI_DIR)"; return 1; }
