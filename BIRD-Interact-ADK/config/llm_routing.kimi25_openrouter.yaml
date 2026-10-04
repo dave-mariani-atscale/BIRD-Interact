@@ -1,0 +1,9 @@
+# Kimi 2.5 / Haiku leaderboard sweep on no-gold-930, 2026-10-04. The agent is pinned to
+# Amazon Bedrock with no fallback, as the 09-18 COLD sweep was (then through an OpenRouter
+# guardrail allowlist, which later blocked every other model; this per-request pin replaces
+# it). Bedrock served Kimi ~2.3x faster than the other providers on 09-18. The simulator is
+# claude-haiku-4-5 on Anthropic's API, pinned by LEADERBOARD_MODE, and is not routed here.
+routes:
+  openrouter/moonshotai/kimi-k2.5:
+    extra_body:
+      provider: {order: [amazon-bedrock], allow_fallbacks: false}
