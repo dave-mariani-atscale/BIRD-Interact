@@ -267,6 +267,25 @@ def export(results_path: str, out_dir: str, data_path: str, validate: bool, meth
     return summary
 
 
+def _grade(row, phase, pred, sol, db, conn, conditions):
+    """grade_raw_submission, scoring an exception inside the grader as a fail - exactly what the live grader does
+    (db_environment/server.py: test_case_default's `except Exception` -> "Your SQL is not correct.") and what upstream's
+    test-case runner does. Without this one unrepresentable value (e.g. a Decimal that cannot be quantized) aborts the
+    whole validation. Programming errors (NameError, ImportError, AttributeError) still raise."""
+    from shared.db_utils import grade_raw_submission
+    try:
+        return bool(grade_raw_submission(pred, sol, db, conn, conditions))
+    except (NameError, ImportError, AttributeError):
+        raise
+    except Exception as e:  # noqa: BLE001 - any grader exception is a failed test case, live and upstream
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        row.setdefault("notes", []).append(f"phase {phase}: grader raised {type(e).__name__} - scored as a fail, as the live grader does")
+        return False
+
+
 def validate_rows(rows: list, tasks: dict) -> dict:
     """Re-grade every Query task's exported SQL on the template database under
     upstream rules - the verdict the BIRD evaluator should reach."""
@@ -306,13 +325,13 @@ def validate_rows(rows: list, tasks: dict) -> dict:
                 if sql1:
                     sol = t.get("sol_sql") or []
                     sol = [sol] if isinstance(sol, str) else sol
-                    v1 = bool(grade_raw_submission([sql1], sol, db, conn, t.get("conditions") or {}))
+                    v1 = _grade(row, 1, [sql1], sol, db, conn, t.get("conditions") or {})
                 fu = t.get("follow_up") or {}
                 sql2 = row["subtask_2_predicted_sql"]
                 if v1 and sql2 and fu.get("sol_sql"):
                     sol2 = fu["sol_sql"]
                     sol2 = [sol2] if isinstance(sol2, str) else sol2
-                    v2 = bool(grade_raw_submission([sql2], sol2, db, conn, fu.get("conditions") or {}))
+                    v2 = _grade(row, 2, [sql2], sol2, db, conn, fu.get("conditions") or {})
             finally:
                 pool.putconn(conn)
             row["validated_verdict"] = {"phase1_passed": v1, "phase2_passed": v2, "source": "upstream re-grade on template"}
