@@ -107,7 +107,7 @@ python3 -c "import time; time.sleep(120)"
 unset ARM_MCP_URL
 MCP_PY="$HOME/go/src/github.com/AtScaleInc/mcp-b2-arm/.venv/bin/python"
 MCP_CALL="$HOME/go/src/github.com/AtScaleInc/mcp/plans/sml-reference-model-arms/tools/mcp_call.py"
-out="$("$MCP_PY" "$MCP_CALL" list_models "{\"catalog\": \"$CATALOG\", \"force_refresh\": true}" 2>&1)"
+out="$("$MCP_PY" "$MCP_CALL" list_models "{\"catalog\": \"$CATALOG\", \"force_refresh\": true}" 2>&1)" || true
 printf '%s\n' "$out" | head -20
 n="$(printf '%s\n' "$out" | grep -c "$MODEL_NAME" || true)"
 [ "$n" -ge 1 ] || { echo "FAIL: list_models on $CATALOG does not return $MODEL_NAME"; exit 1; }

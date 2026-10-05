@@ -10971,3 +10971,15 @@ Mechanism fired on every run: MKT projected 2/2, Social Butterfly filter 2/2, me
 - virtual_idol_12: P1 2/2, P2 0/2. All 4 fans over 30 days returned; the reference has 1 row. Capped.
 - sports_7 (NULLIF note): run 1 1.0, run 2 0 (P1: the simulator chose the sample stddev; variance).
 Reward 2.75/4 mean vs r5 2.8 for these four: flat. P1 7/8 (r5 4/4), P2 2/8 (r5 0/4).
+
+## 2026-10-05 — labor_certification_applications SRV arm, initial build (diannewood/bird-models-srv 4e82b7a, deployed to bird_models_srv)
+
+**Approach.** `create_sml_model` (mcp be3d547 on :3004), then one Fable F1 refinement using the server's 12 default skills under `results/arms_lca/packet_lca.md`. No F2. Model `Labor Certification Applications SRV`: 5 datasets, 5 dimensions, 46 metrics, 21 calcs. One A8 rewording by Opus (APT synonym). n=1 × 10 tasks: 0.310 reward, P1 40%, P2 10%. See `results/arms_lca/ARMS.md`.
+
+## 2026-10-05 — labor_certification_applications DG arm, initial build (diannewood/bird-models-dg 92da637, deployed to bird_models_dg)
+
+**Approach.** Fable ran the `atscale-sml-model-generator` v1.8.0 Claude skill (Daniel Gray) on DDL, data profile and a Fable-written use case. Only the SML object folders were copied in. One F2 call fixed a NULL-on-one-side rate difference and occupation/geography wordings (smoke gate 3). 5 datasets, 5 dimensions, 55 metrics, 25 calcs. n=1 × 10 tasks: 0.340 reward, P1 40%, P2 20%.
+
+## 2026-10-05 — labor_certification_applications B2 arm, initial build (diannewood/bird-models-b2 be395d8, deployed to bird_models_b2)
+
+**Approach.** `create_sml_model`, then a Fable F1 refinement using only `sml-reference-model` and `sml-essentials` (the 6 B2 skills on :3004). One A10 fix by Opus removed a masked cutoff from a description. One F2 call fixed the Attorney Success Rate numerator population, discoverability wordings and the SAI grain text. 5 datasets, 5 dimensions, 35 metrics, 14 calcs. n=1 × 10 tasks: 0.410 reward, P1 50%, P2 20%.
