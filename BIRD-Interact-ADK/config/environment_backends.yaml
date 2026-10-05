@@ -528,3 +528,30 @@ backends:
         catalog: atscale_catalogs
         schema: bird_atscale_models_catalog_ng930
         table: Fake Account Detection
+
+  # Three-arm modeling comparison (2026-10-05, results/arms_lca/kickoff.md): one labor model per
+  # authoring approach, same BIRD inputs and v12 Firewall. SRV = create_sml_model + the MCP server's
+  # default skills (mcp be3d547 .agents/skills); DG = the atscale-sml-model-generator v1.8.0 Claude
+  # skill; B2 = create_sml_model + sml-reference-model/sml-essentials. Repos diannewood/bird-models-<arm>,
+  # catalogs bird_models_<arm>. Schema read back from list_models after each deploy.
+  atscale_arm_srv:
+    <<: *atscale
+    domains:
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_models_srv
+        table: Labor Certification Applications SRV
+  atscale_arm_dg:
+    <<: *atscale
+    domains:
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_models_dg
+        table: Labor Certification Applications DG
+  atscale_arm_b2:
+    <<: *atscale
+    domains:
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_models_b2
+        table: Labor Certification Applications B2
