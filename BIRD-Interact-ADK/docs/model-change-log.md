@@ -10983,3 +10983,15 @@ Reward 2.75/4 mean vs r5 2.8 for these four: flat. P1 7/8 (r5 4/4), P2 2/8 (r5 0
 ## 2026-10-05 — labor_certification_applications B2 arm, initial build (diannewood/bird-models-b2 be395d8, deployed to bird_models_b2)
 
 **Approach.** `create_sml_model`, then a Fable F1 refinement using only `sml-reference-model` and `sml-essentials` (the 6 B2 skills on :3004). One A10 fix by Opus removed a masked cutoff from a description. One F2 call fixed the Attorney Success Rate numerator population, discoverability wordings and the SAI grain text. 5 datasets, 5 dimensions, 35 metrics, 14 calcs. n=1 × 10 tasks: 0.410 reward, P1 50%, P2 20%.
+
+## 2026-10-06 — exchange_traded_funds SRV arm, initial build (diannewood/bird-models-srv 4b0e3c3, deployed to bird_models_srv)
+
+**Approach.** `create_sml_model` (mcp-b2-arm be3d547 on :3004), one Fable F1 refinement with the server's 12 default skills under `results/arms_etf/packet_etf.md`, then the `sml-model-sweep` input sweep: round 1 (OK 5/15) -> Fable F2 (KB vocabulary on MISS rows, closed asks on FORK rows, four per-child-fact distinct-fund counts for a smoke conformance gap) -> round 2 (OK 5), stopped on the continuation test. Opus: A8 rewording (Total ADVT 3M metrics renamed Summed, four descriptions) and YAML quoting. Pre-sweep tag etf-srv-presweep. n=1 x 15 tasks: pre 0.513 (P1 53%, P2 47%), post 0.653 (P1 73%, P2 47%). See `results/arms_etf/ARMS.md`.
+
+## 2026-10-06 — exchange_traded_funds DG arm, initial build (diannewood/bird-models-dg 88f4cb0, deployed to bird_models_dg)
+
+**Approach.** Fable ran the `atscale-sml-model-generator` v1.8.0 skill on DDL, data profile and a Fable-written use case; only SML object folders copied in. Opus: one 64-char unique_name shortened (label matched), Total ADVT (3M) renamed Summed, one synonym reworded (A8). Sweep: round 1 (OK 2) -> F2 -> round 2 (OK 3) -> F3 (form-variant synonyms, closed asks first) -> round 3 (OK 2), stopped. Pre-sweep tag etf-dg-presweep. n=1 x 15: pre 0.493 (P1 53%, P2 40%), post 0.673 (P1 73%, P2 53%).
+
+## 2026-10-06 — exchange_traded_funds B2 arm, initial build (diannewood/bird-models-b2 cefb4b3, deployed to bird_models_b2)
+
+**Approach.** `create_sml_model`, then a Fable F1 refinement with only `sml-reference-model:core` + `sml-essentials` (6 B2 skills) from the `f1_inputs.py` bundle. Opus: three >63-char unique_names shortened, Total ADVT 3M renamed Summed, three phrases reworded (A8). Sweep: round 1 (OK 3) -> F2 (asks lead, KB wording, Closet Indexer wording replaced) -> round 2 (OK 3), stopped. Pre-sweep tag etf-b2-presweep. n=1 x 15: pre 0.673 (P1 73%, P2 53%), post 0.693 (P1 73%, P2 60%).

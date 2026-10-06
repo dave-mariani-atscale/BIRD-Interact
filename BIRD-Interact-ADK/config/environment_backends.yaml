@@ -541,6 +541,10 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_srv
         table: Labor Certification Applications SRV
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_srv
+        table: Exchange Traded Funds SRV
   atscale_arm_dg:
     <<: *atscale
     domains:
@@ -548,6 +552,10 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_dg
         table: Labor Certification Applications DG
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_dg
+        table: Exchange Traded Funds DG
   atscale_arm_b2:
     <<: *atscale
     domains:
@@ -555,3 +563,7 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_b2
         table: Labor Certification Applications B2
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_b2
+        table: Exchange Traded Funds B2
