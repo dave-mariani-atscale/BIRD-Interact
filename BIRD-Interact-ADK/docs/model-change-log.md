@@ -10995,3 +10995,7 @@ Reward 2.75/4 mean vs r5 2.8 for these four: flat. P1 7/8 (r5 4/4), P2 2/8 (r5 0
 ## 2026-10-06 — exchange_traded_funds B2 arm, initial build (diannewood/bird-models-b2 cefb4b3, deployed to bird_models_b2)
 
 **Approach.** `create_sml_model`, then a Fable F1 refinement with only `sml-reference-model:core` + `sml-essentials` (6 B2 skills) from the `f1_inputs.py` bundle. Opus: three >63-char unique_names shortened, Total ADVT 3M renamed Summed, three phrases reworded (A8). Sweep: round 1 (OK 3) -> F2 (asks lead, KB wording, Closet Indexer wording replaced) -> round 2 (OK 3), stopped. Pre-sweep tag etf-b2-presweep. n=1 x 15: pre 0.673 (P1 73%, P2 53%), post 0.693 (P1 73%, P2 60%).
+
+## 2026-10-06 — exchange_traded_funds B2 arm: temporary pre-sweep redeploy for n=3 (diannewood/bird-models-b2 6bffebc → d04bc25, bird_models_b2)
+
+**Why.** Two extra pre-sweep runs. The `etf-b2-presweep` content was put back on main and deployed (6bffebc), run twice, then the frozen post-sweep content was restored and redeployed (d04bc25, identical to the cefb4b3 freeze). Net model change: none. Result in `results/arms_etf/ARMS.md` (B2 pre n=3 mean 0.598).
