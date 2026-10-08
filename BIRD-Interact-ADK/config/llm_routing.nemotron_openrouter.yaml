@@ -1,0 +1,11 @@
+# Nemotron 3 Ultra leaderboard re-run on no-gold-930, 2026-10-07. The agent is pinned to Venice (fp8, 256k context) then
+# BaseTen (fp4, 202.8k context) with no other provider - the same pair the 2026-09-20 sweep used through an OpenRouter guardrail
+# allowlist (NVIDIA direct collapsed at concurrency 10 on its 40 rpm cap; DeepInfra's shared pool was overloaded that day).
+# Serving is therefore MIXED fp8/fp4, disclosed. Sustained probe at harness pace, 2026-10-07 (34 rpm x 10 min per provider,
+# harness-sized system prompt + the harness tool names, logs/lb_nemotron_nogold930/probe_1007.log): Venice 100.0% (340/340
+# tool calls, median 6.8 s), BaseTen 99.4% (337 tool calls, 2 empty, 1 text; median 1.1 s), DeepInfra 100.0% (not used).
+# The simulator is claude-haiku-4-5 on Anthropic's API, pinned by LEADERBOARD_MODE, and is not routed here.
+routes:
+  openrouter/nvidia/nemotron-3-ultra-550b-a55b:
+    extra_body:
+      provider: {order: [venice, baseten], allow_fallbacks: false}
