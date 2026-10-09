@@ -20,34 +20,46 @@ prepared in September, which is withdrawn; §9 says why.
 ## Results
 
 Success Rate is the blended phase-1 rate over all 600 tasks; Reward is
-(0.7·P1 + 0.3·P2)·100. Both come from each model's best single run of three, chosen
-by Success Rate with ties broken by Reward; in every case that is run 3. Your
-Submission Guidelines address run count only in §V, Validation Submission Mode, which
-recommends at least three runs and says "we will report the best result among them"
-without naming the metric, so we state ours. **Success Rate and Reward are our own
-replay of the submitted SQL under your grading (§3)**: the figures we expect your
-evaluator to reproduce. **Live** is what our harness scored during the run; the two
-agree to the row except where §3 says. **Cold** is each model's run 1, from an empty
-memory store (§4); the **3-run mean** is over all three.
+(0.7·P1 + 0.3·P2)·100. We give two figures for each model and ask you to publish
+whichever you consider right for the board; we have no preference.
 
-**Claude-Haiku-4-5 simulator track**
+- **Option 1, cold run**: each model's run 1 of 3, started from an empty memory store
+  (§4), so nothing carries over between tasks or runs. This is the figure with no
+  advantage from having seen the task set before.
+- **Option 2, with memory**: each model's best single run of three, chosen by Success
+  Rate with ties broken by Reward; in every case that is run 3. Your Submission
+  Guidelines address run count only in §V, Validation Submission Mode, which recommends
+  at least three runs and says "we will report the best result among them" without
+  naming the metric, so we state ours. Runs 2 and 3 start from what run 1 learned (§4),
+  so Option 2 shows what the memory adds.
 
-| Model | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins / query task | Cold run 1 | 3-run mean |
+In both tables **Success Rate and Reward are our own replay of the submitted SQL under
+your grading (§3)**: the figures we expect your evaluator to reproduce. **Live** is what
+our harness scored during the run; the two agree to the row except where §3 says. The
+GPT-5 row is on the GPT-4o simulator track, a separate board entry, and is not
+comparable to the Claude-Haiku-4-5 rows.
+
+**Option 1: cold run, no memory (run 1 of 3)**
+
+| Model | User simulator | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins / query task |
+|---|---|---|---|---|---|---|---|---|---|
+| Claude-Sonnet-5 | Claude-Haiku-4-5 | **48.17** | **42.72** | 48.17 | 42.72 | 50.24 | 33.66 | 43.68 | 16.19 |
+| Claude-Opus-4.6 | Claude-Haiku-4-5 | **44.17** | **38.87** | 44.17 | 38.87 | 45.37 | 29.02 | 41.58 | 16.22 |
+| Kimi-2.5 | Claude-Haiku-4-5 | **40.83** | **34.78** | 40.83 | 34.78 | 41.71 | 23.90 | 38.95 | 17.22 |
+| GPT-5 | GPT-4o | **43.00** | **36.85** | 43.00 | 36.85 | 44.63 | 22.68 | 39.47 | 15.70 |
+
+**Option 2: with memory (best of 3 sequential runs; run 3 in every case)**
+
+| Model | User simulator | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins / query task | 3-run mean |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Claude-Sonnet-5 | **53.83** | **48.63** | 53.83 | 48.58 | 56.59 | 42.68 | 47.89 | 14.58 | 48.17 | 51.17 ± 2.84 |
-| Claude-Opus-4.6 | **49.50** | **44.75** | 49.50 | 44.75 | 53.66 | 40.24 | 40.53 | 14.11 | 44.17 | 47.17 ± 2.73 |
-| Kimi-2.5 | **46.17** | **40.12** | 46.17 | 40.07 | 49.27 | 30.49 | 39.47 | 16.05 | 40.83 | 43.44 ± 2.67 |
+| Claude-Sonnet-5 | Claude-Haiku-4-5 | **53.83** | **48.63** | 53.83 | 48.58 | 56.59 | 42.68 | 47.89 | 14.58 | 51.17 ± 2.84 |
+| Claude-Opus-4.6 | Claude-Haiku-4-5 | **49.50** | **44.75** | 49.50 | 44.75 | 53.66 | 40.24 | 40.53 | 14.11 | 47.17 ± 2.73 |
+| Kimi-2.5 | Claude-Haiku-4-5 | **46.17** | **40.12** | 46.17 | 40.07 | 49.27 | 30.49 | 39.47 | 16.05 | 43.44 ± 2.67 |
+| GPT-5 | GPT-4o | **47.67** | **43.07** | 47.67 | 43.07 | 50.49 | 36.34 | 41.58 | 13.85 | 45.95 ± 2.56 |
 
-**GPT-4o simulator track** — not comparable to the rows above, different simulator.
-
-| Model | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins / query task | Cold run 1 | 3-run mean |
-|---|---|---|---|---|---|---|---|---|---|---|
-| GPT-5 | **47.67** | **43.07** | 47.67 | 43.07 | 50.49 | 36.34 | 41.58 | 13.85 | 43.00 | 45.95 ± 2.56 |
-
-Each model's cold run 1, for a board that would rather list a figure with no
-carry-over at all: Sonnet 48.17 / 42.72, Opus 44.17 / 38.87, Kimi 40.83 / 34.78,
-GPT-5 43.00 / 36.85 (Success Rate / Reward). We will list whichever you consider
-correct.
+The **3-run mean** (± sd) is the Success Rate over all three runs. Query P1/P2 and
+Mgmt P1 are the phase rates on the 410 Query and 190 Management tasks; coins are the
+mean budget spent per Query task out of 17.86.
 
 Three further sweeps on the same protocol, models and stack — Grok 4.3, Nemotron 3
 Ultra and Gemini 3.1 Pro — are in our public results workbook and are not part of this
@@ -97,8 +109,8 @@ run-to-run noise on 190 tasks (binomial SE ≈ 3.6 points) — while Query P1 is
 
 **3. We re-graded our own submission and are quoting that number.** Every exported
 Query SQL was re-executed against a clone of each task's template database and
-re-graded under **upstream** rules; the Success Rate and Reward columns above are the
-result. Since 2026-10-01 (harness `8c39060`) our leaderboard-mode grader cleans
+re-graded under **upstream** rules; the Success Rate and Reward figures in both tables
+above are the result. Since 2026-10-01 (harness `8c39060`) our leaderboard-mode grader cleans
 `DISTINCT` exactly as `evaluation/src/eval_bird_interact.py` does — equal to your
 `remove_distinct` on all 1,288 gold statements in the dataset — so live and replayed
 verdicts now agree except for three rows across the twelve runs:
@@ -130,7 +142,7 @@ never sees gold SQL, results or test cases, only which of its own earlier querie
 accepted. The store was emptied before run 1 of every sweep and the reset is logged
 beside the results (`*_feedback_reset.txt`: zeroed at 2026-10-04T05:55:51Z for Sonnet,
 10-04T17:01:53Z Kimi, 10-05T22:07:05Z GPT-5, 10-06T11:48:40Z Opus, and read empty again
-at launch). The **Cold run 1** column is the figure with no carry-over.
+at launch). Option 1 (the cold run) is the figure with no carry-over.
 
 **5. The models were built against this public dataset, then cleaned of anything
 traceable to its gold.** Our 22 semantic models were generated from each database's
