@@ -18,7 +18,12 @@
 # runner dies. Truncating with them up produced a non-empty store twice.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PG() { docker exec postgres psql -U atscale -d atscale -Atc "$1"; }
+# Container names default to the development stack's. The verification package's
+# compose project (bird-verify) names them bird-verify-postgres-1 and bird-verify-mcp-1
+# and sets these before it runs the harness, so one script serves both stacks.
+PG_CONTAINER="${PG_CONTAINER:-postgres}"
+MCP_CONTAINER="${MCP_CONTAINER:-development-compose-mcp-1}"
+PG() { docker exec "$PG_CONTAINER" psql -U atscale -d atscale -Atc "$1"; }
 counts() { PG "select 'exchange='||(select count(*) from mcp_feedback.exchange)
                    ||' feedback='||(select count(*) from mcp_feedback.feedback)
                    ||' certified_query='||(select count(*) from mcp_feedback.certified_query);"; }
@@ -37,7 +42,7 @@ b=$(PG "select count(*) from mcp_feedback.exchange")
 
 mkdir -p results/backups
 f="results/backups/mcp_feedback_before_reset_$(date +%Y%m%d_%H%M%S).sql"
-docker exec postgres pg_dump -U atscale -d atscale -n mcp_feedback > "$f"
+docker exec "$PG_CONTAINER" pg_dump -U atscale -d atscale -n mcp_feedback > "$f"
 echo "== backed up to $f ($(du -h "$f" | cut -f1)); before: $(counts)"
 
 PG "truncate table mcp_feedback.feedback, mcp_feedback.exchange, mcp_feedback.certified_query restart identity cascade;" >/dev/null
@@ -45,6 +50,6 @@ after=$(counts); echo "== after:  $after"
 [ "$after" = "exchange=0 feedback=0 certified_query=0" ] || { echo "reset incomplete" >&2; exit 1; }
 
 echo "== restarting MCP server so nothing cached survives"
-docker restart development-compose-mcp-1 >/dev/null
+docker restart "$MCP_CONTAINER" >/dev/null
 for _ in $(seq 1 30); do curl -s -m 3 http://localhost:3003/configz >/dev/null 2>&1 && break; sleep 2; done
 echo "== store is COLD. Aggregates are a separate step (drop schema aggregates per BIRD database)."

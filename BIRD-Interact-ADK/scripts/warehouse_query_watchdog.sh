@@ -10,9 +10,12 @@
 # 49.2 s, fastest OOM kill at 72 s - so 60 s touches no query that has ever succeeded and stops the runaway before it kills.
 #   nohup bash scripts/warehouse_query_watchdog.sh > logs/warehouse_query_watchdog.log 2>&1 &
 LIMIT_S=${LIMIT_S:-60}
-echo "$(date '+%m-%d %H:%M:%S') watchdog up: cancel engine (PostgreSQL JDBC Driver) queries active > ${LIMIT_S}s"
+# The warehouse container: the development stack's by default; the verification
+# package's compose project names it bird-verify-bird-warehouse-1 and sets this.
+WAREHOUSE_CONTAINER="${WAREHOUSE_CONTAINER:-bird_interact_postgresql_full}"
+echo "$(date '+%m-%d %H:%M:%S') watchdog up: cancel engine (PostgreSQL JDBC Driver) queries active > ${LIMIT_S}s on $WAREHOUSE_CONTAINER"
 while true; do
-  docker exec -i bird_interact_postgresql_full psql -U root -d postgres -AtF' | ' -c "
+  docker exec -i "$WAREHOUSE_CONTAINER" psql -U root -d postgres -AtF' | ' -c "
     select pg_cancel_backend(pid), pid, datname, round(extract(epoch from now()-query_start)) as secs,
            left(regexp_replace(query, '\s+', ' ', 'g'), 160)
     from pg_stat_activity
