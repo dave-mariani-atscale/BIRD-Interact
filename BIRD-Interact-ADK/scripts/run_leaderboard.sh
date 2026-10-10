@@ -19,6 +19,10 @@
 # To go back to the A/B stack afterwards: bash scripts/start_services.sh (the
 # switch is not persisted; only .env LEADERBOARD_MODE=true would make it stick).
 set -euo pipefail
+# results/ and logs/ are gitignored, so a fresh clone has neither; the reset
+# attestation below is written through tee and a missing directory would abort the
+# whole launch under pipefail (seen 2026-10-10 in the verification package).
+mkdir -p results logs
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
