@@ -21,7 +21,7 @@ prepared in September, which is withdrawn; §9 says why.
 
 Success Rate is the blended phase-1 rate over all 600 tasks; Reward is
 (0.7·P1 + 0.3·P2)·100. We give two figures for each model and ask you to publish
-whichever you consider right for the board; we have no preference.
+whichever you consider right for the board.
 
 - **Option 1, cold run**: each model's run 1 of 3, started from an empty memory store
   (§4), so nothing carries over between tasks or runs. This is the figure with no
@@ -218,6 +218,13 @@ One bundle per model, `BIRD_leaderboard_submission_AtScale_<Model>_results_<date
 | `<model>_run{1_cold,2_warm,3_warm}.json`, `<model>_raw_n1.json` | The harness's full run records, and the re-graded raw-arm control |
 | `RESULTS.md` | The per-run table, lift, memory, errors and every disclosure specific to that sweep |
 | `error_classes.tsv` | Every errored task with its exception and class |
+
+Beside the bundles in the shared folder: this file, `VERIFY.md` and the Tier 1
+verification assets (Reproducing, below), the models repository zip, and the white
+paper `AtScale_BIRD_Semantic_Layer_Benchmark_WhitePaper_2026-10.pdf` (draft v0.1), the
+full study behind this submission. The paper also covers three further models and a
+modified-harness scenario that are not part of it:
+https://drive.google.com/file/d/1Q-9T7V18bhKyjbZzRA-ozPfdpynsB_tv/view
 
 Where your evaluator disagrees with either verdict, yours is correct and we would like
 to know.
