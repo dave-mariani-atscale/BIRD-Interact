@@ -62,8 +62,11 @@ Mgmt P1 are the phase rates on the 410 Query and 190 Management tasks; coins are
 mean budget spent per Query task out of 17.86.
 
 Three further sweeps on the same protocol, models and stack — Grok 4.3, Nemotron 3
-Ultra and Gemini 3.1 Pro — are in our public results workbook and are not part of this
-submission.
+Ultra and Gemini 3.1 Pro — are not part of this submission. They are in our results
+workbook, `AtScale_BIRD_Results_Workbook_2026-10.xlsx` in the shared folder, which has
+one tab per sweep (the four submitted ones included: per-database rates for each run,
+the best-of-3 row and the behaviour profile), a `Method` tab saying how every number
+was derived, and the modified-harness head-to-head scenario the white paper describes.
 
 ## What the system is
 
