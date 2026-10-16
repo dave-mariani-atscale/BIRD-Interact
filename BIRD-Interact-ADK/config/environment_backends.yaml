@@ -575,3 +575,10 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_cm
         table: Exchange Traded Funds CM
+  atscale_arm_tc:
+    <<: *atscale
+    domains:
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_tc
+        table: Exchange Traded Funds TC
