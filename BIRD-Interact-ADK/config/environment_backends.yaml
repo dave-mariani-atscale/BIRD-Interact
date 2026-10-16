@@ -567,3 +567,11 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_b2
         table: Exchange Traded Funds B2
+
+  atscale_arm_cm:
+    <<: *atscale
+    domains:
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_cm
+        table: Exchange Traded Funds CM

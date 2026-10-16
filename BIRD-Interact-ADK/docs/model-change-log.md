@@ -10999,3 +10999,7 @@ Reward 2.75/4 mean vs r5 2.8 for these four: flat. P1 7/8 (r5 4/4), P2 2/8 (r5 0
 ## 2026-10-06 — exchange_traded_funds B2 arm: temporary pre-sweep redeploy for n=3 (diannewood/bird-models-b2 6bffebc → d04bc25, bird_models_b2)
 
 **Why.** Two extra pre-sweep runs. The `etf-b2-presweep` content was put back on main and deployed (6bffebc), run twice, then the frozen post-sweep content was restored and redeployed (d04bc25, identical to the cefb4b3 freeze). Net model change: none. Result in `results/arms_etf/ARMS.md` (B2 pre n=3 mean 0.598).
+
+## 2026-10-15 — exchange_traded_funds CM arm, initial build (diannewood/bird-models-cm a8240ec, deployed to bird_models_cm)
+
+**Approach.** Fable followed the comodel plugin command (AtScaleInc/mcp feat/ATSCALE-53937 @ 57aa9e5, `comodel` 0.1.0) with the CLI alone, with no authoring skills and no facts.md: `comodel init` + 15 `db profile` + 7 `db sample`, 3 `comodel validate` runs to clean. The post step copied only the SML object folders and repointed 7 dataset connection_ids (init wrote `Connection - public`). Opus made A8 fixes: 2 descriptions reworded, and KB 76's aggregate name allowlisted in `generator/leakage_allow.json`. Sweep: round 1 (OK 5) -> F2 (descriptions only, 13 files) -> round 2 (OK 5), stopped. Pre-sweep tag etf-cm-presweep (f20c0c0). n=1 x 15: pre 0.693 (P1 73%, P2 60%), post 0.827 (P1 87%, P2 73%). Result in `results/arms_etf_cm/ARMS.md`.
