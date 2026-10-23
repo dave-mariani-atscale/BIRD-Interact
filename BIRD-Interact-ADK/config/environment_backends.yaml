@@ -589,3 +589,10 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_tcf
         table: Exchange Traded Funds TCF
+  atscale_arm_b2ao:
+    <<: *atscale
+    domains:
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_b2ao
+        table: Exchange Traded Funds B2AO
