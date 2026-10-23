@@ -14,6 +14,11 @@ LIMIT_TOKENS = 22000
 
 def tokens(s): return len(s) / 3.3
 
+def section(b, name, tail):
+    """A brief file as a fenced section; omitted when the brief has none (DDL-only arms: bare, bareao)."""
+    p = os.path.join(b, name)
+    return f"## {name}\n\n```\n{open(p).read()}```{tail}" if os.path.exists(p) else ""
+
 def main(model_dir, gen_out, out_dir):
     b = os.path.join(model_dir, "brief")
     tb = json.load(open(os.path.join(b, "task_brief.json")))
@@ -22,9 +27,9 @@ def main(model_dir, gen_out, out_dir):
          f"## Generator output notes\n\n{open(gen_out).read()}\n\n"
          f"## deleted_ids.txt\n\n```\n{open(os.path.join(b,'deleted_ids.txt')).read()}```\n\n"
          f"## User question wordings (amb_user_query only; vocabulary for names and descriptions)\n\n{qs}\n\n"
-         f"## kb.jsonl\n\n```\n{open(os.path.join(b,'kb.jsonl')).read()}```\n")
+         + section(b, 'kb.jsonl', "\n"))
     bb = (f"# F1 inputs (b): column meanings and schema\n\n"
-          f"## column_meaning_base.json\n\n```\n{open(os.path.join(b,'column_meaning_base.json')).read()}```\n\n"
+          + section(b, 'column_meaning_base.json', "\n\n") +
           f"## schema.txt\n\n```\n{open(os.path.join(b,'schema.txt')).read()}```\n")
     os.makedirs(out_dir, exist_ok=True)
     for name, body in (("f1_inputs_a.md", a), ("f1_inputs_b.md", bb)):

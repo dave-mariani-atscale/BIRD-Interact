@@ -89,7 +89,8 @@ def main(queries_csv: str, brief_dir: str) -> None:
     logging.info("catalogued %d tables, %d columns", len(tables_df), len(columns_df))
 
     rows = []
-    for key, text in json.load(open(meanings_json)).items():
+    meanings = json.load(open(meanings_json)) if meanings_json.exists() else {}  # absent in DDL-only briefs
+    for key, text in meanings.items():
         _, table, col = key.split("|")
         if not isinstance(text, str):  # JSON columns carry a per-field dict
             text = json.dumps(text)

@@ -596,3 +596,17 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_b2ao
         table: Exchange Traded Funds B2AO
+  atscale_arm_bare:
+    <<: *atscale
+    domains:
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_bare
+        table: Exchange Traded Funds BARE
+  atscale_arm_bareao:
+    <<: *atscale
+    domains:
+      exchange_traded_funds:
+        catalog: atscale_catalogs
+        schema: bird_models_bareao
+        table: Exchange Traded Funds BAREAO
