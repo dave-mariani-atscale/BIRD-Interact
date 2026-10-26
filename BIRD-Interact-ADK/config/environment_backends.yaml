@@ -610,3 +610,17 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_bareao
         table: Exchange Traded Funds BAREAO
+  atscale_arm_saxocm:
+    <<: *atscale
+    domains:
+      saxo_bank:
+        catalog: atscale_catalogs
+        schema: bird_models_saxocm
+        table: Saxo Bank CM
+  atscale_arm_saxoaocm:
+    <<: *atscale
+    domains:
+      saxo_bank:
+        catalog: atscale_catalogs
+        schema: bird_models_saxoaocm
+        table: Saxo Bank AOCM
