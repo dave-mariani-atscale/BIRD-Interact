@@ -624,3 +624,17 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_saxoaocm
         table: Saxo Bank AOCM
+  atscale_arm_tcm:
+    <<: *atscale
+    domains:
+      retail_ops:
+        catalog: atscale_catalogs
+        schema: bird_models_tcm
+        table: Retail Ops CM
+  atscale_arm_taocm:
+    <<: *atscale
+    domains:
+      retail_ops:
+        catalog: atscale_catalogs
+        schema: bird_models_taocm
+        table: Retail Ops AOCM
