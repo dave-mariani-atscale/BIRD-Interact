@@ -109,6 +109,7 @@ def parse(sql):
         else:
             m2 = re.match(r"^(?:\w+\.)?\"?(\w+)\"?$", it)
             if m2: sc["select"][m2.group(1)] = it
+            elif re.fullmatch(r"(\w+)\.\*", it): sc.setdefault("stars", []).append(it[:-2])
     rest, base = "FROM " + sql[fm[0].end():], 0
     # walk from-items
     pos, items = 0, []
@@ -155,7 +156,8 @@ def resolve(sc, alias, col, seen=0):
     if t[0] == "t": return (t[1], col)
     inner = t[1]
     expr = inner["select"].get(col)
-    if expr is None: return None
+    if expr is None:  # a.* passes the column through from alias a
+        return next((r for a in inner.get("stars", []) if (r := resolve(inner, a, col, seen + 1))), None)
     m = re.fullmatch(r"(?:(\w+)\.)?\"?(\w+)\"?", expr.strip())
     if not m: return None
     if m.group(1): return resolve(inner, m.group(1), m.group(2), seen + 1)
@@ -185,7 +187,9 @@ class Dataset:
         if self.sc is None:
             return ({(self.table, name)} if self.table else set()), False
         e = self.sc["select"].get(name)
-        if e is None: return set(), False
+        if e is None:
+            r = next((r for a in self.sc.get("stars", []) if (r := resolve(self.sc, a, name))), None)
+            return ({r} if r else set()), False
         return expr_refs(self.sc, e), e.strip() == "1"
 
 def pairs_of(sc):
