@@ -52,10 +52,10 @@ $PY -m orchestrator.runner --mode a-interact --backend dbx_metric_views --query-
     --output "$OUT/dbx_metric_views.json" > "$LOGD/dbx_metric_views.log" 2>&1
 rc=$?
 kill $WATCH 2>/dev/null
-echo "  runner exit $rc; files: $(ls -1 $OUT/dbx_metric_views_run*.json 2>/dev/null | tr '\n' ' ')"
+echo "  runner exit $rc; files: $(ls -1 $OUT/dbx_metric_views_*.json 2>/dev/null | tr '\n' ' ')"
 
 step "final comparison"
-R=$(ls -1t $OUT/dbx_metric_views_run*.json 2>/dev/null | head -1)
+R=$(ls -1t $OUT/dbx_metric_views_*.json 2>/dev/null | head -1)
 if [ -n "$R" ]; then
   $PY scripts/compare_vs_baseline_runs.py --results "$R" --baseline "$BASE" | tee "$OUT/final_compare.txt"
 else
