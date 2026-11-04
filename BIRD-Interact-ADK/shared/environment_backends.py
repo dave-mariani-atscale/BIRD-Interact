@@ -47,7 +47,11 @@ def get_domain_config(backend_name: str, selected_database: str) -> Dict[str, st
     """Return {catalog, schema, table} for this domain under this backend, or
     None if the domain has no semantic model configured yet."""
     backend = get_backend_config(backend_name)
-    return backend.get("domains", {}).get(selected_database)
+    domain = backend.get("domains", {}).get(selected_database)
+    if domain and backend.get("dialect") and "dialect" not in domain:
+        # The SQL dialect the guard parses with (sqlglot name), set once per backend.
+        domain = {**domain, "dialect": backend["dialect"]}
+    return domain
 
 
 def query_domain_violation(query: str, domain: Dict[str, str]) -> Optional[str]:
@@ -71,12 +75,14 @@ def query_domain_violation(query: str, domain: Dict[str, str]) -> Optional[str]:
         make the two disagree over time.
     """
     try:
-        statement = sqlglot.parse_one(query)
+        statement = sqlglot.parse_one(query, read=domain.get("dialect") or None)
     except Exception as e:
         logger.warning("domain guard: could not parse query (%s); allowing through", e)
         return None
     if statement is None:
         return None
+    if domain.get("objects"):
+        return _schema_domain_violation(statement, domain)
 
     want_schema = domain.get("schema", "").casefold()
     want_table = domain.get("table", "").casefold()
@@ -101,6 +107,43 @@ def query_domain_violation(query: str, domain: Dict[str, str]) -> Optional[str]:
             "exactly as list_models returned it. Another model may look similar or even "
             "share its label; results from it do not answer this question."
         )
+    return None
+
+
+def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]:
+    """Schema-level domains (Databricks backends). A domain is {catalog, schema,
+    objects} where objects is "metric_views" or "tables": every table reference
+    must be an object of that kind in that schema (or an information_schema read,
+    which is metadata the discovery tools already expose). A CTE or subquery
+    alias is not a table reference. Unqualified names are allowed because the
+    statement executes with the domain's catalog and schema as defaults."""
+    from shared import databricks_sql  # lazy: only Databricks backends need it
+
+    want_catalog = domain.get("catalog", "").casefold()
+    want_schema = domain.get("schema", "").casefold()
+    try:
+        allowed = databricks_sql.schema_objects(domain["catalog"], domain["schema"], domain["objects"])
+    except Exception as e:  # noqa: BLE001 - a dead warehouse must not look like a wrong model
+        logger.warning("domain guard: could not list %s of %s.%s (%s); allowing through",
+                       domain.get("objects"), want_catalog, want_schema, e)
+        return None
+    ctes = {c.alias_or_name.casefold() for c in statement.find_all(exp.CTE)}
+    kind = "metric view" if domain["objects"] == "metric_views" else "table"
+    for tbl in statement.find_all(exp.Table):
+        name = tbl.name.casefold()
+        schema = tbl.text("db").casefold()
+        catalog = tbl.text("catalog").casefold()
+        if not schema and name in ctes:
+            continue
+        if schema == "information_schema":
+            continue
+        if (catalog and catalog != want_catalog) or (schema and schema != want_schema) or name not in allowed:
+            found = ".".join(p for p in (tbl.text("catalog"), tbl.text("db"), tbl.name) if p)
+            return (
+                f'Query rejected: it references "{found}", which is not a {kind} of this task\'s '
+                f'schema "{domain.get("catalog")}"."{domain.get("schema")}". Query only the '
+                f"{kind}s list_metric_views returned for this task, by their exact names."
+            )
     return None
 
 

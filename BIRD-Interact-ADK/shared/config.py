@@ -186,6 +186,12 @@ class Settings(BaseSettings):
     # or the outbound SQL in the submission reads aggregate tables the BIRD
     # evaluator does not have (scripts/mcp_aggregates.sh on).
     semantic_layer_mcp_admin_url: str = "http://localhost:3003"
+    # Databricks backends (config/environment_backends.yaml `executor: databricks`):
+    # the SQL warehouse the agent's run_query and the grader's re-execution both
+    # use. Host like https://adb-123.4.azuredatabricks.net; a PAT; the warehouse id.
+    databricks_host: str = ""
+    databricks_token: str = ""
+    databricks_warehouse_id: str = ""
 
     # ── Grading corrections (unconditional, both arms) ──
     # Four corrections to upstream BIRD-Interact's comparison are applied on

@@ -20,7 +20,7 @@ from shared.db_utils import (
     canonical_cell, preprocess_results,
     record_graded_submission,
 )
-from shared.environment_backends import get_domain_config, query_domain_violation
+from shared.environment_backends import get_backend_config, get_domain_config, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
 from shared.models import (
     ExecuteSQLRequest, ExecuteSQLResponse, InitTaskRequest,
@@ -199,6 +199,23 @@ def _run_query_via_semantic_layer(query: str) -> str:
         return f"Error: {type(e).__name__}: {e}"
 
 
+def _run_query_via_databricks(query: str, domain: dict):
+    """Execute a submitted Databricks SQL statement on the SQL warehouse (backend config
+    `executor: databricks`), with the domain's catalog and schema as the statement's
+    defaults, exactly as the agent's run_query executed it. Returns (typed rows,
+    statement_id, error_text)."""
+    from shared.databricks_sql import DatabricksSQL, DatabricksSQLError
+    try:
+        res = DatabricksSQL().execute(query, catalog=domain.get("catalog"), schema=domain.get("schema"))
+    except DatabricksSQLError as e:
+        return None, None, str(e)
+    except Exception as e:  # noqa: BLE001
+        return None, None, f"{type(e).__name__}: {e}"
+    if res.error:
+        return None, res.statement_id, res.error
+    return res.rows, res.statement_id, None
+
+
 def _fetch_outbound_sql(query_id: str) -> Optional[List[str]]:
     """The Postgres statements the engine dispatched for `query_id`, via the MCP
     server's get_outbound_queries, or None if they cannot be fetched. Leaderboard
@@ -312,6 +329,31 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                     logger.warning("submit rejected for task %s (wrong model): %s",
                                    req_task_id, pred_sql_text)
                     message = f"[exec_err_flg] {violation}"
+                elif get_backend_config(backend).get("executor") == "databricks":
+                    # Databricks backends: the submitted statement runs on the SQL
+                    # warehouse and its typed rows are compared like the MCP path's.
+                    pred_res, graded_query_id, dbx_err = _run_query_via_databricks(pred_sql_text, domain)
+                    if dbx_err:
+                        message = f"[exec_err_flg] Error executing submitted query on Databricks: {dbx_err}"
+                    else:
+                        outbound_sql = [pred_sql_text]
+                        try:
+                            result = ex_base_external_pred(pred_res, sol_sqls, task_db, conn, conditions)
+                            if result == 1:
+                                passed = True
+                                message = "SQL passed test case."
+                            else:
+                                message = "Your SQL is not correct."
+                        except Exception:
+                            message = "Your SQL is not correct."
+                        record_graded_submission(
+                            task_id=req_task_id, phase=current_phase,
+                            attempt=_submit_attempts[req_task_id][current_phase],
+                            backend=backend, passed=passed,
+                            conditions=conditions, sol_sql=sol_sqls,
+                            pred_sql=pred_sql_text, pred_rows=pred_res,
+                            query_id=graded_query_id, outbound_sql=outbound_sql,
+                            grading_regime=settings.grading_regime)
                 else:
                     result_text = _run_query_via_semantic_layer(pred_sql_text)
                     if result_text.startswith("Error"):
