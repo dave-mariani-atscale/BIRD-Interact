@@ -35,6 +35,7 @@ from google.adk.tools.tool_context import ToolContext
 
 from shared.config import settings
 from shared.databricks_auth import resolve_token
+from shared.environment_backends import query_domain_violation
 from system_agent.tools_genie_one import (GenieError, _STATE_CONVERSATION, _STATE_RESPONSES,
                                           _backend_name, _domain_or_error, _render)
 
@@ -177,7 +178,22 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
         ids.append({"response_id": turn["response_id"], "status": turn["status"],
                     "sql": [i.get("sql") for i in turn["sql_items"]], "elapsed_s": turn["elapsed_s"]})
         tool_context.state[_STATE_RESPONSES] = ids
-    return _render(turn)
+    out = _render(turn)
+    # The space holds only metric views, but under the owner token Genie can also read the
+    # base tables (Unity Catalog permissions, not the space, bound what it queries). The
+    # grader refuses a submission that reads anything but the task's metric views, as the
+    # AtScale arm's run_query refuses an off-model query; say so now, free, rather than
+    # after a 3-coin submit.
+    last = turn["sql_items"][-1]["sql"] if turn["sql_items"] else ""
+    violation = query_domain_violation(last, domain) if last else None
+    if violation:
+        logger.warning("ask_genie: Genie's SQL left the metric views (%s): %s", domain.get("schema"), last[:200])
+        if tool_context is not None:
+            tool_context.state["genie_off_model_turns"] = tool_context.state.get("genie_off_model_turns", 0) + 1
+        out += ("\n\nNOTE: this SQL reads objects outside this database's metric views "
+                f"({violation.split('references ', 1)[-1].split(',')[0]}). A submission of it will be rejected. "
+                "Ask Genie to answer from the metric views only.")
+    return out
 
 
 def get_ainteract_tools_genie_space():

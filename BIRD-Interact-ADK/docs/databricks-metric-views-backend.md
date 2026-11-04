@@ -181,3 +181,35 @@ two ask_genie, submit. solar_panel_2: reward 0.7 (phase 1 on the second submit),
 coins, 320 s; the budget ran out before the follow-up. Genie turns took 14-80 s. The agent
 prefixed every question with the database name and sent clarifications as "The user
 clarified: ..." follow-ups in the one conversation, as the instruction asks.
+
+## Genie over the metric views (`dbx_genie_space`)
+
+Genie as the SQL author inside the BIRD agent loop. Sonnet stays the agent with its budget,
+its asks and its submits; its only data tool is `ask_genie` (1 coin), which carries the
+user's question and clarifications into one Genie conversation per task, in a Genie
+**space** per database that holds only that database's metric views. No discovery tools of
+our own: Genie does the discovery over the views, whose comments carry the knowledge base.
+
+- **Spaces:** `scripts/provision_genie_spaces.py` creates or updates "BIRD <db> (metric
+  views)" for all 22 databases (5 to 13 views each, under Genie's 30-object cap), with no
+  instructions, example SQL or sample questions, verifies each holds exactly its views, and
+  writes the space ids into the `dbx_genie_space` domains. One space per database mirrors
+  one SML model per database; one per view would cut the model's relationships, and one for
+  all 22 exceeds the cap and Databricks' one-domain-per-space guidance.
+- **Tools:** `system_agent/tools_genie_space.py` (Conversation API; retries 429 and
+  transient errors; the answer layout is shared with the Genie One arm).
+- **Credential:** the owner token (decided 2026-11-04). Genie can therefore read the base
+  tables too (Unity Catalog permissions, not the space, bound it). The grader refuses a
+  submission that reads anything but the task's metric views, and `ask_genie` says so in the
+  same turn, free, when Genie's SQL leaves the views, as the AtScale arm's `run_query`
+  refuses an off-model query up front. The count of such turns is kept in session state
+  (`genie_off_model_turns`).
+- **Run:** `scripts/run_dbx_genie_space_vs_0910.sh` (ports 6200-6202, concurrency 3 because
+  the Genie API rate-limits; compared with the 09-10 AtScale sweep like the metric-view arm).
+
+Smoke (2026-11-04, solar_panel_1 and 2): both graded on the warehouse; one P1 pass. Genie wrote
+`MEASURE()` SQL over the views, found `system_unavailability` through its "downtime score"
+synonym, asked its own clarifying questions, and declined to pass a recorded figure off as a
+projection because the view's comment says it is not one. Both tasks spent 17-18 of 18 coins
+(every Genie turn, its own clarifying questions included, costs a coin), so expect phase 2
+to suffer from budget; turns took 7-57 s.
