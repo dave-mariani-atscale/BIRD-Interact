@@ -680,110 +680,110 @@ backends:
       archeology_scan:
         catalog: bird_interact
         schema: archeology_scan
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56c8d1320bfa080c210f8e7ff
       cold_chain_pharma_compliance:
         catalog: bird_interact
         schema: cold_chain_pharma_compliance
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56d1e17fbb4728c9002b922e5
       cross_border:
         catalog: bird_interact
         schema: cross_border
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56d9d15cebaf04030253d35dd
       crypto_exchange:
         catalog: bird_interact
         schema: crypto_exchange
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56df51aa7856821a24abb20fe
       cybermarket_pattern:
         catalog: bird_interact
         schema: cybermarket_pattern
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56e5d1c8d93fd25268ed69833
       disaster_relief:
         catalog: bird_interact
         schema: disaster_relief
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56eb816e9a2455da1f2bf108f
       exchange_traded_funds:
         catalog: bird_interact
         schema: exchange_traded_funds
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56f121c678a14cb33aa5682b8
       fake_account:
         catalog: bird_interact
         schema: fake_account
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56f7412aaa7d7b516326c16e6
       households:
         catalog: bird_interact
         schema: households
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a56fcd18d493205a646f62a559
       hulushows:
         catalog: bird_interact
         schema: hulushows
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a570241df9a2e9c30153e28a23
       insider_trading:
         catalog: bird_interact
         schema: insider_trading
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a5709a1fdb90be25ae810b5546
       labor_certification_applications:
         catalog: bird_interact
         schema: labor_certification_applications
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a5710a1cc4a383b0719b88c675
       mental_health:
         catalog: bird_interact
         schema: mental_health
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a571791a53a7ecabd366b70c71
       museum_artifact:
         catalog: bird_interact
         schema: museum_artifact
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a571f410f2b7a0980372c0dc7f
       organ_transplant:
         catalog: bird_interact
         schema: organ_transplant
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a5727417e48cf2b7bb4352574d
       planets_data:
         catalog: bird_interact
         schema: planets_data
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a572d11bf294ba530385f30891
       polar_equipment:
         catalog: bird_interact
         schema: polar_equipment
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a5733511f2ae13b26856ad2199
       reverse_logistics:
         catalog: bird_interact
         schema: reverse_logistics
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a573961d1fba143bdfec38e359
       robot_fault_prediction:
         catalog: bird_interact
         schema: robot_fault_prediction
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a573fa1e74b794696ffaca8223
       solar_panel:
         catalog: bird_interact
         schema: solar_panel
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a5746b1db4a32b407f56bc8df2
       sports_events:
         catalog: bird_interact
         schema: sports_events
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a5c72314f1be8ad7166d0c477d
       virtual_idol:
         catalog: bird_interact
         schema: virtual_idol
-        objects: metric_views
+        objects: any
         space_id: 01f1d8a5c79813979a339a1193e08e79

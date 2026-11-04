@@ -46,7 +46,7 @@ curl -s http://127.0.0.1:6200/health | grep -q '"leaderboard_mode":false' || { e
 
 step "live comparison every 10 minutes"
 ( while sleep 600; do
-    $PY scripts/compare_vs_baseline_runs.py --log "$LOGD/dbx_genie_space.log" --baseline "$BASE" > "$OUT/live_compare.tmp" 2>/dev/null \
+    $PY scripts/compare_vs_baseline_runs.py --log "$LOGD/dbx_genie_space.log" --baseline "$BASE" --audit results/grading_audit.jsonl --backend dbx_genie_space > "$OUT/live_compare.tmp" 2>/dev/null \
       && { echo "updated $(date '+%Y-%m-%d %H:%M')"; cat "$OUT/live_compare.tmp"; } > "$OUT/live_compare.txt"
   done ) &
 WATCH=$!
@@ -61,8 +61,8 @@ echo "  runner exit $rc; files: $(ls -1 $OUT/dbx_genie_space_*.json 2>/dev/null 
 step "final comparison"
 R=$(ls -1t $OUT/dbx_genie_space_*.json 2>/dev/null | head -1)
 if [ -n "$R" ]; then
-  $PY scripts/compare_vs_baseline_runs.py --results "$R" --baseline "$BASE" | tee "$OUT/final_compare.txt"
+  $PY scripts/compare_vs_baseline_runs.py --results "$R" --baseline "$BASE" --audit results/grading_audit.jsonl | tee "$OUT/final_compare.txt"
 else
-  $PY scripts/compare_vs_baseline_runs.py --log "$LOGD/dbx_genie_space.log" --baseline "$BASE" | tee "$OUT/final_compare.txt"
+  $PY scripts/compare_vs_baseline_runs.py --log "$LOGD/dbx_genie_space.log" --baseline "$BASE" --audit results/grading_audit.jsonl --backend dbx_genie_space | tee "$OUT/final_compare.txt"
 fi
 bash scripts/start_services_isolated.sh --stop

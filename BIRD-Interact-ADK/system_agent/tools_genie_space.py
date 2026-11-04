@@ -35,7 +35,7 @@ from google.adk.tools.tool_context import ToolContext
 
 from shared.config import settings
 from shared.databricks_auth import resolve_token
-from shared.environment_backends import query_domain_violation
+from shared.environment_backends import objects_read, query_domain_violation
 from system_agent.tools_genie_one import (GenieError, _STATE_CONVERSATION, _STATE_RESPONSES,
                                           _backend_name, _domain_or_error, _render)
 
@@ -180,19 +180,31 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
         tool_context.state[_STATE_RESPONSES] = ids
     out = _render(turn)
     # The space holds only metric views, but under the owner token Genie can also read the
-    # base tables (Unity Catalog permissions, not the space, bound what it queries). The
-    # grader refuses a submission that reads anything but the task's metric views, as the
-    # AtScale arm's run_query refuses an off-model query; say so now, free, rather than
-    # after a 3-coin submit.
+    # database's base tables (Unity Catalog permissions, not the space, bound what it
+    # queries). That fallback is ALLOWED (objects: any), as it is for a customer whose
+    # principal can read them, and recorded, never signalled to the agent. A statement
+    # outside the task's database is still refused at grading, so that one is flagged now,
+    # free, rather than after a 3-coin submit.
     last = turn["sql_items"][-1]["sql"] if turn["sql_items"] else ""
+    read = objects_read(last, domain) if last else None
+    if read and read["base_tables"]:
+        logger.info("ask_genie fallback: %s read base tables %s (views %s)", domain.get("schema"),
+                    read["base_tables"], read["metric_views"])
+        if tool_context is not None:
+            tool_context.state["genie_base_table_turns"] = tool_context.state.get("genie_base_table_turns", 0) + 1
+    if tool_context is not None and read is not None:
+        ids = list(tool_context.state.get(_STATE_RESPONSES, []))
+        if ids:
+            ids[-1] = {**ids[-1], "objects_read": read}
+            tool_context.state[_STATE_RESPONSES] = ids
     violation = query_domain_violation(last, domain) if last else None
     if violation:
         logger.warning("ask_genie: Genie's SQL left the metric views (%s): %s", domain.get("schema"), last[:200])
         if tool_context is not None:
             tool_context.state["genie_off_model_turns"] = tool_context.state.get("genie_off_model_turns", 0) + 1
-        out += ("\n\nNOTE: this SQL reads objects outside this database's metric views "
+        out += ("\n\nNOTE: this SQL reads objects outside this task's database "
                 f"({violation.split('references ', 1)[-1].split(',')[0]}). A submission of it will be rejected. "
-                "Ask Genie to answer from the metric views only.")
+                "Ask Genie to answer from this database only.")
     return out
 
 

@@ -100,7 +100,7 @@ def write_domains(files: list, spaces: dict) -> None:
         if not m:
             print(f"  {f}: no dbx_genie_space block, skipped")
             continue
-        body = "".join(f"      {db}:\n        catalog: {CATALOG}\n        schema: {db}\n        objects: metric_views\n"
+        body = "".join(f"      {db}:\n        catalog: {CATALOG}\n        schema: {db}\n        objects: any\n"
                        f"        space_id: {sid}\n" for db, sid in sorted(spaces.items()))
         p.write_text(text[: m.start(1)] + body + text[m.end(1):])
         print(f"  {f}: {len(spaces)} domains written")

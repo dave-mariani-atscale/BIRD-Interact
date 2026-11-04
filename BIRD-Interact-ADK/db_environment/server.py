@@ -20,7 +20,7 @@ from shared.db_utils import (
     canonical_cell, preprocess_results,
     record_graded_submission,
 )
-from shared.environment_backends import get_backend_config, get_domain_config, query_domain_violation
+from shared.environment_backends import get_backend_config, get_domain_config, objects_read, query_domain_violation
 from shared.mcp_client import MCPClient, MCPEndpoint, MCPClientError, MCPToolError
 from shared.models import (
     ExecuteSQLRequest, ExecuteSQLResponse, InitTaskRequest,
@@ -350,6 +350,10 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                                 message = "Your SQL is not correct."
                         except Exception:
                             message = "Your SQL is not correct."
+                        # Which of the schema's objects the graded statement read: a
+                        # dbx_genie_space submission may fall back to base tables, and the
+                        # run reports a views-only figure beside the overall one from this.
+                        read = objects_read(pred_sql_text, domain) if domain and domain.get("objects") else None
                         record_graded_submission(
                             task_id=req_task_id, phase=current_phase,
                             attempt=_submit_attempts[req_task_id][current_phase],
@@ -357,7 +361,9 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                             conditions=conditions, sol_sql=sol_sqls,
                             pred_sql=pred_sql_text, pred_rows=pred_res,
                             query_id=graded_query_id, outbound_sql=outbound_sql,
-                            grading_regime=settings.grading_regime)
+                            grading_regime=settings.grading_regime,
+                            objects_read=read,
+                            reads_base_tables=(bool(read["base_tables"]) if read else None))
                 else:
                     result_text = _run_query_via_semantic_layer(pred_sql_text)
                     if result_text.startswith("Error"):

@@ -154,6 +154,34 @@ def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]
     return None
 
 
+def objects_read(query: str, domain: Dict[str, str]) -> Optional[Dict[str, List[str]]]:
+    """For a schema-level Databricks domain: which of the schema's objects a statement
+    reads, split into {"metric_views": [...], "base_tables": [...]} (lower-case names).
+    None when the statement does not parse. CTE names and information_schema reads are
+    not objects. Used to record a Genie fallback to base tables on every graded
+    submission and Genie turn (backend dbx_genie_space, objects: any)."""
+    from shared import databricks_sql
+    try:
+        statement = sqlglot.parse_one(query, read=domain.get("dialect") or None)
+    except Exception:
+        return None
+    if statement is None:
+        return None
+    try:
+        views = databricks_sql.schema_objects(domain["catalog"], domain["schema"], "metric_views")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("objects_read: could not list metric views of %s.%s (%s)", domain.get("catalog"), domain.get("schema"), e)
+        return None
+    ctes = {c.alias_or_name.casefold() for c in statement.find_all(exp.CTE)}
+    out: Dict[str, set] = {"metric_views": set(), "base_tables": set()}
+    for tbl in statement.find_all(exp.Table):
+        name, schema = tbl.name.casefold(), tbl.text("db").casefold()
+        if (not schema and name in ctes) or schema == "information_schema":
+            continue
+        out["metric_views" if name in views else "base_tables"].add(name)
+    return {k: sorted(v) for k, v in out.items()}
+
+
 def get_configured_domains(backend_name: str) -> set:
     """The set of selected_database values that have a semantic model configured
     for this backend — used to filter which tasks are eligible to run."""

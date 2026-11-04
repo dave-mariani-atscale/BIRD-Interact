@@ -90,16 +90,29 @@ def main() -> None:
     g.add_argument("--results")
     ap.add_argument("--baseline", nargs="+", required=True)
     ap.add_argument("--arm-label", default="Databricks")
+    ap.add_argument("--audit", help="grading_audit.jsonl: adds the views-only split (submissions that "
+                    "read only metric views vs ones that fell back to base tables)")
+    ap.add_argument("--backend", default=None, help="the arm's backend name in the audit (default: from the results file)")
     ap.add_argument("--base-label", default="AtScale 09-10")
     a = ap.parse_args()
 
     base = load_runs([p for b in a.baseline for p in glob.glob(b)])
     nb = len(base)
+    since = 0.0
+    backend = a.backend
     if a.log:
         arm, total = arm_from_log(a.log)
         final = False
+        first = next((l for l in open(a.log, errors="replace") if re.match(r"\d{4}-\d{2}-\d{2} ", l)), None)
+        if first:
+            import datetime as _dt
+            since = _dt.datetime.strptime(first[:19], "%Y-%m-%d %H:%M:%S").timestamp() - 60
     else:
-        arm = load_runs(glob.glob(a.results))[-1]
+        rp = sorted(glob.glob(a.results))[-1]
+        meta = json.load(open(rp))
+        since = float(meta.get("run_started") or 0) - 60
+        backend = backend or meta.get("backend")
+        arm = load_runs([rp])[-1]
         total = len(arm)
         final = True
     tasks = sorted(t for t in arm if all(t in b for b in base))
@@ -137,6 +150,32 @@ def main() -> None:
     lost = [t for t in tasks if p1(r1[t]) and not p1(arm[t])]
     print(f"\nPaired P1 vs AtScale run 1: {a.arm_label} won {len(won)}, AtScale won {len(lost)}, "
           f"net {len(won) - len(lost):+d}, McNemar p = {mcnemar(len(won), len(lost)):.3g}")
+
+    if a.audit:
+        rows = [json.loads(l) for l in open(a.audit)]
+        rows = [r for r in rows if r.get("ts", 0) >= since and (not backend or r.get("backend") == backend)
+                and r.get("task_id") in arm]
+        sub = collections.defaultdict(list)
+        for r in rows:
+            sub[(r["task_id"], r.get("phase"))].append(r)
+        def passing(t, ph):
+            ok = [r for r in sub.get((t, ph), []) if r.get("passed")]
+            return ok[-1] if ok else None
+        flagged = [r for r in rows if r.get("reads_base_tables") is not None]
+        fb_subs = sum(1 for r in flagged if r["reads_base_tables"])
+        fb_tasks = {r["task_id"] for r in flagged if r["reads_base_tables"]}
+        p1_views = sum(1 for t in tasks if p1(arm[t]) and passing(t, 1) and passing(t, 1).get("reads_base_tables") is False)
+        p1_fb = sum(1 for t in tasks if p1(arm[t]) and passing(t, 1) and passing(t, 1).get("reads_base_tables"))
+        p2_views = sum(1 for t in tasks if p2(arm[t]) and passing(t, 2) and passing(t, 2).get("reads_base_tables") is False)
+        print(f"\nFallback to base tables ({a.arm_label}): {fb_subs} of {len(flagged)} graded submissions, "
+              f"on {len(fb_tasks)} of {n} tasks")
+        print(f"{'P1 views only':22s}{pct(p1_views, n):>14s}{pct(b1_p1, n):>24s}   (passes whose passing SQL read only metric views)")
+        print(f"{'P1 via fallback':22s}{pct(p1_fb, n):>14s}")
+        print(f"{'P2 views only':22s}{pct(p2_views, n):>14s}{pct(b1_p2, n):>24s}")
+        vo_won = sum(1 for t in tasks if (p1(arm[t]) and passing(t, 1) and passing(t, 1).get("reads_base_tables") is False) and not p1(r1[t]))
+        vo_lost = sum(1 for t in tasks if p1(r1[t]) and not (p1(arm[t]) and passing(t, 1) and passing(t, 1).get("reads_base_tables") is False))
+        print(f"Paired P1 views only vs AtScale run 1: {a.arm_label} won {vo_won}, AtScale won {vo_lost}, "
+              f"net {vo_won - vo_lost:+d}, McNemar p = {mcnemar(vo_won, vo_lost):.3g}")
 
     cls = {}
     for t in tasks:

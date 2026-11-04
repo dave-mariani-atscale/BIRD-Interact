@@ -198,12 +198,18 @@ our own: Genie does the discovery over the views, whose comments carry the knowl
   all 22 exceeds the cap and Databricks' one-domain-per-space guidance.
 - **Tools:** `system_agent/tools_genie_space.py` (Conversation API; retries 429 and
   transient errors; the answer layout is shared with the Genie One arm).
-- **Credential:** the owner token (decided 2026-11-04). Genie can therefore read the base
-  tables too (Unity Catalog permissions, not the space, bound it). The grader refuses a
-  submission that reads anything but the task's metric views, and `ask_genie` says so in the
-  same turn, free, when Genie's SQL leaves the views, as the AtScale arm's `run_query`
-  refuses an off-model query up front. The count of such turns is kept in session state
-  (`genie_off_model_turns`).
+- **Credential and fallback:** the owner token (decided 2026-11-04), so Genie can read the
+  database's base tables as well as its metric views (Unity Catalog permissions, not the
+  space, bound what it queries). That fallback is ALLOWED, as it would be for a customer
+  whose principal can read the tables: the domains are `objects: any` (the whole schema;
+  other databases are still refused). It is recorded, never signalled to the agent:
+  every graded submission carries `objects_read` and `reads_base_tables` in the grading
+  audit, and every Genie turn's `objects_read` is kept in session state. Two figures come
+  out of one run: the overall pass rate (the customer-realistic one) and the views-only
+  pass rate, which counts a pass only when the passing SQL read nothing but metric views
+  (the like-for-like figure against the AtScale arm, whose agent cannot reach Postgres).
+  `scripts/compare_vs_baseline_runs.py --audit results/grading_audit.jsonl` prints both,
+  the fallback counts, and a paired McNemar for the views-only figure.
 - **Run:** `scripts/run_dbx_genie_space_vs_0910.sh` (ports 6200-6202, concurrency 3 because
   the Genie API rate-limits; compared with the 09-10 AtScale sweep like the metric-view arm).
 
