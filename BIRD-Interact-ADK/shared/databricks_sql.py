@@ -126,19 +126,35 @@ class DatabricksSQL:
         self._headers = {"Authorization": f"Bearer {self.token}"}
 
     # ── low level ──
+    # A dropped connection, a timeout or a 429/5xx is retried with backoff (2, 4, 8, 16 s):
+    # without it a transient network blip at grading time scores a correct submission as
+    # non-executable, which no rerun of the agent can undo. A statement's own SQL error
+    # arrives as HTTP 200 with state FAILED and is never retried.
+    _RETRY_STATUS = {429, 500, 502, 503, 504}
+
+    def _request(self, method: str, path: str, body: Optional[dict] = None, attempts: int = 5) -> dict:
+        last: Optional[Exception] = None
+        for i in range(attempts):
+            try:
+                with httpx.Client(timeout=self.timeout, trust_env=False) as c:
+                    r = c.request(method, f"{self.host}{path}", headers=self._headers, json=body)
+                if r.status_code in self._RETRY_STATUS and i < attempts - 1:
+                    last = DatabricksSQLError(f"HTTP {r.status_code}: {r.text[:200]}")
+                elif r.status_code >= 400:
+                    raise DatabricksSQLError(f"HTTP {r.status_code}: {r.text[:300]}")
+                else:
+                    return r.json()
+            except (httpx.TransportError, httpx.TimeoutException) as e:
+                last = e
+            logger.warning("databricks %s %s failed (%s); retry %d/%d", method, path[:60], last, i + 1, attempts - 1)
+            time.sleep(2 ** (i + 1))
+        raise DatabricksSQLError(f"giving up after {attempts} attempts: {last}")
+
     def _post(self, path: str, body: dict) -> dict:
-        with httpx.Client(timeout=self.timeout, trust_env=False) as c:
-            r = c.post(f"{self.host}{path}", headers=self._headers, json=body)
-        if r.status_code >= 400:
-            raise DatabricksSQLError(f"HTTP {r.status_code}: {r.text[:300]}")
-        return r.json()
+        return self._request("POST", path, body)
 
     def _get(self, path: str) -> dict:
-        with httpx.Client(timeout=self.timeout, trust_env=False) as c:
-            r = c.get(f"{self.host}{path}", headers=self._headers)
-        if r.status_code >= 400:
-            raise DatabricksSQLError(f"HTTP {r.status_code}: {r.text[:300]}")
-        return r.json()
+        return self._request("GET", path)
 
     def execute(self, statement: str, catalog: Optional[str] = None, schema: Optional[str] = None,
                 row_cap: int = GRADING_ROW_CAP, poll_timeout: float = 600.0) -> DbxResult:
