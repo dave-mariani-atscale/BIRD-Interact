@@ -13,8 +13,12 @@ export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost}" no_proxy="${no_proxy:-127.0.0
 port(){ grep -E "^$1=" .env | tail -1 | cut -d= -f2; }
 SA=$(port SYSTEM_AGENT_PORT); US=$(port USER_SIM_PORT); DB=$(port DB_ENV_PORT)
 [ -n "$SA" ] && [ -n "$US" ] && [ -n "$DB" ] || { echo "set SYSTEM_AGENT_PORT, USER_SIM_PORT, DB_ENV_PORT in .env"; exit 1; }
-for p in $SA $US $DB; do pkill -f "uvicorn .*--port $p( |$)" 2>/dev/null || true; done
-sleep 2
+# A service with a request in flight can ignore SIGTERM (uvicorn waits for it), so
+# escalate to SIGKILL after 10 s rather than starting new services beside it.
+for p in $SA $US $DB; do pkill -f "uvicorn .*--port $p " 2>/dev/null || true; done
+for i in $(seq 1 10); do pgrep -f "uvicorn .*--port ($SA|$US|$DB) " >/dev/null || break; sleep 1; done
+for p in $SA $US $DB; do pkill -9 -f "uvicorn .*--port $p " 2>/dev/null || true; done
+sleep 1
 [ "${1:-}" = "--stop" ] && { echo "stopped services on $SA $US $DB"; exit 0; }
 PY="$PROJECT_DIR/.venv-adk/bin/python"
 HOST="${SERVICE_HOST:-127.0.0.1}"
