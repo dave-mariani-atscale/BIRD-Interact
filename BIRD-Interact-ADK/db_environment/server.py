@@ -202,11 +202,15 @@ def _run_query_via_semantic_layer(query: str) -> str:
 def _run_query_via_databricks(query: str, domain: dict):
     """Execute a submitted Databricks SQL statement on the SQL warehouse (backend config
     `executor: databricks`), with the domain's catalog and schema as the statement's
-    defaults, exactly as the agent's run_query executed it. Returns (typed rows,
-    statement_id, error_text)."""
+    defaults, exactly as the agent's run_query executed it, and as the principal the
+    backend names (`token_env` in its config block, stamped onto the domain; the
+    default DATABRICKS_TOKEN otherwise), so a submission is graded with the grants
+    the agent had. Returns (typed rows, statement_id, error_text)."""
+    from shared.databricks_auth import resolve_token
     from shared.databricks_sql import DatabricksSQL, DatabricksSQLError
     try:
-        res = DatabricksSQL().execute(query, catalog=domain.get("catalog"), schema=domain.get("schema"))
+        res = DatabricksSQL(token=resolve_token(domain.get("token_env"))).execute(
+            query, catalog=domain.get("catalog"), schema=domain.get("schema"))
     except DatabricksSQLError as e:
         return None, None, str(e)
     except Exception as e:  # noqa: BLE001

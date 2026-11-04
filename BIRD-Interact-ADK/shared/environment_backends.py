@@ -51,6 +51,11 @@ def get_domain_config(backend_name: str, selected_database: str) -> Dict[str, st
     if domain and backend.get("dialect") and "dialect" not in domain:
         # The SQL dialect the guard parses with (sqlglot name), set once per backend.
         domain = {**domain, "dialect": backend["dialect"]}
+    if domain and backend.get("token_env") and "token_env" not in domain:
+        # The principal a Databricks backend runs as (the agent's queries, the
+        # domain guard's object listing and the grader's re-execution alike):
+        # the name of the .env variable shared.databricks_auth.resolve_token reads.
+        domain = {**domain, "token_env": backend["token_env"]}
     return domain
 
 
@@ -118,11 +123,13 @@ def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]
     alias is not a table reference. Unqualified names are allowed because the
     statement executes with the domain's catalog and schema as defaults."""
     from shared import databricks_sql  # lazy: only Databricks backends need it
+    from shared.databricks_auth import resolve_token
 
     want_catalog = domain.get("catalog", "").casefold()
     want_schema = domain.get("schema", "").casefold()
     try:
-        allowed = databricks_sql.schema_objects(domain["catalog"], domain["schema"], domain["objects"])
+        allowed = databricks_sql.schema_objects(domain["catalog"], domain["schema"], domain["objects"],
+                                                token=resolve_token(domain.get("token_env")))
     except Exception as e:  # noqa: BLE001 - a dead warehouse must not look like a wrong model
         logger.warning("domain guard: could not list %s of %s.%s (%s); allowing through",
                        domain.get("objects"), want_catalog, want_schema, e)
@@ -142,7 +149,7 @@ def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]
             return (
                 f'Query rejected: it references "{found}", which is not a {kind} of this task\'s '
                 f'schema "{domain.get("catalog")}"."{domain.get("schema")}". Query only the '
-                f"{kind}s list_metric_views returned for this task, by their exact names."
+                f"{kind}s of that schema, by their exact names."
             )
     return None
 

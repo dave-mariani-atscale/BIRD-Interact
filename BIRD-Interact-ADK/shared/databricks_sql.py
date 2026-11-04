@@ -10,7 +10,10 @@ that psycopg2 returns typed from Postgres: the API itself serialises every cell 
 a string (JSON_ARRAY format).
 
 Config (shared.config.settings, from .env): DATABRICKS_HOST, DATABRICKS_TOKEN,
-DATABRICKS_WAREHOUSE_ID. httpx is used with trust_env=False like the rest of the
+DATABRICKS_WAREHOUSE_ID. A backend whose config block names a `token_env` runs as
+that variable's principal instead (shared.databricks_auth.resolve_token); the
+Genie Ontology arm uses this so neither Genie nor the grader can see the metric
+views. httpx is used with trust_env=False like the rest of the
 harness, so a ~/.netrc entry for the host cannot replace the bearer token.
 """
 from __future__ import annotations
@@ -188,18 +191,19 @@ class DatabricksSQL:
 
 
 # ── schema object resolution (cached per process) ──
-_object_cache: Dict[Tuple[str, str, str], Set[str]] = {}
+_object_cache: Dict[Tuple[str, str, str, str], Set[str]] = {}
 
 
-def schema_objects(catalog: str, schema: str, kind: str) -> Set[str]:
+def schema_objects(catalog: str, schema: str, kind: str, token: Optional[str] = None) -> Set[str]:
     """Lower-cased names of the objects of `kind` ('metric_views' or 'tables') in
-    catalog.schema, from information_schema. Cached for the process lifetime: the
-    set is fixed for a benchmark run."""
-    key = (catalog.lower(), schema.lower(), kind)
+    catalog.schema, from information_schema, as seen by `token`'s principal (the
+    default token when None). Cached for the process lifetime: the set is fixed
+    for a benchmark run."""
+    key = (catalog.lower(), schema.lower(), kind, token or "")
     if key not in _object_cache:
         types = {"metric_views": "('METRIC_VIEW')", "tables": "('MANAGED','EXTERNAL')",
                  "any": "('METRIC_VIEW','MANAGED','EXTERNAL','VIEW')"}[kind]
-        res = DatabricksSQL().execute(
+        res = DatabricksSQL(token=token).execute(
             f"SELECT table_name FROM {catalog}.information_schema.tables "
             f"WHERE table_schema = '{schema}' AND table_type IN {types}")
         if res.error:
