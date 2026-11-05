@@ -2,7 +2,7 @@
 schema of Unity Catalog METRIC VIEWS (backend `dbx_metric_views`).
 
 The Databricks analog of tools_atscale.py. The AtScale arm's model is one SML
-model; here the model is the task database's schema in `bird_interact`, holding
+model; here the model is the task database's schema in `bird`, holding
 that database's metric views and the relationships declared between them. The
 agent discovers them, writes Databricks SQL over them (MEASURE() for measures)
 and runs it on the SQL warehouse; grading re-executes the submitted statement

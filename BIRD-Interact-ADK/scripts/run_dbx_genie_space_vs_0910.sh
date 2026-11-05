@@ -29,7 +29,7 @@ s=$(docker inspect -f '{{.State.Status}}' bird_interact_postgresql_full 2>/dev/n
 $PY - <<'PYEOF' || exit 1
 from shared.databricks_sql import DatabricksSQL
 from shared.environment_backends import get_configured_domains
-r = DatabricksSQL().execute("SELECT COUNT(DISTINCT table_schema), COUNT(*) FROM bird_interact.information_schema.tables WHERE table_type='METRIC_VIEW'")
+r = DatabricksSQL().execute("SELECT COUNT(DISTINCT table_schema), COUNT(*) FROM bird.information_schema.tables WHERE table_type='METRIC_VIEW'")
 assert not r.error, r.error
 from shared.environment_backends import get_domain_config
 spaces = [get_domain_config("dbx_genie_space", d).get("space_id") for d in get_configured_domains("dbx_genie_space")]

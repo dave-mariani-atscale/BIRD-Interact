@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scenario 2, n=1 (prepared 2026-11-04): the Genie Ontology arm (backend dbx_genie_ontology) - the agent never
 # writes SQL; it passes the user's question and clarifications verbatim to Genie One (grounded in the Genie
-# Ontology) over the BASE TABLES of bird_interact and submits the SQL Genie produced - on the same 410 Query
+# Ontology) over the BASE TABLES of bird and submits the SQL Genie produced - on the same 410 Query
 # tasks of the 22 databases, same agent and simulator (Sonnet 5 / Sonnet 5), a-interact, NON-leaderboard
 # (corrected grading), concurrency 5, one repeat. Modelled on scripts/run_dbx_vs_atscale_n1.sh; the AtScale
 # engine, MCP, feedback store and aggregates play no part in this arm, so none of them is touched.
@@ -47,13 +47,13 @@ tok = resolve_token("DATABRICKS_TOKEN_ONTOLOGY")
 sql = DatabricksSQL(token=tok)
 who = sql.execute("SELECT current_user()"); assert not who.error, who.error
 print(f"  principal: {who.rows[0][0]}")
-r = sql.execute("SELECT table_type, COUNT(DISTINCT table_schema), COUNT(*) FROM bird_interact.information_schema.tables "
+r = sql.execute("SELECT table_type, COUNT(DISTINCT table_schema), COUNT(*) FROM bird.information_schema.tables "
                 "WHERE table_schema <> 'information_schema' GROUP BY 1 ORDER BY 1")
 assert not r.error, r.error
 seen = {t: (s, n) for t, s, n in r.rows}; print(f"  visible: {seen}")
 assert seen.get("MANAGED", (0, 0))[0] == 22 and seen["MANAGED"][1] == 244, "REFUSING: expected 244 base tables in 22 schemas"
 assert "METRIC_VIEW" not in seen, "REFUSING: the principal can see metric views - the arm would not be base-tables-only"
-mv = sql.execute("SELECT COUNT(*) FROM bird_interact.solar_panel.solar_panel_plants")
+mv = sql.execute("SELECT COUNT(*) FROM bird.solar_panel.solar_panel_plants")
 assert mv.error and "INSUFFICIENT_PERMISSIONS" in mv.error, f"REFUSING: a metric view is readable by the principal: {mv.error}"
 print("  metric view read refused: ok")
 from system_agent.tools_genie_one import GENIE_ONE_MCP_PATH

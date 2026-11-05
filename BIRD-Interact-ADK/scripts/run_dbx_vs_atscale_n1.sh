@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scenario 1 head-to-head, n=1 (prepared 2026-11-04): the AtScale arm (no-gold-930 SML models) against the
-# Databricks metric-view arm (backend dbx_metric_views, bird_interact catalog), same 410 Query tasks on the 22
+# Databricks metric-view arm (backend dbx_metric_views, bird catalog), same 410 Query tasks on the 22
 # databases, same agent and simulator (Sonnet 5 / Sonnet 5), a-interact, NON-leaderboard (corrected grading),
 # concurrency 5, one repeat per arm. The setup mirrors scripts/run_nogold930_n3.sh run 1: feedback store zeroed
 # (cold), aggregates zeroed on the no-gold-930 project, the 180 s LLM request timeout. Roughly 4-5 h per arm.
@@ -30,10 +30,10 @@ for c in development-compose-engine-1 development-compose-mcp-1 api postgres bir
   s=$(docker inspect -f '{{.State.Status}}' $c 2>/dev/null); echo "  $c: $s"; [ "$s" = running ] || { echo "REFUSING: $c not running"; exit 1; }
 done
 
-step "databricks: warehouse reachable, 22 schemas and 119 metric views in bird_interact"
+step "databricks: warehouse reachable, 22 schemas and 119 metric views in bird"
 PYTHONPATH=. $PY - <<'PYEOF' || exit 1
 from shared.databricks_sql import DatabricksSQL
-r = DatabricksSQL().execute("SELECT COUNT(DISTINCT table_schema), COUNT(*) FROM bird_interact.information_schema.tables WHERE table_type='METRIC_VIEW'")
+r = DatabricksSQL().execute("SELECT COUNT(DISTINCT table_schema), COUNT(*) FROM bird.information_schema.tables WHERE table_type='METRIC_VIEW'")
 assert not r.error, r.error
 schemas, views = r.rows[0]
 print(f"  metric views: {views} in {schemas} schemas")

@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared.config import settings  # noqa: E402
 from shared.databricks_sql import DatabricksSQL  # noqa: E402
 
-CATALOG = "bird_interact"
+CATALOG = "bird"
 PARENT = "/Workspace/Users/dave@atscale.com/bird_genie_spaces"
 DEFAULT_FILES = ["config/environment_backends.yaml", "config/environment_backends.no_gold_930.yaml",
                  "config/environment_backends.dbx_vs_0910.yaml"]

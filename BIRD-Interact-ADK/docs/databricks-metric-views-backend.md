@@ -11,7 +11,7 @@ metric views) is the backend `dbx_genie_ontology`, described at the end of this 
 
 | AtScale arm | Databricks arm | |
 | --- | --- | --- |
-| one SML model per database | one **schema** per database, `bird_interact.<db>`, holding that database's metric views (`<db>_<grain>`) and the `MANY TO ONE` relationships declared between them | the metric views were built from the SML models, the knowledge base and the task briefs (`bird-atscale-models/databricks/`); never from gold |
+| one SML model per database | one **schema** per database, `bird.<db>`, holding that database's metric views (`<db>_<grain>`) and the `MANY TO ONE` relationships declared between them | the metric views were built from the SML models, the knowledge base and the task briefs (`bird-atscale-models/databricks/`); never from gold |
 | `list_models` | `list_metric_views` | every view's comment, every field and measure, the relationships, then the dialect and discovery notes |
 | `explore_columns` / `focus_columns` | `describe_metric_view(view, columns)` | comments, synonyms, sample values for named string fields |
 | `get_sml_skills` | (folded into `list_metric_views`) | |
@@ -26,7 +26,7 @@ semantic layer and nothing else.
 
 ## Domain = schema + object kind
 
-A domain entry is `{catalog: bird_interact, schema: <db>, objects: metric_views}`.
+A domain entry is `{catalog: bird, schema: <db>, objects: metric_views}`.
 `shared.environment_backends._schema_domain_violation` checks every table reference of a
 statement (parsed with sqlglot's Databricks dialect): it must be a metric view of that
 schema (CTE names and `information_schema` reads are allowed; base tables and other
@@ -80,7 +80,7 @@ AtScale arm runs on the no-gold-930 catalog the n=3 runs measured.
 Built 2026-11-04. The agent **never writes SQL**. It passes the user's question, and later
 the user's clarifications, verbatim to Genie One (Databricks' natural-language data agent,
 grounded in the Genie Ontology, reached through the workspace's managed MCP), and submits
-the SQL Genie produced. Genie works over the **base tables** of `bird_interact.<db>` only:
+the SQL Genie produced. Genie works over the **base tables** of `bird.<db>` only:
 the metric views are invisible to it because the whole arm runs as a principal that has no
 privilege on them, and Genie draws only on assets its caller can access.
 
@@ -92,16 +92,16 @@ with the SCIM API, entitlements `workspace-access` and `databricks-sql-access`, 
 warehouse `b1a1ad089fa01319`, and these Unity Catalog grants (made as the catalog owner):
 
 ```sql
-GRANT USE CATALOG ON CATALOG bird_interact TO `27c3bcaa-2103-4b25-b9ad-792c9cf728ef`;
-GRANT USE SCHEMA ON SCHEMA bird_interact.<db> TO `27c3bcaa-...`;          -- each of the 22 schemas
-GRANT SELECT ON TABLE bird_interact.<db>.<base table> TO `27c3bcaa-...`;  -- each of the 244 base tables
+GRANT USE CATALOG ON CATALOG bird TO `27c3bcaa-2103-4b25-b9ad-792c9cf728ef`;
+GRANT USE SCHEMA ON SCHEMA bird.<db> TO `27c3bcaa-...`;          -- each of the 22 schemas
+GRANT SELECT ON TABLE bird.<db>.<base table> TO `27c3bcaa-...`;  -- each of the 244 base tables
 -- nothing on the 119 metric views (or the 31 information_schema views)
 ```
 
 Verified as the principal (`SELECT current_user()` returns the application id): a base
-table reads (`SELECT COUNT(*) FROM bird_interact.solar_panel.plants` = 939), a metric view is
+table reads (`SELECT COUNT(*) FROM bird.solar_panel.plants` = 939), a metric view is
 refused (`INSUFFICIENT_PERMISSIONS ... does not have SELECT on Table
-bird_interact.solar_panel.solar_panel_plants`), `information_schema.tables` lists 244 MANAGED
+bird.solar_panel.solar_panel_plants`), `information_schema.tables` lists 244 MANAGED
 tables in 22 schemas and no `METRIC_VIEW` row, and Genie One, asked how many plants
 solar_panel has, reports "Single table; inspecting plants" (asked the same as the owner it
 had said "inspecting the plants table and plants metric view").
@@ -120,7 +120,7 @@ owner) stays what scenario 1 runs as.
 
 | | `dbx_genie_ontology` |
 | --- | --- |
-| config block | both backends files; `executor: databricks`, `dialect: databricks`, `token_env: DATABRICKS_TOKEN_ONTOLOGY`, domains `{catalog: bird_interact, schema: <db>, objects: tables}` for the 22 databases |
+| config block | both backends files; `executor: databricks`, `dialect: databricks`, `token_env: DATABRICKS_TOKEN_ONTOLOGY`, domains `{catalog: bird, schema: <db>, objects: tables}` for the 22 databases |
 | tools | `ask_genie` (1 coin), `ask_user` (2), `submit_sql` (3); no SQL-authoring tool (`system_agent/tools_genie_one.py`, factory `get_ainteract_tools_genie_one`) |
 | `ask_genie(question)` | `genie_ask` on the Genie One MCP (`/ai-gateway/mcp-services/system.ai.genie_one_mcp`, bearer = the principal's token) with the task's conversation (one Genie conversation per task, created on the first call and continued across turns and phases: `genie_conversation_id` in session state), `genie_poll_response` every 5 s to completion (540 s cap, then `genie_cancel_response`), `genie_get_query_result` for the rows of the last query. Returns Genie's answer text (deep links stripped), Genie's notes, every SQL it ran with the last one marked as the answer's, and that SQL's rows as typed JSON (first 200) |
 | domain guard | `objects: tables`: a submission may read only base tables of the task's schema (CTE names and `information_schema` allowed); the object list is read as the principal |
@@ -143,7 +143,7 @@ submit).
 No knowledge-base text, gold SQL or task question lives in Databricks: the ontology sees the
 base tables, their column comments (the BIRD column meanings, loaded 2026-11-03) and the
 questions Genie is asked during the run. The agent names the database in its first question
-("In the bird_interact.<db> database: ..."), as the raw arm knows the database too. The
+("In the bird.<db> database: ..."), as the raw arm knows the database too. The
 ontology learns from the questions it answers, so this arm should run before the metric-view
 arms pour queries into its learning history; the smoke tests below and the scenario 1 run
 of 2026-11-04 (`results/dbx_vs_0910`) already precede it.

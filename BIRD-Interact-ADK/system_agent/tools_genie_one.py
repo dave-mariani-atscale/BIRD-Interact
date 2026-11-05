@@ -268,7 +268,7 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
 
     Args:
         question: The question for Genie, in the user's words, naming the database
-            (e.g. "In the bird_interact.solar_panel database: <the user's question>").
+            (e.g. "In the bird.solar_panel database: <the user's question>").
 
     Returns:
         Genie's answer text, the SQL it ran (to submit verbatim with submit_sql) and

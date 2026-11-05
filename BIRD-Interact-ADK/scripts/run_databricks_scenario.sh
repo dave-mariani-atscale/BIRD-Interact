@@ -14,10 +14,12 @@
 # defaults to 3 (the Genie API rate-limits). Runs on this checkout's .env service ports, which must not be
 # the shared harness's 6000-6002.
 #
-#   bash scripts/run_databricks_scenario.sh 3                     # foreground
+#   bash scripts/run_databricks_scenario.sh 3                     # foreground, one repetition
+#   REPEAT=3 bash scripts/run_databricks_scenario.sh 3            # three repetitions (n=3), run back to back
 #   mkdir -p logs && nohup bash scripts/run_databricks_scenario.sh genie-ontology > logs/scenario3_launcher.log 2>&1 &
 #
-# Writes results/<backend>_vs_0910/<backend>_<stamp>.json, live_compare.txt (every 10 min), final_compare.txt,
+# Writes results/<backend>_vs_0910/<backend>[_runNN]_<stamp>.json (one per repetition), live_compare.txt (every
+# 10 min, for the repetition in progress), final_compare[_runNN].txt,
 # and for every scenario the per-database four-way table (scripts/four_way_by_db.py) to four_way.md.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -48,7 +50,7 @@ from shared.databricks_auth import resolve_token
 from shared.databricks_sql import DatabricksSQL
 from shared.environment_backends import get_configured_domains, get_domain_config
 b = os.environ["BACKEND"]
-r = DatabricksSQL().execute("SELECT COUNT(DISTINCT table_schema), COUNT(*) FROM bird_interact.information_schema.tables WHERE table_type='METRIC_VIEW'")
+r = DatabricksSQL().execute("SELECT COUNT(DISTINCT table_schema), COUNT(*) FROM bird.information_schema.tables WHERE table_type='METRIC_VIEW'")
 assert not r.error, r.error
 doms = get_configured_domains(b)
 print("  metric views:", r.rows[0][1], "in", r.rows[0][0], "schemas; domains:", len(doms))
@@ -83,23 +85,29 @@ echo "$H" | grep -q '"leaderboard_mode":false' || { echo "REFUSING: leaderboard 
 
 step "live comparison every 10 minutes"
 ( while sleep 600; do
-    $PY scripts/compare_vs_baseline_runs.py --log "$LOG" --baseline "$BASE" --audit results/grading_audit.jsonl --backend "$BACKEND" > "$OUT/live_compare.tmp" 2>/dev/null \
-      && { echo "updated $(date '+%Y-%m-%d %H:%M')"; cat "$OUT/live_compare.tmp"; } > "$OUT/live_compare.txt"
+    # Only the repetition in progress: the log section after its "=== repetition k of n ===" marker.
+    awk '/=== repetition [0-9]+ of [0-9]+ ===/{buf=""; rep=$0} {buf=buf $0 "\n"} END{printf "%s", buf}' "$LOG" > "$OUT/live_rep.log"
+    $PY scripts/compare_vs_baseline_runs.py --log "$OUT/live_rep.log" --baseline "$BASE" --audit results/grading_audit.jsonl --backend "$BACKEND" > "$OUT/live_compare.tmp" 2>/dev/null \
+      && { echo "updated $(date '+%Y-%m-%d %H:%M') $(grep -o 'repetition [0-9]* of [0-9]*' "$OUT/live_rep.log" | tail -1)"; cat "$OUT/live_compare.tmp"; } > "$OUT/live_compare.txt"
     $PY scripts/four_way_by_db.py > "$OUT/four_way.tmp" 2>/dev/null && mv "$OUT/four_way.tmp" "$OUT/four_way.md"
   done ) &
 WATCH=$!
 
-step "$BACKEND: 410 Query tasks, concurrency ${CONCURRENCY:-3}"
-$PY -m orchestrator.runner --mode a-interact --databricks-scenario "$SCEN" --query-only --concurrency "${CONCURRENCY:-3}" --repeat 1 \
+step "$BACKEND: 410 Query tasks, concurrency ${CONCURRENCY:-3}, ${REPEAT:-1} repetition(s)"
+$PY -m orchestrator.runner --mode a-interact --databricks-scenario "$SCEN" --query-only --concurrency "${CONCURRENCY:-3}" --repeat "${REPEAT:-1}" \
     --output "$OUT/$BACKEND.json" > "$LOG" 2>&1
 rc=$?
 kill $WATCH 2>/dev/null
 echo "  runner exit $rc; files: $(ls -1 $OUT/${BACKEND}_*.json 2>/dev/null | tr '\n' ' ')"
 
-step "final comparison"
-R=$(ls -1t $OUT/${BACKEND}_*.json 2>/dev/null | head -1)
-if [ -n "$R" ]; then
-  $PY scripts/compare_vs_baseline_runs.py --results "$R" --baseline "$BASE" --audit results/grading_audit.jsonl | tee "$OUT/final_compare.txt"
+step "final comparison (each repetition)"
+FILES=$(ls -1tr $OUT/${BACKEND}_*.json 2>/dev/null | tail -${REPEAT:-1})
+if [ -n "$FILES" ]; then
+  for R in $FILES; do
+    tag=$(basename "$R" .json | grep -o '_run[0-9][0-9]' || true)
+    echo "--- $R"
+    $PY scripts/compare_vs_baseline_runs.py --results "$R" --baseline "$BASE" --audit results/grading_audit.jsonl | tee "$OUT/final_compare${tag}.txt"
+  done
 else
   $PY scripts/compare_vs_baseline_runs.py --log "$LOG" --baseline "$BASE" --audit results/grading_audit.jsonl --backend "$BACKEND" | tee "$OUT/final_compare.txt"
 fi

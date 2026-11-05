@@ -2,7 +2,7 @@
 
 Scenario 1 (dbx_metric_views) runs as the workspace owner (DATABRICKS_TOKEN, a PAT).
 Scenario 2 (dbx_genie_ontology) must run as a principal that can SELECT the base
-tables of `bird_interact` but has no privilege on the metric views, so Genie cannot
+tables of `bird` but has no privilege on the metric views, so Genie cannot
 draw on them; its config block names that principal's token variable (`token_env`).
 
 The variable holds either
