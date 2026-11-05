@@ -170,6 +170,25 @@ async def after_tool_callback(
     """Record tool event in trajectory and append budget note to response."""
     tool_name = tool.name if hasattr(tool, "name") else str(tool)
     cost = _tool_cost(tool_name, tool_context) or 0
+    # Small-action pricing (BIRD Universal Cost Scheme: an execute costs 1, any other
+    # small action 0.5). The full cost is reserved before the call, because the tool
+    # cannot know in advance whether it will execute; a tool that turned out NOT to
+    # execute (ask_genie when Genie ran no query: it asked back, explained or
+    # declined) sets `_small_action`, and the backend's `small_action_costs` entry
+    # for the tool is what that call costs. The difference is refunded here.
+    if tool_context.state.get("_small_action"):
+        tool_context.state["_small_action"] = False
+        from shared.environment_backends import get_backend_config
+        backend = _session_backend(tool_context)
+        small = None
+        if backend != "raw":
+            small = (get_backend_config(backend).get("small_action_costs") or {}).get(tool_name)
+        if small is not None and small < cost:
+            refund = cost - small
+            remaining = tool_context.state.get("budget_remaining")
+            if remaining is not None and remaining >= 0:
+                tool_context.state["budget_remaining"] = remaining + refund
+            cost = small
     budget_before = tool_context.state.get("_budget_before")
     budget_after = tool_context.state.get("budget_remaining")
     initial = tool_context.state.get("initial_budget", 0)

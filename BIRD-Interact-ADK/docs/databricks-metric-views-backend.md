@@ -210,6 +210,13 @@ our own: Genie does the discovery over the views, whose comments carry the knowl
   (the like-for-like figure against the AtScale arm, whose agent cannot reach Postgres).
   `scripts/compare_vs_baseline_runs.py --audit results/grading_audit.jsonl` prints both,
   the fallback counts, and a paired McNemar for the views-only figure.
+- **Cost:** `ask_genie` costs 1 coin when Genie runs a query (an execute) and 0.5 when it does
+  not (it asks back, explains or declines), the BIRD Universal Cost Scheme's small-action
+  price (decided 2026-11-04). The full coin is reserved before the call and the difference
+  refunded after it (`small_action_costs` in the config, `system_agent/callbacks.py`). The
+  first full-cost run was stopped after 64 tasks for this: 35 of its first 60 tasks ran out
+  of budget against 22 for the metric-view arm, and 100 of its 340 Genie turns returned no
+  SQL yet cost a full coin.
 - **Run:** `scripts/run_dbx_genie_space_vs_0910.sh` (ports 6200-6202, concurrency 3 because
   the Genie API rate-limits; compared with the 09-10 AtScale sweep like the metric-view arm).
 

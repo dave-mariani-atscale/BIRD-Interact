@@ -38,7 +38,7 @@ assert all(spaces), "every domain needs a space_id (scripts/provision_genie_spac
 assert tuple(r.rows[0]) == (22, 119) and len(get_configured_domains("dbx_genie_space")) == 22
 PYEOF
 
-step "services on 6100-6102"
+step "services on 6200-6202"
 bash scripts/start_services_isolated.sh || exit 1
 curl -s http://127.0.0.1:6200/health; echo
 curl -s http://127.0.0.1:6200/health | grep -q '"model":"anthropic/claude-sonnet-5"' || { echo "REFUSING: agent is not Sonnet 5"; exit 1; }

@@ -142,7 +142,8 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
     the SQL it ran and the result rows. Every call continues the same Genie conversation
     for this task, so a clarification or a correction is a follow-up ("the user says X;
     redo it with ..."). Pass the user's question verbatim and the user's clarifications
-    verbatim. You never write SQL yourself. Cost: 1 bird-coin.
+    verbatim. You never write SQL yourself. Cost: 1 bird-coin when Genie runs a query,
+    0.5 when it does not (it asks you something back, explains or declines).
 
     Args:
         question: The question for Genie, in the user's words.
@@ -179,6 +180,10 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
                     "sql": [i.get("sql") for i in turn["sql_items"]], "elapsed_s": turn["elapsed_s"]})
         tool_context.state[_STATE_RESPONSES] = ids
     out = _render(turn)
+    if tool_context is not None and not turn["sql_items"]:
+        # Genie ran no query (it asked back, explained, declined or failed): a small
+        # action, charged at the backend's small_action_costs (callbacks.after_tool_callback).
+        tool_context.state["_small_action"] = True
     # The space holds only metric views, but under the owner token Genie can also read the
     # database's base tables (Unity Catalog permissions, not the space, bound what it
     # queries). That fallback is ALLOWED (objects: any), as it is for a customer whose
