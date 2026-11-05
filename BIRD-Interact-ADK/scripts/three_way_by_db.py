@@ -7,8 +7,9 @@ databases BOTH Databricks runs have finished.
     python scripts/three_way_by_db.py --newly-complete-since STATEFILE   # print only databases
                                                   # that completed since the last call (for a watcher)
 
-AtScale is shown as run 1 (the cold run, the fair counterpart of arms with no memory) with
-the 3-run mean in the total row. Genie's P1 is also shown views-only: a pass counts only if
+AtScale is shown as its BEST run, the leaderboard convention: the run of the 09-10 sweep
+with the highest reward over all 410 tasks (run 3), fixed once rather than re-picked per
+database. Genie's P1 is also shown views-only: a pass counts only if
 the SQL that passed read nothing but metric views (from the Genie run's grading audit).
 Query tasks are selected by category from the task file.
 """
@@ -83,6 +84,15 @@ def baseline() -> list:
     return runs
 
 
+def best_run(base: list) -> int:
+    """Index of the baseline run with the highest mean reward over ALL its Query tasks."""
+    qt = {t for ts in query_tasks().values() for t in ts}
+    def mean_reward(run):
+        rs = [v[2] for t, v in run.items() if t in qt]
+        return sum(rs) / max(len(rs), 1)
+    return max(range(len(base)), key=lambda i: mean_reward(base[i]))
+
+
 def complete_dbs(qt, mv, gs) -> list:
     return [db for db, ts in qt.items() if all(t in mv for t in ts) and all(t in gs for t in ts)]
 
@@ -93,8 +103,9 @@ def pct(k, n):
 
 def table(dbs, qt, mv, gs, base) -> str:
     vo = genie_views_only({t for db in dbs for t in qt[db]})
-    r1 = base[0]
-    head = ("| Database | Tasks | AtScale P1 | Metric views P1 | Genie P1 | Genie P1, views only "
+    bi = best_run(base)
+    r1 = base[bi]
+    head = (f"| Database | Tasks | AtScale P1 (best, r{bi + 1}) | Metric views P1 | Genie P1 | Genie P1, views only "
             "| AtScale P2 | Metric views P2 | Genie P2 | AtScale reward | Metric views reward | Genie reward |")
     lines = [head, "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     tot = collections.Counter()
@@ -104,16 +115,14 @@ def table(dbs, qt, mv, gs, base) -> str:
         gv = sum(1 for t in ts if gs[t][0] and vo.get(t))
         a2 = sum(r1[t][1] for t in ts); m2 = sum(mv[t][1] for t in ts); g2 = sum(gs[t][1] for t in ts)
         ar = sum(r1[t][2] for t in ts); mr = sum(mv[t][2] for t in ts); gr = sum(gs[t][2] for t in ts)
-        am = sum(b[t][0] for b in base for t in ts) / len(base)
-        for k, v in (("n", n), ("a1", a1), ("m1", m1), ("g1", g1), ("gv", gv), ("a2", a2), ("m2", m2), ("g2", g2),
-                     ("am", am)):
+        for k, v in (("n", n), ("a1", a1), ("m1", m1), ("g1", g1), ("gv", gv), ("a2", a2), ("m2", m2), ("g2", g2)):
             tot[k] += v
         tot["ar"] += ar; tot["mr"] += mr; tot["gr"] += gr
         lines.append(f"| {db} | {n} | {pct(a1,n)} | {pct(m1,n)} | {pct(g1,n)} | {pct(gv,n)} | {pct(a2,n)} | "
                      f"{pct(m2,n)} | {pct(g2,n)} | {ar/n:.2f} | {mr/n:.2f} | {gr/n:.2f} |")
     n = tot["n"]
     if n:
-        lines.append(f"| **All {len(dbs)} finished** | **{n}** | **{pct(tot['a1'],n)}** (3-run mean {pct(tot['am'],n)}) | "
+        lines.append(f"| **All {len(dbs)} finished** | **{n}** | **{pct(tot['a1'],n)}** | "
                      f"**{pct(tot['m1'],n)}** | **{pct(tot['g1'],n)}** | **{pct(tot['gv'],n)}** | **{pct(tot['a2'],n)}** | "
                      f"**{pct(tot['m2'],n)}** | **{pct(tot['g2'],n)}** | **{tot['ar']/n:.2f}** | **{tot['mr']/n:.2f}** | "
                      f"**{tot['gr']/n:.2f}** |")
