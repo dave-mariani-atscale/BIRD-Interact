@@ -307,6 +307,15 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
                                      f"{domain.get('catalog')}.{domain.get('schema')} database only.",
                                      turn["conversation_id"])
         turn["ignored_catalog_redos"] = redos
+        if ignored and len(turn["sql_items"]) > 1:
+            # Genie also lists the queries it tried on the way to its answer; one that read an
+            # ignored catalog (and failed: no SELECT there) is dropped so the agent never sees it.
+            keep = [i for i in turn["sql_items"][:-1] if not _ignored_catalog_objects({"sql_items": [i]}, domain, ignored)]
+            hidden = len(turn["sql_items"]) - 1 - len(keep)
+            if hidden:
+                logger.info("ask_genie route: db=%s route=ignored_catalog_hidden queries=%d response=%s",
+                            domain.get("schema"), hidden, turn["response_id"])
+                turn["sql_items"] = keep + turn["sql_items"][-1:]
     except GenieError as e:
         if tool_context is not None:
             tool_context.state["_small_action"] = True   # no query ran: 0.5, like any queryless turn
