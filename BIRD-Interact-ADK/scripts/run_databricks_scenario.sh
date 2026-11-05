@@ -58,7 +58,20 @@ assert tuple(r.rows[0]) == (22, 119) and len(doms) == 22
 if b == "dbx_genie_space":
     spaces = [get_domain_config(b, d).get("space_id") for d in doms]
     assert all(spaces), "every domain needs a space_id (scripts/provision_genie_spaces.py)"
-    print("  Genie spaces:", len(spaces))
+    # Each space must attach this database's metric views under the configured catalog (a
+    # catalog rename leaves the spaces pointing at objects that no longer exist).
+    import httpx, json as _j
+    h = settings.databricks_host.rstrip("/"); H = {"Authorization": f"Bearer {resolve_token(None)}"}
+    stale = []
+    for d in doms:
+        dom = get_domain_config(b, d)
+        ser = httpx.get(f"{h}/api/2.0/genie/spaces/{dom['space_id']}", headers=H, timeout=60,
+                        params={"include_serialized_space": "true"}).json().get("serialized_space", "")
+        ids = [t.get("identifier", "") for t in (_j.loads(ser or "{}").get("data_sources", {}).get("tables") or [])]
+        if not ids or any(not i.startswith(f"{dom['catalog']}.{dom['schema']}.") for i in ids):
+            stale.append(d)
+    assert not stale, f"Genie spaces not on {dom['catalog']}.<db>: {stale} (re-run scripts/provision_genie_spaces.py)"
+    print("  Genie spaces:", len(spaces), "all attached to their database's metric views")
 if b == "dbx_genie_ontology":
     import httpx
     from mcp import ClientSession
