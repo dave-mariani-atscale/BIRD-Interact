@@ -47,8 +47,9 @@ REP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*=== repetition (\d
 VERDICT_RE = re.compile(r"<== (\S+): (PASS both phases|PASS phase 1|fail|error)\s+reward=([0-9.]+)")
 
 
-def ontology_reps(path: Path = GO_LOG):
+def ontology_reps(path: Path = None):
     """([per-repetition {task: (p1, p2, reward)}], [repetition start ts], total repetitions)."""
+    path = path or GO_LOG
     reps, starts, total = [{}], [run_start(path) if path.exists() else 0.0], 1
     if not path.exists():
         return reps, starts, total
@@ -114,6 +115,121 @@ def turn_routes() -> collections.Counter:
     return c
 
 
+DONE_RE = re.compile(r"Task (\S+) done\. Reward: [0-9.]+, Budget used: ([0-9.]+), Time: ([0-9.]+)s")
+CALL_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*\[(\S+)\] turn \d+: (ask_genie|ask_user|submit_sql)"
+                     r"(?:.*?Genie's answer \(status: \w+, ([0-9.]+)s\))?")
+
+
+def rep_task_stats(path: Path = None) -> list:
+    """Per repetition {task: (coins used, wall-clock seconds)} from the runner log."""
+    path = path or GO_LOG
+    reps = [{}]
+    if not path.exists():
+        return reps
+    first = True
+    for line in open(path, errors="replace"):
+        if REP_RE.match(line):
+            if not first:
+                reps.append({})
+            first = False
+            continue
+        m = DONE_RE.search(line)
+        if m:
+            reps[-1][m.group(1)] = (float(m.group(2)), float(m.group(3)))
+    return reps
+
+
+def rep_tool_stats(starts: list) -> list:
+    """Per repetition {task: Counter(ask_genie, ask_user, submit_sql, genie_s)} from the agent log,
+    split by the repetitions' start times."""
+    out = [collections.defaultdict(collections.Counter) for _ in starts]
+    if not AGENT_LOG.exists():
+        return out
+    for line in open(AGENT_LOG, errors="replace"):
+        m = CALL_RE.match(line)
+        if not m:
+            continue
+        ts = dt.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").timestamp()
+        k = max((i for i, st in enumerate(starts) if ts >= st), default=None)
+        if k is None:
+            continue
+        c = out[k][m.group(2)]
+        c[m.group(3)] += 1
+        if m.group(4):
+            c["genie_s"] += float(m.group(4))
+    return out
+
+
+def mcnemar_p(b: int, c: int) -> float:
+    """Exact two-sided McNemar p for b and c discordant pairs."""
+    from math import comb
+    n = b + c
+    if not n:
+        return 1.0
+    k = min(b, c)
+    return min(1.0, 2 * sum(comb(n, i) for i in range(k + 1)) / 2 ** n)
+
+
+def learning(qt, reps, starts, done) -> list:
+    """Run-to-run view for Genie Ontology: does it get better (or cheaper) as its
+    ontology and the workspace's query history grow? Same tasks, repetition by repetition."""
+    ks = [k for k in range(len(reps)) if done[k]]
+    if len(ks) < 2:
+        return []
+    stats, tools = rep_task_stats(), rep_tool_stats(starts)
+    dbs = [db for db in qt if sum(1 for k in ks if db in done[k]) >= 2]
+    if not dbs:
+        return []
+    out = ["", "### Genie Ontology run to run: is it getting smarter?",
+           "Same tasks in every repetition; gained / lost = tasks that flipped fail->pass / pass->fail on P1 "
+           "against repetition 1.", "",
+           "| Database | Tasks | " + " | ".join(f"P1 r{k + 1}" for k in ks) + " | " + " | ".join(f"P2 r{k + 1}" for k in ks)
+           + " | " + " | ".join(f"gained / lost r{k + 1}" for k in ks[1:]) + " |",
+           "| --- | ---: |" + " ---: |" * (3 * len(ks) - 1)]
+    eff = ["", "| Database | " + " | ".join(f"{lab} r{k + 1}" for lab in ("coins/task", "s/task", "Genie calls/task",
+                                                                      "Genie s/call", "asks/task") for k in ks) + " |",
+           "| --- |" + " ---: |" * (5 * len(ks))]
+    tot = collections.defaultdict(lambda: collections.Counter())
+    rows = dbs + ["__all__"]
+    for db in rows:
+        scope = [d for d in dbs if all(d in done[k] for k in ks)] if db == "__all__" else [db]
+        if db == "__all__" and not scope:
+            continue
+        ks_db = [k for k in ks if all(d in done[k] for d in scope)]
+        ts = [t for d in scope for t in qt[d]]
+        n = len(ts)
+        def cell(k, f):
+            return f(k) if k in ks_db else "-"
+        p1 = [cell(k, lambda k: pct(sum(reps[k][t][0] for t in ts), n)) for k in ks]
+        p2 = [cell(k, lambda k: pct(sum(reps[k][t][1] for t in ts), n)) for k in ks]
+        flips = []
+        for k in ks[1:]:
+            if k in ks_db and ks[0] in ks_db:
+                g = sum(1 for t in ts if reps[k][t][0] and not reps[ks[0]][t][0])
+                l = sum(1 for t in ts if reps[ks[0]][t][0] and not reps[k][t][0])
+                flips.append(f"+{g} / -{l}" + (f" (p={mcnemar_p(g, l):.2f})" if db == "__all__" else ""))
+            else:
+                flips.append("-")
+        name = f"**All {len(scope)} in every repetition**" if db == "__all__" else db
+        out.append(f"| {name} | {n} | " + " | ".join(p1 + p2 + flips) + " |")
+        e = []
+        for f in ("coins", "secs", "calls", "spc", "asks"):
+            for k in ks:
+                if k not in ks_db:
+                    e.append("-"); continue
+                st = [stats[k].get(t) for t in ts if stats[k].get(t)]
+                tc = [tools[k].get(t, collections.Counter()) for t in ts]
+                calls = sum(c["ask_genie"] for c in tc)
+                v = {"coins": f"{sum(x[0] for x in st) / max(len(st), 1):.1f}",
+                     "secs": f"{sum(x[1] for x in st) / max(len(st), 1):.0f}",
+                     "calls": f"{calls / n:.1f}",
+                     "spc": f"{sum(c['genie_s'] for c in tc) / max(calls, 1):.0f}",
+                     "asks": f"{sum(c['ask_user'] for c in tc) / n:.1f}"}[f]
+                e.append(v)
+        eff.append(f"| {name} | " + " | ".join(e) + " |")
+    return out + eff
+
+
 def best_rep(reps: list, qt: dict) -> int:
     alltasks = [t for ts in qt.values() for t in ts]
     return max(range(len(reps)), key=lambda i: sum(reps[i][t][2] for t in alltasks) / len(alltasks))
@@ -176,6 +292,21 @@ def tables(qt, mv, gs, reps, starts, total, base) -> str:
         n = sum(tc.values())
         out += ["", f"Every Genie turn so far ({n}): " + ", ".join(
             f"{ROUTE_LABEL.get(r, r)} {tc[r]} ({pct(tc[r], n)})" for r in ROUTES if tc[r])]
+    # Routing by repetition: a smarter ontology might move between views and base tables.
+    if sum(1 for d in done if d) >= 2:
+        out += ["", "| Repetition | Task-runs | views only | base tables only | views + tables | outside | P1 on views-only |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
+        for k, r in enumerate(reps):
+            if not done[k]:
+                continue
+            until = starts[k + 1] if k + 1 < len(starts) else float("inf")
+            ts = [t for d in done[k] for t in qt[d]]
+            routes = ontology_routes(set(ts), starts[k], until)
+            c = collections.Counter(routes.get(t, "none") for t in ts)
+            vo = [t for t in ts if routes.get(t) == "metric_views"]
+            out.append(f"| r{k + 1} | {len(ts)} | {c['metric_views']} | {c['base_tables']} | {c['mixed']} | "
+                       f"{c['elsewhere']} | {pct(sum(r[t][0] for t in vo), len(vo))} |")
+    out += learning(qt, reps, starts, done)
     return "\n".join(out)
 
 
