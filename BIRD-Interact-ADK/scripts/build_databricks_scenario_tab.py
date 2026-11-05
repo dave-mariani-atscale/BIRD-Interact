@@ -120,10 +120,155 @@ def fmt_ts(x):
     return dt.datetime.fromtimestamp(float(x)).strftime("%Y-%m-%d %H:%M")
 
 
-def build_tab(wb, src, name, scen, results_path, at_runs, unsolv):
+# ── Genie Ontology routing ──
+
+ROUTES = ("metric_views", "base_tables", "mixed", "elsewhere", "unparsed")
+ROUTE_LABEL = {"metric_views": "views only", "base_tables": "base tables only", "mixed": "views + tables",
+               "elsewhere": "outside the database", "unparsed": "unparsed SQL", "none": "no SQL"}
+SQL_BLOCK_RE = re.compile(r"```sql\n(.*?)\n```", re.S)
+VERDICT_RE = re.compile(r"\s*(?:SQL failed Phase (\d)|Phase (\d) correct)")
+
+
+def route_of(sql, db, rejected=False):
+    """metric_views | base_tables | mixed | elsewhere | none, for a statement on task database `db`."""
+    from shared.environment_backends import get_domain_config, objects_read
+    if rejected:
+        return "elsewhere"
+    if not sql:
+        return "none"
+    read = objects_read(sql, get_domain_config("dbx_genie_ontology", db))
+    if not read:
+        return "unparsed"                          # sqlglot could not parse it
+    if read.get("elsewhere"):
+        return "elsewhere"
+    v, b = bool(read.get("metric_views")), bool(read.get("base_tables"))
+    return "mixed" if v and b else "metric_views" if v else "base_tables" if b else "unparsed"
+
+
+def task_routes(r):
+    """(route of the phase-1 answer, passed?), (route of the phase-2 answer, passed?), [route of each Genie turn].
+    An answer is the submission that passed, else the last one of that phase; (None, False) when there was none."""
+    db = r["database"]
+    subs = {1: [], 2: []}
+    turns = []
+    for t in r.get("tool_trajectory") or []:
+        res = str(t.get("result") or "")
+        if t.get("tool") == "submit_sql":
+            m = VERDICT_RE.match(res)                 # "SQL failed Phase N. ..." or "Phase N correct! ..."
+            if m:
+                phase, ok = int(m.group(1) or m.group(2)), bool(m.group(2))
+                sql = (t.get("args") or {}).get("sql", "")
+                subs[phase].append((sql, ok, "Query rejected" in res and "references" in res))
+        elif t.get("tool") == "ask_genie":
+            blocks = SQL_BLOCK_RE.findall(res)
+            turns.append(route_of(blocks[-1], db) if blocks else "none")
+    out = []
+    for ph in (1, 2):
+        if not subs[ph]:
+            out.append((None, False)); continue
+        sql, ok, rej = next((x for x in subs[ph] if x[1]), subs[ph][-1])
+        out.append((route_of(sql, db, rej), ok))
+    return out[0], out[1], turns
+
+
+def add_routing_section(ws, src, runs):
+    """Append the Genie Ontology routing columns after the census/time sections. Returns the note text."""
+    from copy import copy
+    from openpyxl.utils import column_index_from_string as CI, get_column_letter as GL
+
+    per = collections.defaultdict(collections.Counter)          # db -> counters, pooled over runs
+    base_by_run = [collections.Counter() for _ in runs]
+    for k, run in enumerate(runs):
+        for r in run:
+            (r1, ok1), (r2, ok2), turns = task_routes(r)
+            c = per[r["database"]]
+            if r1:
+                c[f"p1_{r1}"] += 1; c[f"p1ok_{r1}"] += ok1
+                if r1 in ("base_tables", "mixed"):
+                    base_by_run[k][r["database"]] += 1
+            else:
+                c["p1_none"] += 1
+            if r2:
+                c[f"p2_{r2}"] += 1; c[f"p2ok_{r2}"] += ok2
+            for t in turns:
+                c[f"turn_{t}"] += 1
+
+    hdr4, hdr5 = src["CP4"], src["CP5"]
+    cnt_style, pct_style = src["R6"], src["H6"]
+    cnt_tot, pct_tot = src["R28"], src["H28"]
+    col = CI("CT") + 1
+    sections = []
+
+    def put(c, row, value, style):
+        cell = ws.cell(row=row, column=c, value=value)
+        cell._style = copy(style._style)
+        return cell
+
+    def section(title, columns):
+        nonlocal col
+        ws.column_dimensions[GL(col)].width = 2                 # separator, as between the source's sections
+        col += 1
+        first = col
+        for header, kind, values, total in columns:
+            L = GL(col)
+            put(col, 5, header, hdr5)
+            for i, row in enumerate(range(FIRST, LAST + 1)):
+                v = values(row) if callable(values) else values[i]
+                put(col, row, v, pct_style if kind == "pct" else cnt_style)
+            put(col, ALL, total(L) if total else f"=SUM({L}{FIRST}:{L}{LAST})", pct_tot if kind == "pct" else cnt_tot)
+            ws.column_dimensions[L].width = 12
+            col += 1
+        put(first, 4, title, hdr4)
+        for c in range(first + 1, col):
+            put(c, 4, None, hdr4)
+        ws.merge_cells(start_row=4, start_column=first, end_row=4, end_column=col - 1)
+        sections.append((title, GL(first), GL(col - 1)))
+
+    dbs = [ws[f"A{r}"].value for r in range(FIRST, LAST + 1)]
+    for ph in (1, 2):
+        cols = []
+        for rt in ROUTES:
+            n_col = GL(col + 1 + len(cols))                     # letters of this route's count / passed columns
+            p_col = GL(col + 2 + len(cols))
+            cols.append((f"P{ph} answers: {ROUTE_LABEL[rt]}", "cnt", [per[d][f"p{ph}_{rt}"] for d in dbs], None))
+            cols.append((f"P{ph} passed: {ROUTE_LABEL[rt]}", "cnt", [per[d][f"p{ph}ok_{rt}"] for d in dbs], None))
+            cols.append((f"P{ph} pass %: {ROUTE_LABEL[rt]}", "pct",
+                         (lambda n_col, p_col: lambda row: f'=IF({n_col}{row}=0,"",{p_col}{row}/{n_col}{row})')(n_col, p_col),
+                         (lambda n_col, p_col: lambda L: f'=IF({n_col}{ALL}=0,"n/a",{p_col}{ALL}/{n_col}{ALL})')(n_col, p_col)))
+        if ph == 1:
+            cols.append(("P1 tasks with no answer", "cnt", [per[d]["p1_none"] for d in dbs], None))
+        section(f"GENIE ONTOLOGY ROUTING: PHASE-{ph} ANSWERS (all runs pooled)", cols)
+
+    cols = [(f"P1 answers using base tables r{k + 1}", "cnt", [base_by_run[k][d] for d in dbs], None)
+            for k in range(len(runs))]
+    section("BASE-TABLE USE BY RUN (P1 answers: base tables only or views + tables)", cols)
+
+    first_turn = col + 1
+    cols = [(f"Genie turns: {ROUTE_LABEL[rt]}", "cnt", [per[d][f"turn_{rt}"] for d in dbs], None)
+            for rt in ROUTES + ("none",)]
+    tl = [GL(first_turn + i) for i in range(len(ROUTES) + 1)]
+    share = lambda row: f'=IF(SUM({tl[0]}{row}:{tl[-1]}{row})=0,"",({tl[1]}{row}+{tl[2]}{row})/SUM({tl[0]}{row}:{tl[-1]}{row}))'
+    cols.append(("Base-table share of Genie turns", "pct", share, lambda L: share(ALL)))
+    section("GENIE TURNS BY SOURCE (every ask_genie turn, all runs pooled)", cols)
+
+    return ("GENIE ONTOLOGY ROUTING (" + ", ".join(f"{a}:{b}" for _, a, b in sections) + ") classifies the SQL by what it "
+            "reads in the task database: its metric views only, its base tables only, both, or anything outside the "
+            "database (another schema or catalog; refused at grading), or 'unparsed SQL' when the statement could not be "
+            "parsed. A task's phase-1 or phase-2 answer is the "
+            "submission that passed, else the last one of that phase; pass % is passed / answers for that source. "
+            "Genie turns classify the SQL of each ask_genie answer; a turn with no SQL (a clarifying question, a "
+            "refusal, an error) is 'no SQL'. Counts are summed over the runs.")
+
+
+def build_tab(wb, src, name, scen, results_glob, at_runs, unsolv):
     label, backend, describe = SCENARIOS[scen]
-    meta, res = load(results_path)
-    stats, _ = per_db(res, backend)
+    paths = sorted(glob.glob(results_glob))
+    if not 1 <= len(paths) <= 3:
+        raise SystemExit(f"{name}: {results_glob} matches {len(paths)} files; expected 1 to 3 runs")
+    loaded = [load(p) for p in paths]
+    metas, runs = [m for m, _ in loaded], [r for _, r in loaded]
+    n_runs = len(runs)
+    stats = [per_db(r, backend)[0] for r in runs]
     ws = wb.copy_worksheet(src)
     ws.title = name
     for cf in src.conditional_formatting:                      # copy_worksheet does not carry these
@@ -146,40 +291,47 @@ def build_tab(wb, src, name, scen, results_path, at_runs, unsolv):
     at_ok = [passes_on(r, ok_p1) for r in at_runs]
     at_reward = [sum(float(x.get("total_reward") or 0) for x in r) for r in at_runs]
     best = max(range(len(at_runs)), key=lambda i: at_reward[i])
-    dbx_ok = passes_on(res, ok_p1)
+    dbx_ok = [passes_on(r, ok_p1) for r in runs]
     # task id -> database from the AtScale files (handles *_M_* ids)
     t2db = {x["task_id"]: x["database"] for x in at_runs[0]}
     unsolv_db = collections.Counter(t2db.get(t) for t, u in unsolv.items() if u and t in t2db)
 
+    def mean_of(db, key, per_task=True):
+        tot = sum(st[db][key] for st in stats)
+        return tot / sum(st[db]["n"] for st in stats) if per_task else tot / n_runs
+
     for row in range(FIRST, LAST + 1):
         db = ws[f"A{row}"].value
-        a = stats.get(db)
-        if not a:
-            raise SystemExit(f"{name}: no {backend} results for database {db}")
-        n = a["n"]
+        if any(db not in st for st in stats):
+            raise SystemExit(f"{name}: a {backend} run has no results for database {db}")
+        n = stats[0][db]["n"]
         assert int(n) == int(ws[f"C{row}"].value), (db, n, ws[f"C{row}"].value)
         r = row
-        ws[f"M{r}"], ws[f"N{r}"], ws[f"O{r}"] = a["p1"] / n, None, None
+        for cols, key in ((("M", "N", "O"), "p1"), (("AC", "AD", "AE"), "p2"), (("AU", "AV", "AW"), "reward")):
+            for k, col in enumerate(cols):
+                ws[f"{col}{r}"] = stats[k][db][key] / stats[k][db]["n"] if k < n_runs else None
         ws[f"L{r}"] = f"=AVERAGE(M{r}:O{r})"
-        ws[f"S{r}"] = a["p1"]
-        ws[f"AC{r}"], ws[f"AD{r}"], ws[f"AE{r}"] = a["p2"] / n, None, None
         ws[f"AB{r}"] = f"=AVERAGE(AC{r}:AE{r})"
-        ws[f"AI{r}"] = a["p2"]
-        ws[f"AU{r}"], ws[f"AV{r}"], ws[f"AW{r}"] = a["reward"] / n, None, None
         ws[f"AT{r}"] = f"=AVERAGE(AU{r}:AW{r})"
-        ws[f"AZ{r}"] = f"=2*STDEVP(AP{r}:AR{r})"
-        ws[f"BA{r}"] = "AtScale runs (Databricks n=1)"
-        ws[f"BE{r}"] = a["coins"] / n
+        ws[f"S{r}"] = mean_of(db, "p1", per_task=False)
+        ws[f"AI{r}"] = mean_of(db, "p2", per_task=False)
+        if n_runs > 1:
+            ws[f"AZ{r}"] = f"=2*MAX(STDEVP(AP{r}:AR{r}),STDEVP(AU{r}:AW{r}))"
+            ws[f"BA{r}"] = "both arms"
+        else:
+            ws[f"AZ{r}"] = f"=2*STDEVP(AP{r}:AR{r})"
+            ws[f"BA{r}"] = "AtScale runs (Databricks n=1)"
+        ws[f"BE{r}"] = mean_of(db, "coins")
         ws[f"BG{r}"] = f'=IF(S{r}>0,BE{r}*C{r}/S{r},"n/a")'
-        ws[f"BK{r}"] = a["turns"] / n
-        ws[f"BM{r}"] = a["oob"]
-        ws[f"BO{r}"] = a["secs"] / n
-        ws[f"BT{r}"] = a["queries"]
-        ws[f"BU{r}"] = a["errors"]
+        ws[f"BK{r}"] = mean_of(db, "turns")
+        ws[f"BM{r}"] = mean_of(db, "oob", per_task=False)
+        ws[f"BO{r}"] = mean_of(db, "secs")
+        ws[f"BT{r}"] = sum(st[db]["queries"] for st in stats)
+        ws[f"BU{r}"] = sum(st[db]["errors"] for st in stats)
         ws[f"CJ{r}"] = unsolv_db.get(db, 0)
         ws[f"CL{r}"] = sum(c[db] for c in at_ok) / len(at_ok)
         ws[f"CS{r}"] = at_ok[best][db]
-        ws[f"CM{r}"] = dbx_ok[db]
+        ws[f"CM{r}"] = sum(c[db] for c in dbx_ok) / n_runs
         for col in ("AJ", "AK", "AL", "CK", "CN", "CO", "CT"):
             ws[f"{col}{r}"] = "n/a"
     for col in ("AJ", "AK", "AL", "CK", "CN", "CO", "CT"):
@@ -193,37 +345,43 @@ def build_tab(wb, src, name, scen, results_path, at_runs, unsolv):
             ws[f"{col}{ALL}"] = f'=IF(COUNT({col}{FIRST}:{col}{LAST})=0,"",{f[1:]})'
     ws[f"BG{ALL}"] = f"=SUMPRODUCT(BE{FIRST}:BE{LAST},C{FIRST}:C{LAST})/SUM(S{FIRST}:S{LAST})"
     ws[f"AZ{ALL}"] = f"=SUMPRODUCT(AZ{FIRST}:AZ{LAST},$C${FIRST}:$C${LAST})/SUM($C${FIRST}:$C${LAST})"
+    routing_note = add_routing_section(ws, src, runs) if backend == "dbx_genie_ontology" else None
 
     # Title, provenance, notes.
     ws["A1"] = f"BIRD-Interact head-to-head, all 22 databases: AtScale vs Databricks scenario {scen} ({label})"
-    p1 = sum(a["p1"] for a in stats.values()) / 410
-    p2 = sum(a["p2"] for a in stats.values()) / 410
-    rw = sum(a["reward"] for a in stats.values()) / 410
-    secs = sum(a["secs"] for a in stats.values()) / 410
+    tot = lambda key: sum(st[db][key] for st in stats for db in st) / (410 * n_runs)
+    p1, p2, rw, secs = tot("p1"), tot("p2"), tot("reward"), tot("secs")
+    meta = metas[0]
     ws["A2"] = (
-        f"DATABRICKS ARM n=1, scenario {scen}: {label}. {fmt_ts(meta['run_started'])} -> {fmt_ts(meta['run_finished'])}: "
-        f"all 22 databases, 410 query tasks x 1 run, concurrency {meta.get('concurrency')}. {describe} "
+        f"DATABRICKS ARM n={n_runs}, scenario {scen}: {label}. {fmt_ts(metas[0]['run_started'])} -> "
+        f"{fmt_ts(metas[-1]['run_finished'])}: all 22 databases, 410 query tasks x {n_runs} "
+        f"{'run' if n_runs == 1 else 'sequential runs'}, concurrency {meta.get('concurrency')}. {describe} "
         "Same agent and user simulator (Sonnet 5), a-interact mode, the 2026-09-10 AtScale instruction with only the "
         "tool lines rewritten, and the same six grading corrections applied live. Databricks workspace "
         "adb-6969958581353382, SQL warehouse b1a1ad089fa01319, 119 metric views over the 22 BIRD databases "
         "(AtScaleInc/bird-databricks-models), built from the SML models, knowledge base and business questions, never "
         "the gold SQL. Submitted SQL is graded by re-executing it on the warehouse. "
-        f"File: {Path(results_path).name}. Task-mean P1 {p1:.1%} / P2 {p2:.1%} / reward {rw:.4f}, wall-clock "
+        f"Files: {', '.join(Path(p).name for p in paths)}. Task-mean P1 {p1:.1%} / P2 {p2:.1%} / reward {rw:.4f}, wall-clock "
         f"{secs:.0f}s per question. ATSCALE ARM IS THE 2026-09-10 RUN, UNCHANGED from the 'Modified Harness 09-10  "
         "Sonnet' tab (n=3, files full0910_atscale_run01-03), except the census-based columns described in the notes. "
-        "The Databricks arm fills the columns that tab gives to the raw arm; its r2 and r3 columns are empty.")
+        "The Databricks arm fills the columns that tab gives to the raw arm"
+        + ("; its r2 and r3 columns are empty." if n_runs == 1 else f", r1 to r{n_runs} in run order."))
     for row in range(NOTES, ws.max_row + 1):
         for c in ws[row]:
             c.value = None
     notes = [
         f"ROW 29 IS THE LEADERBOARD-CONVENTION FIGURE: each arm's best single run by reward over all 410 tasks. "
-        f"For AtScale that is r{best + 1}; for Databricks it is r1, its only run. Row 28 is the task-mean (AtScale's "
-        "3-run mean) and remains the basis for every other metric.",
+        f"For AtScale that is r{best + 1}; for Databricks it is "
+        + ("r1, its only run." if n_runs == 1 else "the run named in BA29.")
+        + " Row 28 is the task-mean over each arm's runs and remains the basis for every other metric.",
         "LIFT IS ATSCALE OVER DATABRICKS: 1.20x means AtScale returns 1.2x Databricks; below 1.00x means Databricks "
         "is ahead. Delta is AtScale minus Databricks. Cost and time lift run the other way (Databricks divided by "
         "AtScale), so above 1.00x means AtScale is cheaper or faster per question passed or per reward point.",
-        "NOISE GATE is 2 x the population sd of AtScale's three runs on that database. The Databricks arm ran once, so "
-        "it has no spread of its own; a database where the reward difference exceeds the gate is marked in Verdict.",
+        ("NOISE GATE is 2 x the population sd of AtScale's three runs on that database. The Databricks arm ran once, so "
+         "it has no spread of its own; a database where the reward difference exceeds the gate is marked in Verdict."
+         if n_runs == 1 else
+         "NOISE GATE is 2 x the population sd of the LARGER arm's runs on that database, as on the 09-10 tab; a "
+         "database where the reward difference exceeds the gate is marked in Verdict."),
         f"UNSOLVABLE COUNTS (CJ) ARE FROM THE CURRENT TASK CENSUS TAB OF THE BIRD RESULTS WORKBOOK ({sum(unsolv.values())} phase-1 unsolvable "
         "tasks), not the revision-5 counts on the 09-10 tab, so AtScale's adjusted figures (CL, CS, U) are recomputed "
         "from its result files against the same list as Databricks'. The phase-2 adjusted columns are n/a: the census "
@@ -232,8 +390,9 @@ def build_tab(wb, src, name, scen, results_path, at_runs, unsolv):
          "run_query. Turns per question are ADK events per task, as on the 09-10 tab." if backend == "dbx_metric_views" else
          "QUERIES ARE THE SQL STATEMENTS GENIE RAN on the agent's behalf (every statement of every ask_genie turn) and "
          "errors are ask_genie turns that failed. Turns per question are ADK events per task, as on the 09-10 tab."),
-        "ATSCALE QUERY AND ERROR COUNTS ARE SUMS OVER ITS THREE RUNS (as on the 09-10 tab) and Databricks' are one "
-        "run, so compare the error rates, not the counts.",
+        ("ATSCALE QUERY AND ERROR COUNTS ARE SUMS OVER ITS THREE RUNS (as on the 09-10 tab) and Databricks' are one "
+         "run, so compare the error rates, not the counts." if n_runs == 1 else
+         f"QUERY AND ERROR COUNTS ARE SUMS OVER EACH ARM'S RUNS (AtScale 3, Databricks {n_runs}), as on the 09-10 tab."),
         "WALL-CLOCK IS ONLY ROUGHLY COMPARABLE: the AtScale run used concurrency 5 against its own engine; this run "
         f"used concurrency {meta.get('concurrency')} against one Databricks SQL warehouse"
         + (" and the Genie API, which is rate limited" if backend != "dbx_metric_views" else "") + ".",
@@ -242,6 +401,8 @@ def build_tab(wb, src, name, scen, results_path, at_runs, unsolv):
     if backend == "dbx_genie_space":
         notes.append("BASE-TABLE FALLBACK: Genie could read the base tables but every graded submission of this run "
                      "read metric views only (checked in the grading audit).")
+    if routing_note:
+        notes.append(routing_note)
     for i, text in enumerate(notes):
         ws[f"A{NOTES + i}"] = text
     # The source tab is formatted down to row 1000; drop the empty rows so the file stays small.
@@ -258,7 +419,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--tab", nargs=3, action="append", metavar=("NAME", "SCENARIO", "RESULTS"), required=True)
+    ap.add_argument("--tab", nargs=3, action="append", metavar=("NAME", "SCENARIO", "RESULTS_GLOB"), required=True,
+                    help="tab name, scenario 1/2/3, and a quoted glob of the scenario's 1 to 3 run files")
     ap.add_argument("--atscale", default=ATSCALE_GLOB)
     ap.add_argument("--keep-source-tabs", action="store_true",
                     help="keep every tab of the source workbook; the new tabs go right after the 09-10 tab")
