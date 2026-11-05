@@ -148,9 +148,11 @@ def main() -> None:
         ts = [t for t in tasks if cls[t] == c]
         print(f"{c:10s}{len(ts):>7d}{pct(sum(p1(arm[t]) for t in ts), len(ts)):>18s}")
 
+    from shared.config import settings
+    db_of = {json.loads(l)["instance_id"]: json.loads(l)["selected_database"] for l in open(settings.data_path)}
     by = collections.defaultdict(list)
     for t in tasks:
-        by[t.rsplit("_", 1)[0]].append(t)
+        by[db_of.get(t, t.rsplit("_", 1)[0])].append(t)   # households_M_10 belongs to households
     print(f"\n{'database':34s}{'n':>4s}{'arm P1':>9s}{'AtS r1':>9s}{'AtS mean':>10s}{'arm P2':>9s}{'AtS r1':>9s}{'net P1':>8s}")
     for db in sorted(by, key=lambda d: -len(by[d])):
         ts = by[db]; k = len(ts)
