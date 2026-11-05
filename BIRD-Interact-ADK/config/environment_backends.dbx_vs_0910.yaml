@@ -656,6 +656,9 @@ backends:
       ask_genie: 1.0
     small_action_costs:
       ask_genie: 0.5
+    # Catalogs outside the test: `bird` is another user's copy of the BIRD databases, browsable
+    # (not queryable) by every account user. A Genie turn whose answer reads one is redone, free.
+    ignored_catalogs: [bird]
     leaderboard_tool_costs: {}
     instruction: |
       You are a helpful analyst agent that interacts with a user and with Genie - Databricks' natural-language data agent, grounded in the Genie Ontology of the user's Databricks workspace - to solve the user's question.

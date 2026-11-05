@@ -33,9 +33,9 @@ from three_way_by_db import (GS_LOG, HERE, MV_LOG, baseline, best_run, from_log,
 GO_LOG = HERE / "logs/dbx_genie_ontology_vs_0910/dbx_genie_ontology.log"
 AUDIT = HERE / "results/grading_audit.jsonl"
 AGENT_LOG = HERE / "logs/system_agent.out"
-ROUTES = ("metric_views", "base_tables", "mixed", "elsewhere", "none", "error")
+ROUTES = ("metric_views", "base_tables", "mixed", "elsewhere", "none", "error", "ignored_catalog")
 ROUTE_LABEL = {"metric_views": "views only", "base_tables": "base tables only", "mixed": "views + tables",
-               "elsewhere": "outside the database", "none": "no SQL / unparsed", "error": "Genie error"}
+               "elsewhere": "outside the database", "none": "no SQL / unparsed", "error": "Genie error", "ignored_catalog": "redone (read bird)"}
 TURN_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*ask_genie route: db=(\S+) route=(\S+)")
 
 
