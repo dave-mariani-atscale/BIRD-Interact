@@ -41,7 +41,7 @@ from google.adk.tools.tool_context import ToolContext
 from shared.config import settings
 from shared.databricks_auth import resolve_token
 from shared.databricks_sql import AGENT_ROW_CAP, convert_cell, _jsonable
-from shared.environment_backends import get_backend_config, get_domain_config, objects_read, query_domain_violation
+from shared.environment_backends import get_domain_config, objects_read, query_domain_violation
 from shared.mcp_client import _first_leaf
 
 logger = logging.getLogger(__name__)
@@ -289,24 +289,6 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
                        domain.get("schema"), question[:120])
     try:
         turn = await _genie_turn(settings.databricks_host.rstrip("/"), token, question, cid)
-        # A catalog the backend lists under `ignored_catalogs` (a stale copy of the BIRD
-        # databases another user keeps in the workspace, visible to every account user
-        # through BROWSE) is not part of the test: a turn whose answer reads it is redone
-        # in the same conversation, free and invisible to the agent, and logged.
-        ignored = set(c.casefold() for c in (get_backend_config(_backend_name(tool_context)).get("ignored_catalogs") or []))
-        redos = 0
-        while ignored and redos < MAX_IGNORED_CATALOG_REDOS:
-            hit = _ignored_catalog_objects(turn, domain, ignored)
-            if not hit:
-                break
-            redos += 1
-            logger.info("ask_genie route: db=%s route=ignored_catalog objects=%s response=%s (redo %d)",
-                        domain.get("schema"), hit, turn["response_id"], redos)
-            turn = await _genie_turn(settings.databricks_host.rstrip("/"), token,
-                                     f"That query read {hit[0]}, which is not this question's data. Answer from the "
-                                     f"{domain.get('catalog')}.{domain.get('schema')} database only.",
-                                     turn["conversation_id"])
-        turn["ignored_catalog_redos"] = redos
     except GenieError as e:
         if tool_context is not None:
             tool_context.state["_small_action"] = True   # no query ran: 0.5, like any queryless turn
@@ -325,8 +307,7 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
         tool_context.state[_STATE_CONVERSATION] = turn["conversation_id"]
         ids = list(tool_context.state.get(_STATE_RESPONSES, []))
         ids.append({"response_id": turn["response_id"], "status": turn["status"],
-                    "sql": [i.get("sql") for i in turn["sql_items"]], "elapsed_s": turn["elapsed_s"],
-                    "ignored_catalog_redos": turn.get("ignored_catalog_redos", 0)})
+                    "sql": [i.get("sql") for i in turn["sql_items"]], "elapsed_s": turn["elapsed_s"]})
         tool_context.state[_STATE_RESPONSES] = ids
     out = _render(turn)
     if tool_context is not None and not turn["sql_items"]:
@@ -354,16 +335,6 @@ async def ask_genie(question: str, tool_context: ToolContext) -> str:
                 f"({violation.split('references ', 1)[-1].split(',')[0]}). A submission of it will be rejected. "
                 "Ask Genie to answer from this database only.")
     return out
-
-
-MAX_IGNORED_CATALOG_REDOS = 2
-
-
-def _ignored_catalog_objects(turn: Dict[str, Any], domain: Dict[str, Any], ignored: set) -> List[str]:
-    """Objects in an ignored catalog that the SQL of the turn's answer reads."""
-    last = turn["sql_items"][-1]["sql"] if turn["sql_items"] else ""
-    read = objects_read(last, domain) if last else None
-    return [o for o in (read or {}).get("elsewhere", []) if o.count(".") == 2 and o.split(".", 1)[0] in ignored]
 
 
 def route_class(read: Optional[Dict[str, List[str]]]) -> str:
