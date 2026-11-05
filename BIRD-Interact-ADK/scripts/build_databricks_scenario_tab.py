@@ -21,7 +21,8 @@ Columns that are rebuilt rather than carried over:
         --tab "DBX S1 Metric Views + Sonnet" 1 results/.../dbx_metric_views_*.json \\
         --tab "DBX S2 Metric Views + Genie" 2 results/.../dbx_genie_space_*.json
 
-The output workbook holds only the new tabs.
+The output workbook holds only the new tabs, or with --keep-source-tabs every tab of the source
+workbook with the new ones after the 09-10 tab.
 """
 from __future__ import annotations
 
@@ -185,6 +186,11 @@ def build_tab(wb, src, name, scen, results_path, at_runs, unsolv):
         ws[f"{col}{ALL}"] = "n/a"
         if ws[f"{col}{BEST}"].value is not None:
             ws[f"{col}{BEST}"] = "n/a"
+    # Run columns the Databricks arm did not fill stay blank in the total row (not 0.0%).
+    for col in ("M", "N", "O", "AC", "AD", "AE", "AU", "AV", "AW"):
+        f = ws[f"{col}{ALL}"].value
+        if isinstance(f, str) and f.startswith("="):
+            ws[f"{col}{ALL}"] = f'=IF(COUNT({col}{FIRST}:{col}{LAST})=0,"",{f[1:]})'
     ws[f"BG{ALL}"] = f"=SUMPRODUCT(BE{FIRST}:BE{LAST},C{FIRST}:C{LAST})/SUM(S{FIRST}:S{LAST})"
     ws[f"AZ{ALL}"] = f"=SUMPRODUCT(AZ{FIRST}:AZ{LAST},$C${FIRST}:$C${LAST})/SUM($C${FIRST}:$C${LAST})"
 
@@ -254,6 +260,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--tab", nargs=3, action="append", metavar=("NAME", "SCENARIO", "RESULTS"), required=True)
     ap.add_argument("--atscale", default=ATSCALE_GLOB)
+    ap.add_argument("--keep-source-tabs", action="store_true",
+                    help="keep every tab of the source workbook; the new tabs go right after the 09-10 tab")
     a = ap.parse_args()
     wb = openpyxl.load_workbook(a.source)
     src = wb[SRC_TAB]
@@ -269,9 +277,15 @@ def main():
             if abs(mine - float(src[f"{col}{row}"].value)) > 1e-6:
                 print(f"warning: AtScale r{k + 1} P1 {db}: tab {src[f'{col}{row}'].value} vs files {mine}")
     built = [build_tab(wb, src, n, s, p, at_runs, unsolv).title for n, s, p in a.tab]
-    for name in list(wb.sheetnames):
-        if name not in built:
-            del wb[name]
+    if a.keep_source_tabs:
+        order = [s for s in wb._sheets if s.title not in built]
+        at = order.index(src) + 1
+        order[at:at] = [wb[n] for n in built]
+        wb._sheets = order
+    else:
+        for name in list(wb.sheetnames):
+            if name not in built:
+                del wb[name]
     wb.active = 0
     wb.save(a.out)
     print("wrote", a.out, "tabs:", wb.sheetnames)
