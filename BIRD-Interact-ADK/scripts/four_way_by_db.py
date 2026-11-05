@@ -310,12 +310,52 @@ def tables(qt, mv, gs, reps, starts, total, base) -> str:
     return "\n".join(out)
 
 
+def consolidated(qt, mv, gs, reps, starts, base, db_new=None) -> str:
+    """One table over every database the latest repetition has finished: each arm's P1 / P2 / reward, plus
+    Genie Ontology split by whether its phase-1 answer used metric views. `db_new` adds that database's row."""
+    k = max(i for i, r in enumerate(reps) if r)
+    go = reps[k]
+    done = [db for db, ts in qt.items() if all(t in mv and t in gs and t in go for t in ts)]
+    at = base[best_run(base)]
+    until = starts[k + 1] if k + 1 < len(starts) else float("inf")
+
+    def block(dbs, title):
+        ts = [t for d in dbs for t in qt[d]]
+        n = len(ts)
+        routes = ontology_routes(set(ts), starts[k], until)
+        with_v = [t for t in ts if routes.get(t) in ("metric_views", "mixed")]
+        without = [t for t in ts if routes.get(t) in ("base_tables", "elsewhere")]
+        def row(name, r, sub):
+            m = len(sub)
+            return (f"| {name} | {m} | {pct(sum(r[t][0] for t in sub), m)} | {pct(sum(r[t][1] for t in sub), m)} | "
+                    f"{sum(r[t][2] for t in sub) / m:.3f} |") if m else f"| {name} | 0 | - | - | - |"
+        lines = [f"| {title} | Tasks | P1 | P2 | Reward |", "| --- | ---: | ---: | ---: | ---: |",
+                 row("AtScale, best run", at, ts), row("Metric views + Sonnet", mv, ts), row("Genie space", gs, ts)]
+        for j in range(k):                                   # earlier repetitions, same tasks
+            lines.append(row(f"Genie Ontology, repeat {j + 1}", reps[j], ts))
+        lines += [row(f"Genie Ontology, repeat {k + 1}", go, ts),
+                  row("Genie Ontology, answer used metric views", go, with_v),
+                  row("Genie Ontology, answer did not use metric views", go, without)]
+        return "\n".join(lines)
+
+    out = []
+    if db_new and db_new in done:
+        out += [block([db_new], f"{db_new}, {sum(len(qt[d]) for d in [db_new])} tasks"), ""]
+    out.append(block(done, f"{len(done)} databases, {sum(len(qt[d]) for d in done)} tasks (repeat {k + 1})"))
+    return "\n".join(out)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--newly-complete-since", metavar="STATEFILE")
+    ap.add_argument("--consolidated", nargs="?", const="", metavar="DB",
+                    help="print the consolidated table (plus DB's own rows when given)")
     a = ap.parse_args()
     qt, mv, gs, base = query_tasks(), from_log(MV_LOG), from_log(GS_LOG), baseline()
     reps, starts, total = ontology_reps()
+    if a.consolidated is not None:
+        print(consolidated(qt, mv, gs, reps, starts, base, a.consolidated or None))
+        return
     done = {f"{db}@{k + 1}" for k, r in enumerate(reps) for db, ts in qt.items()
             if all(t in mv and t in gs and t in r for t in ts)}
     if a.newly_complete_since:
