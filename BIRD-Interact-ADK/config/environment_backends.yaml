@@ -473,15 +473,14 @@ backends:
     tools_factory: get_ainteract_tools_genie_one
     executor: databricks
     dialect: databricks
-    # The .env variable holding the benchmark principal's credential (a PAT, or
-    # oauth-m2m:<client_id>:<client_secret>; shared/databricks_auth.py).
-    token_env: DATABRICKS_TOKEN_ONTOLOGY
     error_hints: []
     tool_costs:
       ask_genie: 1.0
+    small_action_costs:
+      ask_genie: 0.5
     leaderboard_tool_costs: {}
     instruction: |
-      You are a helpful analyst agent that interacts with a user and with Genie - Databricks' natural-language data agent, grounded in the Genie Ontology of the user's database - to solve the user's question.
+      You are a helpful analyst agent that interacts with a user and with Genie - Databricks' natural-language data agent, grounded in the Genie Ontology of the user's Databricks workspace - to solve the user's question.
 
       Task description:
       Your goal is to understand the user's ambiguous question involving external knowledge retrieval and obtain from Genie the correct query against the database that solves it.
@@ -493,7 +492,7 @@ backends:
       Each action costs bird-coins, so you should be efficient.
 
       Available tools and costs:
-      - ask_genie: pass the user's question to Genie. Pass it VERBATIM, prefixed with the database name ("In the bird_interact.<database> database: <the user's question>"); do not paraphrase, summarise or pre-solve it. After the user answers a clarification, pass that answer to Genie verbatim as a follow-up in the same conversation ("The user clarified: <the user's words>"): every ask_genie call continues this task's one Genie conversation. The reply carries Genie's answer, the SQL it ran and the rows that SQL returned. Cost: 1
+      - ask_genie: pass the user's question to Genie. Pass it VERBATIM, prefixed with the database name ("In the bird_interact.<database> database: <the user's question>"); do not paraphrase, summarise or pre-solve it. After the user answers a clarification, pass that answer to Genie verbatim as a follow-up in the same conversation ("The user clarified: <the user's words>"): every ask_genie call continues this task's one Genie conversation. The reply carries Genie's answer, the SQL it ran and the rows that SQL returned. Cost: 1 when Genie runs a query, 0.5 when it only asks back, explains or declines
       - ask_user: ask the user a clarification question. Cost: 2
       - submit_sql: submit the final query for evaluation: the SQL Genie produced, verbatim. Cost: 3
 
@@ -529,92 +528,91 @@ backends:
       archeology_scan:
         catalog: bird_interact
         schema: archeology_scan
-        objects: tables
+        objects: any
       cold_chain_pharma_compliance:
         catalog: bird_interact
         schema: cold_chain_pharma_compliance
-        objects: tables
+        objects: any
       cross_border:
         catalog: bird_interact
         schema: cross_border
-        objects: tables
+        objects: any
       crypto_exchange:
         catalog: bird_interact
         schema: crypto_exchange
-        objects: tables
+        objects: any
       cybermarket_pattern:
         catalog: bird_interact
         schema: cybermarket_pattern
-        objects: tables
+        objects: any
       disaster_relief:
         catalog: bird_interact
         schema: disaster_relief
-        objects: tables
+        objects: any
       exchange_traded_funds:
         catalog: bird_interact
         schema: exchange_traded_funds
-        objects: tables
+        objects: any
       fake_account:
         catalog: bird_interact
         schema: fake_account
-        objects: tables
+        objects: any
       households:
         catalog: bird_interact
         schema: households
-        objects: tables
+        objects: any
       hulushows:
         catalog: bird_interact
         schema: hulushows
-        objects: tables
+        objects: any
       insider_trading:
         catalog: bird_interact
         schema: insider_trading
-        objects: tables
+        objects: any
       labor_certification_applications:
         catalog: bird_interact
         schema: labor_certification_applications
-        objects: tables
+        objects: any
       mental_health:
         catalog: bird_interact
         schema: mental_health
-        objects: tables
+        objects: any
       museum_artifact:
         catalog: bird_interact
         schema: museum_artifact
-        objects: tables
+        objects: any
       organ_transplant:
         catalog: bird_interact
         schema: organ_transplant
-        objects: tables
+        objects: any
       planets_data:
         catalog: bird_interact
         schema: planets_data
-        objects: tables
+        objects: any
       polar_equipment:
         catalog: bird_interact
         schema: polar_equipment
-        objects: tables
+        objects: any
       reverse_logistics:
         catalog: bird_interact
         schema: reverse_logistics
-        objects: tables
+        objects: any
       robot_fault_prediction:
         catalog: bird_interact
         schema: robot_fault_prediction
-        objects: tables
+        objects: any
       solar_panel:
         catalog: bird_interact
         schema: solar_panel
-        objects: tables
+        objects: any
       sports_events:
         catalog: bird_interact
         schema: sports_events
-        objects: tables
+        objects: any
       virtual_idol:
         catalog: bird_interact
         schema: virtual_idol
-        objects: tables
-
+        objects: any
   # dbx_genie_space (2026-11-04): Genie as the SQL author inside the BIRD agent loop. The agent
   # (Sonnet) keeps its budget, its asks and its submits; its only data tool is ask_genie, which
   # talks to a Genie SPACE per database holding ONLY that database's metric views (no instructions,

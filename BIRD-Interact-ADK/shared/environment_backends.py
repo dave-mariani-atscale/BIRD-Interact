@@ -36,6 +36,37 @@ def load_backends() -> Dict[str, Any]:
     return _cache["backends"]
 
 
+#: The three Databricks scenarios of the AtScale comparison, selectable with
+#: `orchestrator.runner --databricks-scenario <n|name>` (or scripts/run_databricks_scenario.sh):
+#:   1 metric-views-agent : Metric Views + 3rd-party agent. The BIRD agent (e.g. Sonnet)
+#:                          discovers and queries the task database's metric views itself.
+#:   2 genie-space        : Metric Views + Genie Agent. The BIRD agent hands every question
+#:                          to Genie in a Genie space holding the database's metric views.
+#:   3 genie-ontology     : Metric Views + Genie Ontology. The BIRD agent hands every
+#:                          question to Genie One, grounded in the workspace's Genie
+#:                          Ontology, which chooses its sources (metric views, base tables,
+#:                          anything the caller can read) itself.
+DATABRICKS_SCENARIOS = {
+    "1": "dbx_metric_views", "metric-views-agent": "dbx_metric_views",
+    "2": "dbx_genie_space", "genie-space": "dbx_genie_space",
+    "3": "dbx_genie_ontology", "genie-ontology": "dbx_genie_ontology",
+}
+DATABRICKS_SCENARIO_LABELS = {
+    "dbx_metric_views": "Scenario 1: Metric Views + 3rd-party agent",
+    "dbx_genie_space": "Scenario 2: Metric Views + Genie Agent (Genie space)",
+    "dbx_genie_ontology": "Scenario 3: Metric Views + Genie Ontology (Genie One)",
+}
+
+
+def resolve_databricks_scenario(value: str) -> str:
+    """Backend name for a --databricks-scenario value (1/2/3 or its name)."""
+    key = str(value).strip().lower()
+    if key not in DATABRICKS_SCENARIOS:
+        raise ValueError(f"unknown Databricks scenario {value!r}; use one of "
+                         + ", ".join(sorted(k for k in DATABRICKS_SCENARIOS if not k.isdigit())) + " or 1/2/3")
+    return DATABRICKS_SCENARIOS[key]
+
+
 def get_backend_config(name: str) -> Dict[str, Any]:
     backends = load_backends()
     if name not in backends:
@@ -156,7 +187,8 @@ def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]
 
 def objects_read(query: str, domain: Dict[str, str]) -> Optional[Dict[str, List[str]]]:
     """For a schema-level Databricks domain: which of the schema's objects a statement
-    reads, split into {"metric_views": [...], "base_tables": [...]} (lower-case names).
+    reads, split into {"metric_views": [...], "base_tables": [...], "elsewhere": [...]} (lower-case;
+    "elsewhere" holds qualified names of objects outside the task schema or catalog).
     None when the statement does not parse. CTE names and information_schema reads are
     not objects. Used to record a Genie fallback to base tables on every graded
     submission and Genie turn (backend dbx_genie_space, objects: any)."""
@@ -173,10 +205,16 @@ def objects_read(query: str, domain: Dict[str, str]) -> Optional[Dict[str, List[
         logger.warning("objects_read: could not list metric views of %s.%s (%s)", domain.get("catalog"), domain.get("schema"), e)
         return None
     ctes = {c.alias_or_name.casefold() for c in statement.find_all(exp.CTE)}
-    out: Dict[str, set] = {"metric_views": set(), "base_tables": set()}
+    want_schema = domain.get("schema", "").casefold()
+    want_catalog = domain.get("catalog", "").casefold()
+    out: Dict[str, set] = {"metric_views": set(), "base_tables": set(), "elsewhere": set()}
     for tbl in statement.find_all(exp.Table):
-        name, schema = tbl.name.casefold(), tbl.text("db").casefold()
+        name, schema, catalog = tbl.name.casefold(), tbl.text("db").casefold(), tbl.text("catalog").casefold()
         if (not schema and name in ctes) or schema == "information_schema":
+            continue
+        if (schema and schema != want_schema) or (catalog and catalog != want_catalog):
+            # Another database or catalog: Genie One sees the whole workspace (scenario 3).
+            out["elsewhere"].add(".".join(p for p in (catalog, schema, name) if p))
             continue
         out["metric_views" if name in views else "base_tables"].add(name)
     return {k: sorted(v) for k, v in out.items()}

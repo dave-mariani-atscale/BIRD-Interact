@@ -581,7 +581,19 @@ def main():
                               "backend from config/environment_backends.yaml (e.g. 'atscale'). Pushed to "
                               "the already-running system_agent/db_environment services via /set_backend "
                               "at startup — no service restart needed.")
+    parser.add_argument("--databricks-scenario", type=str, default=None,
+                        help="Databricks comparison scenario, overriding --backend: 1 / metric-views-agent "
+                             "(Metric Views + 3rd-party agent), 2 / genie-space (Metric Views + Genie Agent), "
+                             "3 / genie-ontology (Metric Views + Genie Ontology). See "
+                             "shared.environment_backends.DATABRICKS_SCENARIOS.")
     args = parser.parse_args()
+    if args.databricks_scenario:
+        from shared.environment_backends import DATABRICKS_SCENARIO_LABELS, resolve_databricks_scenario
+        try:
+            args.backend = resolve_databricks_scenario(args.databricks_scenario)
+        except ValueError as e:
+            parser.error(str(e))
+        logger.info("%s -> backend %s", DATABRICKS_SCENARIO_LABELS[args.backend], args.backend)
 
     settings.environment_backend = args.backend
 

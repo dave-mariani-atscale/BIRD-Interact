@@ -199,6 +199,33 @@ def _run_query_via_semantic_layer(query: str) -> str:
         return f"Error: {type(e).__name__}: {e}"
 
 
+_READ_ONLY_LEAD = re.compile(r"^\s*(?:--[^\n]*\n\s*|/\*.*?\*/\s*)*[(\s]*(select|with|values)\b", re.I | re.S)
+
+
+def _read_only_refusal(query: str, dialect: str) -> Optional[str]:
+    """Grading on Databricks runs as a principal that can write (the workspace owner in
+    the Genie arms), so a submission must be a single read-only query: SELECT / WITH /
+    VALUES (set operations included). Anything else - DML, DDL, SET, a second statement -
+    is refused unexecuted. Parsed with sqlglot; when the parser cannot read the
+    statement, the leading keyword decides."""
+    import sqlglot
+    from sqlglot import exp
+    try:
+        stmts = [s for s in sqlglot.parse(query, read=dialect) if s is not None]
+    except Exception:  # noqa: BLE001 - unparseable: fall back to the leading keyword
+        stmts = None
+    if stmts is None:
+        ok = bool(_READ_ONLY_LEAD.match(query or "")) and ";" not in (query or "").strip().rstrip(";")
+    else:
+        ok = len(stmts) == 1 and isinstance(stmts[0], (exp.Query, exp.Values)) and not any(
+            isinstance(n, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.Create, exp.Drop, exp.Alter))
+            for n in stmts[0].walk())
+    if ok:
+        return None
+    return ("Query rejected: only a single read-only query (SELECT / WITH) can be submitted; "
+            "this statement was not executed.")
+
+
 def _run_query_via_databricks(query: str, domain: dict):
     """Execute a submitted Databricks SQL statement on the SQL warehouse (backend config
     `executor: databricks`), with the domain's catalog and schema as the statement's
@@ -208,6 +235,9 @@ def _run_query_via_databricks(query: str, domain: dict):
     the agent had. Returns (typed rows, statement_id, error_text)."""
     from shared.databricks_auth import resolve_token
     from shared.databricks_sql import DatabricksSQL, DatabricksSQLError
+    refusal = _read_only_refusal(query, domain.get("dialect") or "databricks")
+    if refusal:
+        return None, None, refusal
     try:
         res = DatabricksSQL(token=resolve_token(domain.get("token_env"))).execute(
             query, catalog=domain.get("catalog"), schema=domain.get("schema"))
@@ -333,6 +363,15 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                     logger.warning("submit rejected for task %s (wrong model): %s",
                                    req_task_id, pred_sql_text)
                     message = f"[exec_err_flg] {violation}"
+                    if get_backend_config(backend).get("executor") == "databricks":
+                        # A routing miss (Genie One sees the whole workspace in scenario 3):
+                        # audited, unexecuted, so the routing split counts it.
+                        record_graded_submission(
+                            task_id=req_task_id, phase=current_phase,
+                            attempt=_submit_attempts[req_task_id][current_phase],
+                            backend=backend, passed=False, rejected="other_database",
+                            pred_sql=pred_sql_text, grading_regime=settings.grading_regime,
+                            objects_read=objects_read(pred_sql_text, domain))
                 elif get_backend_config(backend).get("executor") == "databricks":
                     # Databricks backends: the submitted statement runs on the SQL
                     # warehouse and its typed rows are compared like the MCP path's.
