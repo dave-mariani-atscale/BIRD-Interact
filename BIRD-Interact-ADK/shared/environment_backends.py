@@ -46,24 +46,30 @@ def load_backends() -> Dict[str, Any]:
 #:                          question to Genie One, grounded in the workspace's Genie
 #:                          Ontology, which chooses its sources (metric views, base tables,
 #:                          anything the caller can read) itself.
+#:   4 genie-ontology-no-views : Genie Ontology without Metric Views. As 3, but Genie One
+#:                          runs as the benchmark principal (DATABRICKS_TOKEN_ONTOLOGY), which
+#:                          can read the 244 base tables of `bird` and nothing else, so the
+#:                          metric views are invisible to it.
 DATABRICKS_SCENARIOS = {
     "1": "dbx_metric_views", "metric-views-agent": "dbx_metric_views",
     "2": "dbx_genie_space", "genie-space": "dbx_genie_space",
     "3": "dbx_genie_ontology", "genie-ontology": "dbx_genie_ontology",
+    "4": "dbx_genie_ontology_no_mv", "genie-ontology-no-views": "dbx_genie_ontology_no_mv",
 }
 DATABRICKS_SCENARIO_LABELS = {
     "dbx_metric_views": "Scenario 1: Metric Views + 3rd-party agent",
     "dbx_genie_space": "Scenario 2: Metric Views + Genie Agent (Genie space)",
     "dbx_genie_ontology": "Scenario 3: Metric Views + Genie Ontology (Genie One)",
+    "dbx_genie_ontology_no_mv": "Scenario 4: Genie Ontology without Metric Views (Genie One, base tables only)",
 }
 
 
 def resolve_databricks_scenario(value: str) -> str:
-    """Backend name for a --databricks-scenario value (1/2/3 or its name)."""
+    """Backend name for a --databricks-scenario value (1-4 or its name)."""
     key = str(value).strip().lower()
     if key not in DATABRICKS_SCENARIOS:
         raise ValueError(f"unknown Databricks scenario {value!r}; use one of "
-                         + ", ".join(sorted(k for k in DATABRICKS_SCENARIOS if not k.isdigit())) + " or 1/2/3")
+                         + ", ".join(sorted(k for k in DATABRICKS_SCENARIOS if not k.isdigit())) + " or 1-4")
     return DATABRICKS_SCENARIOS[key]
 
 
