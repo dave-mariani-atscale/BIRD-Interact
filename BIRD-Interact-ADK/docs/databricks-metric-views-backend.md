@@ -182,6 +182,47 @@ coins, 320 s; the budget ran out before the follow-up. Genie turns took 14-80 s.
 prefixed every question with the database name and sent clarifications as "The user
 clarified: ..." follow-ups in the one conversation, as the instruction asks.
 
+## Scenario 4: Genie Ontology without Metric Views (`dbx_genie_ontology_no_mv`)
+
+Scenario 3 (`dbx_genie_ontology`) has run as the owner since 5439e72, so Genie One can pick
+metric views, base tables or anything else. Scenario 4 is the same arm with the metric views
+hidden. It uses the same instruction, tools and coin costs, but runs as the benchmark
+principal above (`token_env: DATABRICKS_TOKEN_ONTOLOGY`) with all 22 domains `objects: tables`.
+Genie One, the domain guard and grading therefore all see only the 244 base tables.
+
+```bash
+REPEAT=3 bash scripts/run_databricks_scenario.sh 4     # or: genie-ontology-no-views
+```
+
+**Hiding depends on the catalog's grants, not on the harness.** Unity Catalog has no deny.
+On 2026-11-06 the catalog carried a catalog-wide grant to `account users` (USE CATALOG,
+USE SCHEMA, SELECT, BROWSE, READ METADATA). Every user and service principal belongs to that
+group, so the principal could read all 119 metric views and their comments. The grant was
+revoked that day. The principal's grants and the revoke are recorded in
+`bird-databricks-models/grants/benchmark_principal.sql`. The pre-run check of
+`run_databricks_scenario.sh 4` runs as the principal and refuses to start unless all of
+these hold:
+- the backend is `token_env` + `objects: tables`;
+- `current_user()` is not the owner;
+- `information_schema.tables` shows MANAGED 244 and METRIC_VIEW 0;
+- `bird.solar_panel.solar_panel_plants` is refused;
+- the Genie One MCP lists its tools with the principal's token.
+
+Checked 2026-11-06 after the revoke:
+- The pre-run check passes.
+- Asked as the principal to list every table and metric view in `bird.solar_panel`, Genie
+  One answered "10 tables, no metric views" (its SQL read `information_schema.tables`, all
+  MANAGED).
+- Asked how many plants there are and their capacity, it read `bird.solar_panel.plants`
+  (939 plants, 238,380.36 MW).
+- End-to-end smoke run of `solar_panel_1` and `solar_panel_2` (Sonnet 5 / Sonnet 5, on this
+  checkout's ports 6200-6202):
+  - Tools used: `ask_genie` 9 times (6 base-table reads, 3 turns with no SQL), `ask_user` 3,
+    `submit_sql` 3.
+  - Every graded submission read only base tables.
+  - `solar_panel_1` passed both phases (10 coins, 151 s). `solar_panel_2` failed phase 1 and
+    used all 18 coins (269 s).
+
 ## Genie over the metric views (`dbx_genie_space`)
 
 Genie as the SQL author inside the BIRD agent loop. Sonnet stays the agent with its budget,
