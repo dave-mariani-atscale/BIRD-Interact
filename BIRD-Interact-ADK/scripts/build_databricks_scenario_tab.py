@@ -126,6 +126,7 @@ ROUTES = ("metric_views", "base_tables", "mixed", "elsewhere", "unparsed")
 ROUTE_LABEL = {"metric_views": "views only", "base_tables": "base tables only", "mixed": "views + tables",
                "elsewhere": "outside the database", "unparsed": "unparsed SQL", "none": "no SQL"}
 SQL_BLOCK_RE = re.compile(r"```sql\n(.*?)\n```", re.S)
+GENIE_SECS_RE = re.compile(r"status: \w+, ([0-9.]+)s\)")
 VERDICT_RE = re.compile(r"\s*(?:SQL failed Phase (\d)|Phase (\d) correct)")
 
 
@@ -171,7 +172,7 @@ def task_routes(r):
     return out[0], out[1], turns
 
 
-def add_routing_section(ws, src, runs):
+def add_routing_section(ws, src, runs, at_runs, max_runs=3):
     """Append the Genie Ontology routing columns after the census/time sections. Returns the note text."""
     from copy import copy
     from openpyxl.utils import column_index_from_string as CI, get_column_letter as GL
@@ -194,8 +195,8 @@ def add_routing_section(ws, src, runs):
                 c[f"turn_{t}"] += 1
 
     hdr4, hdr5 = src["CP4"], src["CP5"]
-    cnt_style, pct_style = src["R6"], src["H6"]
-    cnt_tot, pct_tot = src["R28"], src["H28"]
+    STYLE = {"cnt": (src["R6"], src["R28"]), "pct": (src["H6"], src["H28"]),
+             "sec": (src["BN6"], src["BN28"]), "x": (src["Q6"], src["Q28"])}
     col = CI("CT") + 1
     sections = []
 
@@ -214,8 +215,8 @@ def add_routing_section(ws, src, runs):
             put(col, 5, header, hdr5)
             for i, row in enumerate(range(FIRST, LAST + 1)):
                 v = values(row) if callable(values) else values[i]
-                put(col, row, v, pct_style if kind == "pct" else cnt_style)
-            put(col, ALL, total(L) if total else f"=SUM({L}{FIRST}:{L}{LAST})", pct_tot if kind == "pct" else cnt_tot)
+                put(col, row, v, STYLE[kind][0])
+            put(col, ALL, total(L) if total else f"=SUM({L}{FIRST}:{L}{LAST})", STYLE[kind][1])
             ws.column_dimensions[L].width = 12
             col += 1
         put(first, 4, title, hdr4)
@@ -239,8 +240,9 @@ def add_routing_section(ws, src, runs):
             cols.append(("P1 tasks with no answer", "cnt", [per[d]["p1_none"] for d in dbs], None))
         section(f"GENIE ONTOLOGY ROUTING: PHASE-{ph} ANSWERS (all runs pooled)", cols)
 
-    cols = [(f"P1 answers using base tables r{k + 1}", "cnt", [base_by_run[k][d] for d in dbs], None)
-            for k in range(len(runs))]
+    cols = [(f"P1 answers using base tables r{k + 1}", "cnt",
+             [base_by_run[k][d] for d in dbs] if k < len(runs) else [None] * len(dbs),
+             None if k < len(runs) else (lambda L: None)) for k in range(max_runs)]
     section("BASE-TABLE USE BY RUN (P1 answers: base tables only or views + tables)", cols)
 
     first_turn = col + 1
@@ -251,13 +253,75 @@ def add_routing_section(ws, src, runs):
     cols.append(("Base-table share of Genie turns", "pct", share, lambda L: share(ALL)))
     section("GENIE TURNS BY SOURCE (every ask_genie turn, all runs pooled)", cols)
 
+    # ── time: AtScale vs Genie Ontology, per question, by run ──
+    def per_run_times(run):
+        t = collections.defaultdict(lambda: collections.defaultdict(float))
+        for r in run:
+            a = t[r["database"]]
+            a["n"] += 1
+            a["secs"] += float(r.get("elapsed_seconds") or 0)
+            a["p1"] += float(r.get("phase1_elapsed_seconds") or 0)
+            a["p2"] += float(r.get("phase2_elapsed_seconds") or 0)
+            for x in r.get("tool_trajectory") or []:
+                if x.get("tool") == "ask_genie":
+                    a["calls"] += 1
+                    m = GENIE_SECS_RE.search(str(x.get("result") or ""))
+                    a["gsecs"] += float(m.group(1)) if m else 0.0
+        return t
+    go_t = [per_run_times(r) for r in runs]
+    at_t = [per_run_times(r) for r in at_runs]
+    at_mean = lambda d, key: sum(t[d][key] for t in at_t) / sum(t[d]["n"] for t in at_t)
+    wtd = lambda L: f"=SUMPRODUCT({L}{FIRST}:{L}{LAST},$C${FIRST}:$C${LAST})/SUM($C${FIRST}:$C${LAST})"
+    blank = lambda L: None
+    first_time = col + 1
+    cols = [("AtScale wall-clock/Q (s), 3-run mean", "sec", lambda row: f"=BN{row}", lambda L: f"=BN{ALL}"),
+            ("AtScale phase-1 s/Q, 3-run mean", "sec", [at_mean(d, "p1") for d in dbs], wtd),
+            ("AtScale phase-2 s/Q, 3-run mean", "sec", [at_mean(d, "p2") for d in dbs], wtd)]
+    for k in range(max_runs):
+        have = k < len(runs)
+        for key, lab in (("secs", "wall-clock/Q (s)"), ("p1", "phase-1 s/Q"), ("p2", "phase-2 s/Q")):
+            vals = [go_t[k][d][key] / go_t[k][d]["n"] for d in dbs] if have else [None] * len(dbs)
+            cols.append((f"Genie Ontology {lab} r{k + 1}", "sec", vals, wtd if have else blank))
+    gw = [GL(first_time + 3 + 3 * k) for k in range(max_runs)]            # Genie Ontology wall-clock columns
+    gp = [GL(first_time + 4 + 3 * k) for k in range(max_runs)]            # Genie Ontology phase-1 columns
+    at_w, at_p1 = GL(first_time), GL(first_time + 1)
+    cols.append(("Slowdown, wall-clock (x): Genie Ontology / AtScale", "x",
+                 lambda row: f'=IF({at_w}{row}=0,"",AVERAGE({gw[0]}{row},{gw[1]}{row},{gw[2]}{row})/{at_w}{row})',
+                 lambda L: f'=AVERAGE({gw[0]}{ALL},{gw[1]}{ALL},{gw[2]}{ALL})/{at_w}{ALL}'))
+    cols.append(("Slowdown, phase 1 (x): Genie Ontology / AtScale", "x",
+                 lambda row: f'=IF({at_p1}{row}=0,"",AVERAGE({gp[0]}{row},{gp[1]}{row},{gp[2]}{row})/{at_p1}{row})',
+                 lambda L: f'=AVERAGE({gp[0]}{ALL},{gp[1]}{ALL},{gp[2]}{ALL})/{at_p1}{ALL}'))
+    section("TIME PER QUESTION: ATSCALE VS GENIE ONTOLOGY (seconds)", cols)
+
+    first_calls = col + 1
+    cols = []
+    for k in range(max_runs):
+        have = k < len(runs)
+        c_col, s_col = GL(first_calls + 3 * k), GL(first_calls + 3 * k + 1)
+        cols.append((f"Genie calls/Q r{k + 1}", "sec",
+                     [go_t[k][d]["calls"] / go_t[k][d]["n"] for d in dbs] if have else [None] * len(dbs),
+                     wtd if have else blank))
+        cols.append((f"Genie s/call r{k + 1}", "sec",
+                     [go_t[k][d]["gsecs"] / max(go_t[k][d]["calls"], 1) for d in dbs] if have else [None] * len(dbs),
+                     (lambda c_col: lambda L: f"=SUMPRODUCT({L}{FIRST}:{L}{LAST},{c_col}{FIRST}:{c_col}{LAST},"
+                      f"$C${FIRST}:$C${LAST})/SUMPRODUCT({c_col}{FIRST}:{c_col}{LAST},$C${FIRST}:$C${LAST})")(c_col)
+                     if have else blank))
+        cols.append((f"Waiting on Genie s/Q r{k + 1}", "sec",
+                     (lambda c_col, s_col, have: lambda row: f"={c_col}{row}*{s_col}{row}" if have else None)(c_col, s_col, have),
+                     wtd if have else blank))
+    section("GENIE ONE CALLS (per question, by run)", cols)
+
     return ("GENIE ONTOLOGY ROUTING (" + ", ".join(f"{a}:{b}" for _, a, b in sections) + ") classifies the SQL by what it "
             "reads in the task database: its metric views only, its base tables only, both, or anything outside the "
             "database (another schema or catalog; refused at grading), or 'unparsed SQL' when the statement could not be "
             "parsed. A task's phase-1 or phase-2 answer is the "
             "submission that passed, else the last one of that phase; pass % is passed / answers for that source. "
             "Genie turns classify the SQL of each ask_genie answer; a turn with no SQL (a clarifying question, a "
-            "refusal, an error) is 'no SQL'. Counts are summed over the runs.")
+            "refusal, an error) is 'no SQL'. Counts are summed over the runs. TIME: wall-clock and phase-1 / phase-2 "
+            "seconds per question over all questions (phase 2 counts 0 for a question that never reached it); AtScale "
+            "is the mean of its three 09-10 runs. Slowdown is the mean of Genie Ontology's runs divided by AtScale. "
+            "Genie s/call is Genie One's own answer time per ask_genie call, from the tool result. Empty r2 / r3 "
+            "columns are runs not yet finished.")
 
 
 def build_tab(wb, src, name, scen, results_glob, at_runs, unsolv):
@@ -345,7 +409,7 @@ def build_tab(wb, src, name, scen, results_glob, at_runs, unsolv):
             ws[f"{col}{ALL}"] = f'=IF(COUNT({col}{FIRST}:{col}{LAST})=0,"",{f[1:]})'
     ws[f"BG{ALL}"] = f"=SUMPRODUCT(BE{FIRST}:BE{LAST},C{FIRST}:C{LAST})/SUM(S{FIRST}:S{LAST})"
     ws[f"AZ{ALL}"] = f"=SUMPRODUCT(AZ{FIRST}:AZ{LAST},$C${FIRST}:$C${LAST})/SUM($C${FIRST}:$C${LAST})"
-    routing_note = add_routing_section(ws, src, runs) if backend == "dbx_genie_ontology" else None
+    routing_note = add_routing_section(ws, src, runs, at_runs) if backend == "dbx_genie_ontology" else None
 
     # Title, provenance, notes.
     ws["A1"] = f"BIRD-Interact head-to-head, all 22 databases: AtScale vs Databricks scenario {scen} ({label})"
