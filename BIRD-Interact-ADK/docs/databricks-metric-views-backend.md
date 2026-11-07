@@ -223,6 +223,45 @@ Checked 2026-11-06 after the revoke:
   - `solar_panel_1` passed both phases (10 coins, 151 s). `solar_panel_2` failed phase 1 and
     used all 18 coins (269 s).
 
+## Scenario 5: Genie Ontology over Genie-authored Metric Views (`dbx_genie_ontology_genie_mv`)
+
+Scenario 3 with the AtScale-derived metric views replaced by **121 metric views Genie One authored itself**
+in `bird_genie_mv.<db>`. It worked from the base tables, the BIRD knowledge base and the gold-free task
+briefs, the same inputs as the AtScale SML models. The authoring protocol, prompts, transcripts and
+deployed DDL are in `bird-databricks-models/genie_metric_views`.
+
+It runs as a third principal, `bird-benchmark-genie-mv` (`token_env: DATABRICKS_TOKEN_GENIE_MV`).
+- It reads the 244 base tables and the 121 Genie views.
+- It does not read the AtScale-derived views or the authoring inputs.
+- It is not the authoring identity, because Genie One remembers earlier conversations per user.
+
+The domains are `{catalog: bird, schema: <db>, objects: tables, views_catalog: bird_genie_mv}`. The new
+`views_catalog` key lets the domain guard accept the metric views of `bird_genie_mv.<db>`, and
+`objects_read` counts them as metric views, so the route split (metric views / base tables / both) means
+the same as in scenario 3.
+
+The instruction is scenario 3's with one change: the question prefix is "In the bird.<database>
+database, whose metric views are in bird_genie_mv.<database>: ...", because the views no longer sit in
+the task schema.
+
+```bash
+REPEAT=3 bash scripts/run_databricks_scenario.sh 5     # or: genie-ontology-genie-views
+```
+
+The pre-run check asserts, as the run principal:
+- `current_user()` is not the owner, and the identity is neither the scenario 4 nor the authoring one;
+- `bird` shows 244 MANAGED and 0 METRIC_VIEW;
+- `bird_genie_mv` shows 121 METRIC_VIEW and no table (no `build_inputs`);
+- an AtScale view is refused, and a Genie view is queryable;
+- Genie One is reachable.
+
+Checked 2026-11-06 (worktree `BIRD-Interact-genie-mv`, ports 6300-6302):
+- The pre-run check passes.
+- Smoke run of `solar_panel_1` and `solar_panel_2`: 1 of 2, the same as scenario 4's smoke run.
+  - `solar_panel_1` passed both phases.
+  - Of Genie's 10 turns, 5 read its own view `solar_snapshot_performance` and 5 read base tables.
+  - The guard rejected nothing.
+
 ## Genie over the metric views (`dbx_genie_space`)
 
 Genie as the SQL author inside the BIRD agent loop. Sonnet stays the agent with its budget,
