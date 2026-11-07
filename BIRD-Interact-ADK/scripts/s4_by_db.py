@@ -111,6 +111,13 @@ def main():
         if state and not new:
             continue
         def rows(tasks_label):
+            if a.backend == "dbx_genie_ontology_genie_mv":
+                # Scenario 5 is reported against AtScale and Genie over the SML-based metric views (asked 2026-11-07).
+                r = [(f"AtScale, Sonnet 5 / Sonnet 5 (09-10 best run, r{ai+1})", ats)]
+                if s3:
+                    r.append((f"Scenario 3: Genie One with SML-based Metric Views (best run, r{s3[0]+1})", s3[1]))
+                r.append((f"**{LABEL} (rep {k})**", rep))
+                return r
             r = [(f"Raw, Sonnet 5 / Sonnet 5 (09-08 best run, r{ri+1})", raw),
                  (f"AtScale, Sonnet 5 / Sonnet 5 (09-10 best run, r{ai+1})", ats),
                  (f"**{LABEL} (rep {k})**", rep)]
