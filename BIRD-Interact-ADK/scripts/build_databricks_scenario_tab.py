@@ -58,6 +58,10 @@ SCENARIOS = {
           "The BIRD agent (Sonnet 5) hands every question to Genie One, grounded in the workspace's Genie "
           "Ontology, which chooses its sources (metric views, base tables, anything the owner can read). "
           "ask_genie 1 coin, 0.5 when Genie runs no query."),
+    "4": ("Genie Ontology without Metric Views (Genie One)", "dbx_genie_ontology_no_mv",
+          "As scenario 3, but Genie One runs as the benchmark principal bird-benchmark-ontology, whose grants "
+          "cover the 244 base tables of catalog bird and none of the metric views, so the metric views are "
+          "invisible to it (verified before every run). ask_genie 1 coin, 0.5 when Genie runs no query."),
 }
 QUERIES_RE = re.compile(r"# Queries Genie ran \((\d+);")
 
@@ -409,7 +413,7 @@ def build_tab(wb, src, name, scen, results_glob, at_runs, unsolv):
             ws[f"{col}{ALL}"] = f'=IF(COUNT({col}{FIRST}:{col}{LAST})=0,"",{f[1:]})'
     ws[f"BG{ALL}"] = f"=SUMPRODUCT(BE{FIRST}:BE{LAST},C{FIRST}:C{LAST})/SUM(S{FIRST}:S{LAST})"
     ws[f"AZ{ALL}"] = f"=SUMPRODUCT(AZ{FIRST}:AZ{LAST},$C${FIRST}:$C${LAST})/SUM($C${FIRST}:$C${LAST})"
-    routing_note = add_routing_section(ws, src, runs, at_runs) if backend == "dbx_genie_ontology" else None
+    routing_note = add_routing_section(ws, src, runs, at_runs) if backend in ("dbx_genie_ontology", "dbx_genie_ontology_no_mv") else None
 
     # Title, provenance, notes.
     ws["A1"] = f"BIRD-Interact head-to-head, all 22 databases: AtScale vs Databricks scenario {scen} ({label})"
@@ -484,7 +488,7 @@ def main():
     ap.add_argument("--source", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--tab", nargs=3, action="append", metavar=("NAME", "SCENARIO", "RESULTS_GLOB"), required=True,
-                    help="tab name, scenario 1/2/3, and a quoted glob of the scenario's 1 to 3 run files")
+                    help="tab name, scenario 1/2/3/4, and a quoted glob of the scenario's 1 to 3 run files")
     ap.add_argument("--atscale", default=ATSCALE_GLOB)
     ap.add_argument("--keep-source-tabs", action="store_true",
                     help="keep every tab of the source workbook; the new tabs go right after the 09-10 tab")
@@ -512,6 +516,15 @@ def main():
         for name in list(wb.sheetnames):
             if name not in built:
                 del wb[name]
+    # A lift/ratio cell guards only against blanks (=IF(OR(X="",Y=""),"n/a",Y/X)); when one side is
+    # itself "n/a" (an arm with no correct answer on a database, so no cost per correct answer) the
+    # division gives #VALUE!. Guard on ISNUMBER instead: identical for numbers, "n/a" otherwise.
+    guard = re.compile(r'=IF\(OR\((\$?[A-Z]+\$?\d+)="",(\$?[A-Z]+\$?\d+)=""\),"n/a",')
+    for name in built:
+        for row in wb[name].iter_rows():
+            for c in row:
+                if isinstance(c.value, str) and guard.match(c.value):
+                    c.value = guard.sub(lambda m: f'=IF(OR(NOT(ISNUMBER({m[1]})),NOT(ISNUMBER({m[2]}))),"n/a",', c.value, 1)
     wb.active = 0
     wb.save(a.out)
     print("wrote", a.out, "tabs:", wb.sheetnames)
