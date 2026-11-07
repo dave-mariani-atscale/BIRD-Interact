@@ -32,6 +32,9 @@ RAW = [str(Path.home() / "workspace/atscale/BIRD-Interact/BIRD-Interact-ADK/resu
 ATSCALE = sorted(glob.glob(str(HERE / "results/full0910_atscale_run0[123]_*.json")))
 S3 = sorted(glob.glob(str(HERE / "results/dbx_genie_ontology_vs_0910/dbx_genie_ontology_run0[123]_*.json")))
 S4_LOG = HERE / "logs/dbx_genie_ontology_no_mv_vs_0910/dbx_genie_ontology_no_mv.log"
+LABELS = {"dbx_genie_ontology_no_mv": "Scenario 4: Genie Ontology, no Metric Views",
+          "dbx_genie_ontology_genie_mv": "Scenario 5: Genie Ontology, Genie-authored Metric Views"}
+LABEL = LABELS["dbx_genie_ontology_no_mv"]
 
 
 def load_runs(paths):
@@ -85,7 +88,12 @@ def table(title, tasks, rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--newly-complete-since")
+    ap.add_argument("--backend", default="dbx_genie_ontology_no_mv", choices=sorted(LABELS),
+                    help="the Genie One run to report (scenario 4 or 5)")
     a = ap.parse_args()
+    global S4_LOG, LABEL
+    S4_LOG = HERE / f"logs/{a.backend}_vs_0910/{a.backend}.log"
+    LABEL = LABELS[a.backend]
     qt = query_tasks()
     qt_all = {t for ts in qt.values() for t in ts}
     ri, raw = best(load_runs(RAW), qt_all)
@@ -105,12 +113,12 @@ def main():
         def rows(tasks_label):
             r = [(f"Raw, Sonnet 5 / Sonnet 5 (09-08 best run, r{ri+1})", raw),
                  (f"AtScale, Sonnet 5 / Sonnet 5 (09-10 best run, r{ai+1})", ats),
-                 (f"**Scenario 4: Genie Ontology, no Metric Views (rep {k})**", rep)]
+                 (f"**{LABEL} (rep {k})**", rep)]
             if s3:
                 r.append((f"Scenario 3: Genie Ontology with Metric Views (best run, r{s3[0]+1})", s3[1]))
             return r
         for db in (new if state else done):
-            blocks.append(table(f"{db} (repetition {k} of scenario 4)", qt[db], rows(db)))
+            blocks.append(table(f"{db} (repetition {k} of {LABEL.split(':')[0].lower()})", qt[db], rows(db)))
         tasks = [t for db in done for t in qt[db]]
         if tasks:
             blocks.append(table(f"All {len(done)} finished databases, repetition {k} ({len(tasks)} tasks)", tasks, rows(None)))
