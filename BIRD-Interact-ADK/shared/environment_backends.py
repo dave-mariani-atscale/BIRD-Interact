@@ -36,47 +36,42 @@ def load_backends() -> Dict[str, Any]:
     return _cache["backends"]
 
 
-#: The three Databricks scenarios of the AtScale comparison, selectable with
-#: `orchestrator.runner --databricks-scenario <n|name>` (or scripts/run_databricks_scenario.sh):
-#:   1 metric-views-agent : Metric Views + 3rd-party agent. The BIRD agent (e.g. Sonnet)
-#:                          discovers and queries the task database's metric views itself.
-#:   2 genie-space        : Metric Views + Genie Agent. The BIRD agent hands every question
-#:                          to Genie in a Genie space holding the database's metric views.
-#:   3 genie-ontology     : Metric Views + Genie Ontology. The BIRD agent hands every
-#:                          question to Genie One, grounded in the workspace's Genie
-#:                          Ontology, which chooses its sources (metric views, base tables,
-#:                          anything the caller can read) itself.
-#:   4 genie-ontology-no-views : Genie Ontology without Metric Views. As 3, but Genie One
-#:                          runs as the benchmark principal (DATABRICKS_TOKEN_ONTOLOGY), which
-#:                          can read the 244 base tables of `bird` and nothing else, so the
-#:                          metric views are invisible to it.
-#:   5 genie-ontology-genie-views : Genie Ontology over metric views Genie One authored. As 3,
-#:                          but run as bird-benchmark-genie-mv (DATABRICKS_TOKEN_GENIE_MV): the 244
-#:                          base tables of `bird` plus the 121 metric views Genie One wrote into
-#:                          `bird_genie_mv.<db>` (bird-databricks-models/genie_metric_views); the
-#:                          AtScale-derived views are invisible to it.
+#: The Databricks scenarios of the AtScale comparison (consolidated 2026-11-08), selectable with
+#: `orchestrator.runner --databricks-scenario <n|name>` (or scripts/run_databricks_scenario.sh). In all
+#: three the BIRD agent hands every question to Genie One (grounded in the workspace's Genie Ontology)
+#: and submits the SQL Genie wrote; they differ only in what Genie One can read:
+#:   1 genie-one-raw            : Genie One on raw data, no Metric Views. Runs as bird-benchmark-ontology
+#:                                (DATABRICKS_TOKEN_ONTOLOGY): the 244 base tables of `bird`, nothing else.
+#:   2 genie-one-genie-views    : Genie One + Genie-generated Metric Views. Runs as bird-benchmark-genie-mv
+#:                                (DATABRICKS_TOKEN_GENIE_MV): the base tables plus the 121 metric views Genie
+#:                                One authored in `bird_genie_mv.<db>` (bird-databricks-models/genie_metric_views).
+#:   3 genie-one-atscale-views  : Genie One + AtScale-generated Metric Views: the base tables plus the 119
+#:                                metric views generated from the AtScale SML models (`bird.<db>`). Runs as the
+#:                                workspace owner (DATABRICKS_TOKEN), as in the 2026-11-05 n=3 run.
+#: Retired 2026-11-08 (backends kept so their runs stay reproducible, no longer offered here):
+#: dbx_metric_views (Metric Views + 3rd-party agent) and dbx_genie_space (Metric Views + Genie space).
+#: Runs before the consolidation were numbered 3 (now 3), 4 (now 1) and 5 (now 2).
 DATABRICKS_SCENARIOS = {
-    "1": "dbx_metric_views", "metric-views-agent": "dbx_metric_views",
-    "2": "dbx_genie_space", "genie-space": "dbx_genie_space",
-    "3": "dbx_genie_ontology", "genie-ontology": "dbx_genie_ontology",
-    "4": "dbx_genie_ontology_no_mv", "genie-ontology-no-views": "dbx_genie_ontology_no_mv",
-    "5": "dbx_genie_ontology_genie_mv", "genie-ontology-genie-views": "dbx_genie_ontology_genie_mv",
+    "1": "dbx_genie_ontology_no_mv", "genie-one-raw": "dbx_genie_ontology_no_mv",
+    "2": "dbx_genie_ontology_genie_mv", "genie-one-genie-views": "dbx_genie_ontology_genie_mv",
+    "3": "dbx_genie_ontology", "genie-one-atscale-views": "dbx_genie_ontology",
 }
 DATABRICKS_SCENARIO_LABELS = {
-    "dbx_metric_views": "Scenario 1: Metric Views + 3rd-party agent",
-    "dbx_genie_space": "Scenario 2: Metric Views + Genie Agent (Genie space)",
-    "dbx_genie_ontology": "Scenario 3: Metric Views + Genie Ontology (Genie One)",
-    "dbx_genie_ontology_no_mv": "Scenario 4: Genie Ontology without Metric Views (Genie One, base tables only)",
-    "dbx_genie_ontology_genie_mv": "Scenario 5: Genie Ontology over Genie-authored Metric Views (Genie One, base tables + its own views)",
+    "dbx_genie_ontology_no_mv": "Scenario 1: Genie One on raw data (no Metric Views)",
+    "dbx_genie_ontology_genie_mv": "Scenario 2: Genie One + Genie-generated Metric Views",
+    "dbx_genie_ontology": "Scenario 3: Genie One + AtScale-generated Metric Views",
+    # retired backends, labelled for old logs and reports
+    "dbx_metric_views": "Retired: Metric Views + 3rd-party agent",
+    "dbx_genie_space": "Retired: Metric Views + Genie Agent (Genie space)",
 }
 
 
 def resolve_databricks_scenario(value: str) -> str:
-    """Backend name for a --databricks-scenario value (1-5 or its name)."""
+    """Backend name for a --databricks-scenario value (1-3 or its name)."""
     key = str(value).strip().lower()
     if key not in DATABRICKS_SCENARIOS:
         raise ValueError(f"unknown Databricks scenario {value!r}; use one of "
-                         + ", ".join(sorted(k for k in DATABRICKS_SCENARIOS if not k.isdigit())) + " or 1-5")
+                         + ", ".join(sorted(k for k in DATABRICKS_SCENARIOS if not k.isdigit())) + " or 1-3")
     return DATABRICKS_SCENARIOS[key]
 
 

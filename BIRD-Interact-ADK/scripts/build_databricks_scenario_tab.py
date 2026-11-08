@@ -45,24 +45,34 @@ CENSUS_TAB = "Task Census"
 ATSCALE_GLOB = "results/full0910_atscale_run0[123]_*.json"
 FIRST, LAST, ALL, BEST, NOTES = 6, 27, 28, 29, 30
 
-SCENARIOS = {
-    "1": ("Metric Views + 3rd-party agent", "dbx_metric_views",
+SCENARIOS = {   # consolidated 2026-11-08: the three Genie One scenarios (retired ones kept for old tabs)
+    "1": ("Genie One on raw data (no Metric Views)", "dbx_genie_ontology_no_mv",
+          "The BIRD agent (Sonnet 5) hands every question to Genie One, grounded in the workspace's Genie "
+          "Ontology, running as the benchmark principal bird-benchmark-ontology, whose grants cover the 244 "
+          "base tables of catalog bird and no metric view (verified before every run). ask_genie 1 coin, 0.5 "
+          "when Genie runs no query."),
+    "2": ("Genie One + Genie-generated Metric Views", "dbx_genie_ontology_genie_mv",
+          "As scenario 1, but running as bird-benchmark-genie-mv, which also reads the 121 metric views Genie "
+          "One authored itself in bird_genie_mv.<db> from the base tables, the knowledge base and the gold-free "
+          "task questions (bird-databricks-models/genie_metric_views); the AtScale-generated views are invisible "
+          "to it. ask_genie 1 coin, 0.5 when Genie runs no query."),
+    "3": ("Genie One + AtScale-generated Metric Views", "dbx_genie_ontology",
+          "The BIRD agent (Sonnet 5) hands every question to Genie One, grounded in the workspace's Genie "
+          "Ontology, which chooses its sources (the 119 metric views generated from the AtScale SML models, "
+          "base tables, anything the owner can read). ask_genie 1 coin, 0.5 when Genie runs no query."),
+    "retired-1": ("Metric Views + 3rd-party agent", "dbx_metric_views",
           "The BIRD agent (Sonnet 5) discovers and queries the task database's Unity Catalog metric views "
           "itself (list_metric_views 1 coin, describe_metric_view 1, run_query 1), and submits its own SQL."),
-    "2": ("Metric Views + Genie Agent (Genie space)", "dbx_genie_space",
+    "retired-2": ("Metric Views + Genie Agent (Genie space)", "dbx_genie_space",
           "The BIRD agent (Sonnet 5) hands every question to Genie in a Genie space holding only that "
           "database's metric views (ask_genie 1 coin, 0.5 when Genie runs no query), and submits the SQL "
           "Genie wrote. Genie runs as the workspace owner, so it may fall back to base tables; that is "
           "allowed and recorded."),
-    "3": ("Metric Views + Genie Ontology (Genie One)", "dbx_genie_ontology",
-          "The BIRD agent (Sonnet 5) hands every question to Genie One, grounded in the workspace's Genie "
-          "Ontology, which chooses its sources (metric views, base tables, anything the owner can read). "
-          "ask_genie 1 coin, 0.5 when Genie runs no query."),
-    "4": ("Genie Ontology without Metric Views (Genie One)", "dbx_genie_ontology_no_mv",
-          "As scenario 3, but Genie One runs as the benchmark principal bird-benchmark-ontology, whose grants "
-          "cover the 244 base tables of catalog bird and none of the metric views, so the metric views are "
-          "invisible to it (verified before every run). ask_genie 1 coin, 0.5 when Genie runs no query."),
 }
+GENIE_ONE = ("dbx_genie_ontology", "dbx_genie_ontology_no_mv", "dbx_genie_ontology_genie_mv")
+#: The backend whose domains route_of classifies against (set per tab: scenario 2's views live in
+#: bird_genie_mv.<db>, which only its domains know about).
+ROUTE_BACKEND = "dbx_genie_ontology"
 QUERIES_RE = re.compile(r"# Queries Genie ran \((\d+);")
 
 
@@ -141,7 +151,7 @@ def route_of(sql, db, rejected=False):
         return "elsewhere"
     if not sql:
         return "none"
-    read = objects_read(sql, get_domain_config("dbx_genie_ontology", db))
+    read = objects_read(sql, get_domain_config(ROUTE_BACKEND, db))
     if not read:
         return "unparsed"                          # sqlglot could not parse it
     if read.get("elsewhere"):
@@ -413,7 +423,9 @@ def build_tab(wb, src, name, scen, results_glob, at_runs, unsolv):
             ws[f"{col}{ALL}"] = f'=IF(COUNT({col}{FIRST}:{col}{LAST})=0,"",{f[1:]})'
     ws[f"BG{ALL}"] = f"=SUMPRODUCT(BE{FIRST}:BE{LAST},C{FIRST}:C{LAST})/SUM(S{FIRST}:S{LAST})"
     ws[f"AZ{ALL}"] = f"=SUMPRODUCT(AZ{FIRST}:AZ{LAST},$C${FIRST}:$C${LAST})/SUM($C${FIRST}:$C${LAST})"
-    routing_note = add_routing_section(ws, src, runs, at_runs) if backend in ("dbx_genie_ontology", "dbx_genie_ontology_no_mv") else None
+    global ROUTE_BACKEND
+    ROUTE_BACKEND = backend if backend in GENIE_ONE else "dbx_genie_ontology"
+    routing_note = add_routing_section(ws, src, runs, at_runs) if backend in GENIE_ONE else None
 
     # Title, provenance, notes.
     ws["A1"] = f"BIRD-Interact head-to-head, all 22 databases: AtScale vs Databricks scenario {scen} ({label})"
@@ -488,7 +500,7 @@ def main():
     ap.add_argument("--source", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--tab", nargs=3, action="append", metavar=("NAME", "SCENARIO", "RESULTS_GLOB"), required=True,
-                    help="tab name, scenario 1/2/3/4, and a quoted glob of the scenario's 1 to 3 run files")
+                    help="tab name, scenario 1/2/3 (or retired-1/retired-2), and a quoted glob of the scenario's 1 to 3 run files")
     ap.add_argument("--atscale", default=ATSCALE_GLOB)
     ap.add_argument("--keep-source-tabs", action="store_true",
                     help="keep every tab of the source workbook; the new tabs go right after the 09-10 tab")

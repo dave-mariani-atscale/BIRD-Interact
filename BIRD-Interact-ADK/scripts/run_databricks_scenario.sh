@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# One launcher for the three Databricks scenarios of the AtScale comparison, each run n=1 and compared like
-# for like with the 2026-09-10 AtScale n=3 sweep (results/full0910_atscale_run0[1-3]_*.json; workbook tab
-# "Modified Harness 09-10 Sonnet"), whose BEST run (r3) is the headline baseline:
+# One launcher for the three Databricks scenarios of the AtScale comparison (consolidated 2026-11-08). In each,
+# the BIRD agent hands every question to Genie One and submits Genie's SQL; they differ only in what Genie One
+# can read. Each is compared like for like with the 2026-09-10 AtScale n=3 sweep
+# (results/full0910_atscale_run0[1-3]_*.json; workbook tab "Modified Harness 09-10 Sonnet"), whose BEST run (r3)
+# is the headline baseline:
 #
-#   1 | metric-views-agent : Metric Views + 3rd-party agent   (backend dbx_metric_views)
-#   2 | genie-space        : Metric Views + Genie Agent        (backend dbx_genie_space, one Genie space per database)
-#   4 | genie-ontology-no-views : Genie Ontology without Metric Views (backend dbx_genie_ontology_no_mv, Genie One
-#                                 as the benchmark principal, which can read the base tables and no metric view)
-#   5 | genie-ontology-genie-views : Genie Ontology over Genie-authored Metric Views (backend dbx_genie_ontology_genie_mv,
-#                                   Genie One as bird-benchmark-genie-mv: base tables + the 121 views of bird_genie_mv)
-#   3 | genie-ontology     : Metric Views + Genie Ontology     (backend dbx_genie_ontology, Genie One as the owner;
-#                                                              the ontology picks metric views, base tables or anything else)
+#   1 | genie-one-raw           : Genie One on raw data, no Metric Views   (backend dbx_genie_ontology_no_mv, as
+#                                 bird-benchmark-ontology: the 244 base tables of bird, nothing else)
+#   2 | genie-one-genie-views   : Genie One + Genie-generated Metric Views  (backend dbx_genie_ontology_genie_mv, as
+#                                 bird-benchmark-genie-mv: base tables + the 121 views Genie One wrote in bird_genie_mv)
+#   3 | genie-one-atscale-views : Genie One + AtScale-generated Metric Views (backend dbx_genie_ontology, as the owner:
+#                                 base tables + the 119 views generated from the AtScale SML models)
+#
+# The earlier "Metric Views + 3rd-party agent" (dbx_metric_views) and "Metric Views + Genie space" (dbx_genie_space)
+# scenarios are retired. Runs before the consolidation were numbered 3 (now 3), 4 (now 1) and 5 (now 2).
 #
 # Matched to the sweep: Sonnet 5 agent and simulator, a-interact, all 410 Query tasks, non-leaderboard
 # corrected grading (the same six corrections), default LLM routing, and the 09-10 atscale instruction with
@@ -18,20 +21,20 @@
 # defaults to 3 (the Genie API rate-limits). Runs on this checkout's .env service ports, which must not be
 # the shared harness's 6000-6002.
 #
-#   bash scripts/run_databricks_scenario.sh 3                     # foreground, one repetition
-#   REPEAT=3 bash scripts/run_databricks_scenario.sh 3            # three repetitions (n=3), run back to back
-#   mkdir -p logs && nohup bash scripts/run_databricks_scenario.sh genie-ontology > logs/scenario3_launcher.log 2>&1 &
+#   bash scripts/run_databricks_scenario.sh 1                     # foreground, one repetition
+#   REPEAT=3 bash scripts/run_databricks_scenario.sh 2            # three repetitions (n=3), run back to back
+#   mkdir -p logs && REPEAT=3 nohup bash scripts/run_databricks_scenario.sh genie-one-atscale-views > logs/scenario3_launcher.log 2>&1 &
 #
 # Writes results/<backend>_vs_0910/<backend>[_runNN]_<stamp>.json (one per repetition), live_compare.txt (every
 # 10 min, for the repetition in progress), final_compare[_runNN].txt,
-# and for every scenario the per-database four-way table (scripts/four_way_by_db.py) to four_way.md.
+# and the per-database table of the three scenarios against AtScale (scripts/genie_one_by_db.py) to by_db.md.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONPATH="$PWD"
 unset LEADERBOARD_MODE LEADERBOARD_AGENT_MODEL LEADERBOARD_TRACK LLM_ROUTING_FILE BIRD_LLM_DUMP_DIR SYSTEM_AGENT_MAX_TOKENS DISABLE_AGGREGATES
 export ENVIRONMENT_BACKENDS_FILE=config/environment_backends.dbx_vs_0910.yaml
 PY=.venv-adk/bin/python
-SCEN="${1:?usage: run_databricks_scenario.sh <1|2|3|4|5|metric-views-agent|genie-space|genie-ontology|genie-ontology-no-views|genie-ontology-genie-views>}"
+SCEN="${1:?usage: run_databricks_scenario.sh <1|2|3|genie-one-raw|genie-one-genie-views|genie-one-atscale-views>}"
 BACKEND=$($PY -c "from shared.environment_backends import resolve_databricks_scenario as r; print(r('$SCEN'))") || exit 2
 LABEL=$($PY -c "from shared.environment_backends import DATABRICKS_SCENARIO_LABELS as L; print(L['$BACKEND'])")
 OUT=results/${BACKEND}_vs_0910; LOGD=logs/${BACKEND}_vs_0910; mkdir -p "$OUT" "$LOGD"
@@ -59,23 +62,6 @@ assert not r.error, r.error
 doms = get_configured_domains(b)
 print("  metric views:", r.rows[0][1], "in", r.rows[0][0], "schemas; domains:", len(doms))
 assert tuple(r.rows[0]) == (22, 119) and len(doms) == 22
-if b == "dbx_genie_space":
-    spaces = [get_domain_config(b, d).get("space_id") for d in doms]
-    assert all(spaces), "every domain needs a space_id (scripts/provision_genie_spaces.py)"
-    # Each space must attach this database's metric views under the configured catalog (a
-    # catalog rename leaves the spaces pointing at objects that no longer exist).
-    import httpx, json as _j
-    h = settings.databricks_host.rstrip("/"); H = {"Authorization": f"Bearer {resolve_token(None)}"}
-    stale = []
-    for d in doms:
-        dom = get_domain_config(b, d)
-        ser = httpx.get(f"{h}/api/2.0/genie/spaces/{dom['space_id']}", headers=H, timeout=60,
-                        params={"include_serialized_space": "true"}).json().get("serialized_space", "")
-        ids = [t.get("identifier", "") for t in (_j.loads(ser or "{}").get("data_sources", {}).get("tables") or [])]
-        if not ids or any(not i.startswith(f"{dom['catalog']}.{dom['schema']}.") for i in ids):
-            stale.append(d)
-    assert not stale, f"Genie spaces not on {dom['catalog']}.<db>: {stale} (re-run scripts/provision_genie_spaces.py)"
-    print("  Genie spaces:", len(spaces), "all attached to their database's metric views")
 if b == "dbx_genie_ontology":
     import httpx
     from mcp import ClientSession
@@ -98,12 +84,12 @@ if b == "dbx_genie_ontology_no_mv":
     from mcp.client.streamable_http import streamable_http_client
     from system_agent.tools_genie_one import GENIE_ONE_MCP_PATH
     te = get_domain_config(b, sorted(doms)[0]).get("token_env")
-    assert te and all(get_domain_config(b, d)["objects"] == "tables" for d in doms), "scenario 4 domains must be objects: tables with a token_env"
+    assert te and all(get_domain_config(b, d)["objects"] == "tables" for d in doms), "scenario 1 domains must be objects: tables with a token_env"
     tok = resolve_token(te)
     sp = DatabricksSQL(token=tok)
     me = sp.execute("SELECT current_user()").rows[0][0]
     owner = DatabricksSQL().execute("SELECT current_user()").rows[0][0]
-    assert me != owner, f"scenario 4 must not run as the owner ({owner})"
+    assert me != owner, f"scenario 1 must not run as the owner ({owner})"
     vis = dict(sp.execute("SELECT table_type, COUNT(*) FROM bird.information_schema.tables "
                           "WHERE table_schema <> 'information_schema' GROUP BY table_type").rows)
     print("  as", me, "- visible in bird:", vis)
@@ -132,13 +118,13 @@ if b == "dbx_genie_ontology_genie_mv":
     d0 = get_domain_config(b, sorted(doms)[0])
     te, vc = d0.get("token_env"), d0.get("views_catalog")
     assert te and vc and all(get_domain_config(b, d)["objects"] == "tables" and get_domain_config(b, d).get("views_catalog") == vc
-                             for d in doms), "scenario 5 domains must be objects: tables with token_env and views_catalog"
+                             for d in doms), "scenario 2 domains must be objects: tables with token_env and views_catalog"
     tok = resolve_token(te)
     sp = DatabricksSQL(token=tok)
     me = sp.execute("SELECT current_user()").rows[0][0]
     owner = DatabricksSQL().execute("SELECT current_user()").rows[0][0]
-    assert me != owner, f"scenario 5 must not run as the owner ({owner})"
-    assert te not in ("DATABRICKS_TOKEN_ONTOLOGY", "DATABRICKS_TOKEN_GENIE_MV_AUTHOR"), "scenario 5 needs its own identity (Genie One memory)"
+    assert me != owner, f"scenario 2 must not run as the owner ({owner})"
+    assert te not in ("DATABRICKS_TOKEN_ONTOLOGY", "DATABRICKS_TOKEN_GENIE_MV_AUTHOR"), "scenario 2 needs its own identity (Genie One memory)"
     vis = {(c, t): n for c, t, n in sp.execute(
         "SELECT table_catalog, table_type, COUNT(*) FROM system.information_schema.tables "
         f"WHERE table_catalog IN ('bird', '{vc}') AND table_schema <> 'information_schema' GROUP BY ALL").rows}
@@ -176,7 +162,7 @@ step "live comparison every 10 minutes"
     awk '/=== repetition [0-9]+ of [0-9]+ ===/{buf=""; rep=$0} {buf=buf $0 "\n"} END{printf "%s", buf}' "$LOG" > "$OUT/live_rep.log"
     $PY scripts/compare_vs_baseline_runs.py --log "$OUT/live_rep.log" --baseline "$BASE" --audit results/grading_audit.jsonl --backend "$BACKEND" > "$OUT/live_compare.tmp" 2>/dev/null \
       && { echo "updated $(date '+%Y-%m-%d %H:%M') $(grep -o 'repetition [0-9]* of [0-9]*' "$OUT/live_rep.log" | tail -1)"; cat "$OUT/live_compare.tmp"; } > "$OUT/live_compare.txt"
-    $PY scripts/four_way_by_db.py > "$OUT/four_way.tmp" 2>/dev/null && mv "$OUT/four_way.tmp" "$OUT/four_way.md"
+    $PY scripts/genie_one_by_db.py --backend "$BACKEND" > "$OUT/by_db.tmp" 2>/dev/null && mv "$OUT/by_db.tmp" "$OUT/by_db.md"
   done ) &
 WATCH=$!
 
@@ -198,5 +184,5 @@ if [ -n "$FILES" ]; then
 else
   $PY scripts/compare_vs_baseline_runs.py --log "$LOG" --baseline "$BASE" --audit results/grading_audit.jsonl --backend "$BACKEND" | tee "$OUT/final_compare.txt"
 fi
-$PY scripts/four_way_by_db.py | tee "$OUT/four_way.md"
+$PY scripts/genie_one_by_db.py --backend "$BACKEND" | tee "$OUT/by_db.md"
 bash scripts/start_services_isolated.sh --stop

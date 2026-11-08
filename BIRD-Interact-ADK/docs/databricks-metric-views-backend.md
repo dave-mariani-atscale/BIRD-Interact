@@ -1,8 +1,34 @@
-# The Databricks metric-view backend (`dbx_metric_views`)
+# The Databricks backends of the AtScale comparison
+
+## The scenarios (consolidated 2026-11-08)
+
+In every scenario, the BIRD agent (Sonnet 5) hands each question to **Genie One**, grounded in the
+workspace's Genie Ontology, and submits the SQL Genie wrote. Each scenario is compared with the
+2026-09-10 AtScale sweep. The scenarios differ only in what Genie One can read:
+
+| # | Scenario | Backend | Identity | What Genie One can read |
+| ---: | --- | --- | --- | --- |
+| 1 | Genie One on raw data (no Metric Views) | `dbx_genie_ontology_no_mv` | `bird-benchmark-ontology` | the 244 base tables of `bird` |
+| 2 | Genie One + Genie-generated Metric Views | `dbx_genie_ontology_genie_mv` | `bird-benchmark-genie-mv` | the base tables + the 121 metric views Genie One authored in `bird_genie_mv.<db>` |
+| 3 | Genie One + AtScale-generated Metric Views | `dbx_genie_ontology` | the workspace owner | the base tables + the 119 metric views generated from the AtScale SML models, and anything else the owner can read |
+
+```bash
+REPEAT=3 bash scripts/run_databricks_scenario.sh 1   # or genie-one-raw / genie-one-genie-views / genie-one-atscale-views
+python scripts/genie_one_by_db.py --backend dbx_genie_ontology_genie_mv   # per database, vs AtScale and the other two
+```
+
+- **Old numbering.** Runs before 2026-11-08 used scenarios 3 (still 3), 4 (now 1) and 5 (now 2).
+- **Retired scenarios.** "Metric Views + 3rd-party agent" (`dbx_metric_views`, described first below)
+  and "Metric Views + Genie space" (`dbx_genie_space`, at the end) are no longer offered by the
+  launcher. Their config blocks and code are kept, so their runs stay reproducible.
+
+The rest of this page documents each backend in the order it was built.
+
+# The Databricks metric-view backend (`dbx_metric_views`, retired 2026-11-08)
 
 The third arm of the benchmark: the same LLM agent, the same user simulator and the same
 grader as the `atscale` arm, with the semantic layer replaced by a schema of Unity Catalog
-**metric views** on Databricks. It is "scenario 1" of the Databricks comparison: a
+**metric views** on Databricks. It was "scenario 1" of the Databricks comparison until 2026-11-08: a
 one-for-one analog of the AtScale arm in which the agent writes SQL against a curated
 semantic model. Scenario 2 (Genie One and the Genie Ontology over the base tables, no
 metric views) is the backend `dbx_genie_ontology`, described at the end of this page.
@@ -75,7 +101,7 @@ AtScale arm runs on the no-gold-930 catalog the n=3 runs measured.
 - Identifiers are lower-case; Postgres enum columns are strings; `char(n)` keeps padding.
 - `current_date()` is UTC on the warehouse; the Postgres container runs Asia/Hong_Kong.
 
-## Scenario 2: Genie One and the Genie Ontology over the base tables (`dbx_genie_ontology`)
+## Genie One and the Genie Ontology (`dbx_genie_ontology`; scenario 3 since 2026-11-08)
 
 Built 2026-11-04. The agent **never writes SQL**. It passes the user's question, and later
 the user's clarifications, verbatim to Genie One (Databricks' natural-language data agent,
@@ -114,7 +140,7 @@ principal's credential is an OAuth secret, created with
 `shared/databricks_auth.resolve_token` exchanges it for a one-hour access token at
 `<host>/oidc/v1/token` (client_credentials, scope all-apis) and refreshes it five minutes
 before expiry. A plain PAT in the same variable is used as is. `DATABRICKS_TOKEN` (the
-owner) stays what scenario 1 runs as.
+owner) stays what the metric-view arm (`dbx_metric_views`) runs as.
 
 ### The backend
 
@@ -127,7 +153,7 @@ owner) stays what scenario 1 runs as.
 | grading | the existing `executor: databricks` branch; `_run_query_via_databricks` runs the submission as the principal (`token_env` is stamped onto the domain by `get_domain_config`), so a submission is graded with exactly the grants the agent had |
 | instruction | the `dbx_metric_views` instruction with the intro, the tool list and the bullets that name a discovery or query tool rewritten for Genie; every other strategy tip is verbatim |
 
-The rewritten bullets (generated from the scenario 1 block; the generator asserts each
+The rewritten bullets (generated from the `dbx_metric_views` block; the generator asserts each
 original appears once and that no `list_metric_views`, `describe_metric_view`, `run_query`,
 `MEASURE(` or "semantic layer" survives): the first sentence and the "Your goal" line, the
 "You can: 2." line, the tool list, "THE MODEL FLAGS ITS OWN AMBIGUITIES" (now "GENIE FLAGS
@@ -145,7 +171,7 @@ base tables, their column comments (the BIRD column meanings, loaded 2026-11-03)
 questions Genie is asked during the run. The agent names the database in its first question
 ("In the bird.<db> database: ..."), as the raw arm knows the database too. The
 ontology learns from the questions it answers, so this arm should run before the metric-view
-arms pour queries into its learning history; the smoke tests below and the scenario 1 run
+arms pour queries into its learning history; the smoke tests below and the metric-view arm's run
 of 2026-11-04 (`results/dbx_vs_0910`) already precede it.
 
 ### Running
@@ -182,7 +208,7 @@ coins, 320 s; the budget ran out before the follow-up. Genie turns took 14-80 s.
 prefixed every question with the database name and sent clarifications as "The user
 clarified: ..." follow-ups in the one conversation, as the instruction asks.
 
-## Scenario 4: Genie Ontology without Metric Views (`dbx_genie_ontology_no_mv`)
+## Scenario 1: Genie One on raw data, no Metric Views (`dbx_genie_ontology_no_mv`; scenario 4 before 2026-11-08)
 
 Scenario 3 (`dbx_genie_ontology`) has run as the owner since 5439e72, so Genie One can pick
 metric views, base tables or anything else. Scenario 4 is the same arm with the metric views
@@ -191,7 +217,7 @@ principal above (`token_env: DATABRICKS_TOKEN_ONTOLOGY`) with all 22 domains `ob
 Genie One, the domain guard and grading therefore all see only the 244 base tables.
 
 ```bash
-REPEAT=3 bash scripts/run_databricks_scenario.sh 4     # or: genie-ontology-no-views
+REPEAT=3 bash scripts/run_databricks_scenario.sh 1     # or: genie-one-raw
 ```
 
 **Hiding depends on the catalog's grants, not on the harness.** Unity Catalog has no deny.
@@ -200,7 +226,7 @@ USE SCHEMA, SELECT, BROWSE, READ METADATA). Every user and service principal bel
 group, so the principal could read all 119 metric views and their comments. The grant was
 revoked that day. The principal's grants and the revoke are recorded in
 `bird-databricks-models/grants/benchmark_principal.sql`. The pre-run check of
-`run_databricks_scenario.sh 4` runs as the principal and refuses to start unless all of
+`run_databricks_scenario.sh 1` runs as the principal and refuses to start unless all of
 these hold:
 - the backend is `token_env` + `objects: tables`;
 - `current_user()` is not the owner;
@@ -223,7 +249,7 @@ Checked 2026-11-06 after the revoke:
   - `solar_panel_1` passed both phases (10 coins, 151 s). `solar_panel_2` failed phase 1 and
     used all 18 coins (269 s).
 
-## Scenario 5: Genie Ontology over Genie-authored Metric Views (`dbx_genie_ontology_genie_mv`)
+## Scenario 2: Genie One + Genie-generated Metric Views (`dbx_genie_ontology_genie_mv`; scenario 5 before 2026-11-08)
 
 Scenario 3 with the AtScale-derived metric views replaced by **121 metric views Genie One authored itself**
 in `bird_genie_mv.<db>`. It worked from the base tables, the BIRD knowledge base and the gold-free task
@@ -245,11 +271,11 @@ database, whose metric views are in bird_genie_mv.<database>: ...", because the 
 the task schema.
 
 ```bash
-REPEAT=3 bash scripts/run_databricks_scenario.sh 5     # or: genie-ontology-genie-views
+REPEAT=3 bash scripts/run_databricks_scenario.sh 2     # or: genie-one-genie-views
 ```
 
 The pre-run check asserts, as the run principal:
-- `current_user()` is not the owner, and the identity is neither the scenario 4 nor the authoring one;
+- `current_user()` is not the owner, and the identity is neither the scenario 1 nor the authoring one;
 - `bird` shows 244 MANAGED and 0 METRIC_VIEW;
 - `bird_genie_mv` shows 121 METRIC_VIEW and no table (no `build_inputs`);
 - an AtScale view is refused, and a Genie view is queryable;
@@ -257,12 +283,12 @@ The pre-run check asserts, as the run principal:
 
 Checked 2026-11-06 (worktree `BIRD-Interact-genie-mv`, ports 6300-6302):
 - The pre-run check passes.
-- Smoke run of `solar_panel_1` and `solar_panel_2`: 1 of 2, the same as scenario 4's smoke run.
+- Smoke run of `solar_panel_1` and `solar_panel_2`: 1 of 2, the same as scenario 1's smoke run.
   - `solar_panel_1` passed both phases.
   - Of Genie's 10 turns, 5 read its own view `solar_snapshot_performance` and 5 read base tables.
   - The guard rejected nothing.
 
-## Genie over the metric views (`dbx_genie_space`)
+## Genie over the metric views (`dbx_genie_space`, retired 2026-11-08)
 
 Genie as the SQL author inside the BIRD agent loop. Sonnet stays the agent with its budget,
 its asks and its submits; its only data tool is `ask_genie` (1 coin), which carries the
