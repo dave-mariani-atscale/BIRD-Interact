@@ -50,26 +50,33 @@ def load_backends() -> Dict[str, Any]:
 #:                          runs as the benchmark principal (DATABRICKS_TOKEN_ONTOLOGY), which
 #:                          can read the 244 base tables of `bird` and nothing else, so the
 #:                          metric views are invisible to it.
+#:   5 genie-ontology-genie-views : Genie Ontology over metric views Genie One authored. As 3,
+#:                          but run as bird-benchmark-genie-mv (DATABRICKS_TOKEN_GENIE_MV): the 244
+#:                          base tables of `bird` plus the 121 metric views Genie One wrote into
+#:                          `bird_genie_mv.<db>` (bird-databricks-models/genie_metric_views); the
+#:                          AtScale-derived views are invisible to it.
 DATABRICKS_SCENARIOS = {
     "1": "dbx_metric_views", "metric-views-agent": "dbx_metric_views",
     "2": "dbx_genie_space", "genie-space": "dbx_genie_space",
     "3": "dbx_genie_ontology", "genie-ontology": "dbx_genie_ontology",
     "4": "dbx_genie_ontology_no_mv", "genie-ontology-no-views": "dbx_genie_ontology_no_mv",
+    "5": "dbx_genie_ontology_genie_mv", "genie-ontology-genie-views": "dbx_genie_ontology_genie_mv",
 }
 DATABRICKS_SCENARIO_LABELS = {
     "dbx_metric_views": "Scenario 1: Metric Views + 3rd-party agent",
     "dbx_genie_space": "Scenario 2: Metric Views + Genie Agent (Genie space)",
     "dbx_genie_ontology": "Scenario 3: Metric Views + Genie Ontology (Genie One)",
     "dbx_genie_ontology_no_mv": "Scenario 4: Genie Ontology without Metric Views (Genie One, base tables only)",
+    "dbx_genie_ontology_genie_mv": "Scenario 5: Genie Ontology over Genie-authored Metric Views (Genie One, base tables + its own views)",
 }
 
 
 def resolve_databricks_scenario(value: str) -> str:
-    """Backend name for a --databricks-scenario value (1-4 or its name)."""
+    """Backend name for a --databricks-scenario value (1-5 or its name)."""
     key = str(value).strip().lower()
     if key not in DATABRICKS_SCENARIOS:
         raise ValueError(f"unknown Databricks scenario {value!r}; use one of "
-                         + ", ".join(sorted(k for k in DATABRICKS_SCENARIOS if not k.isdigit())) + " or 1-4")
+                         + ", ".join(sorted(k for k in DATABRICKS_SCENARIOS if not k.isdigit())) + " or 1-5")
     return DATABRICKS_SCENARIOS[key]
 
 
@@ -171,8 +178,22 @@ def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]
         logger.warning("domain guard: could not list %s of %s.%s (%s); allowing through",
                        domain.get("objects"), want_catalog, want_schema, e)
         return None
+    # views_catalog (scenario 5): the domain's metric views live in <views_catalog>.<schema>, a second
+    # catalog beside the base tables of <catalog>.<schema>; a reference to one of them is allowed too.
+    views_catalog = (domain.get("views_catalog") or "").casefold()
+    views = set()
+    if views_catalog:
+        try:
+            views = databricks_sql.schema_objects(domain["views_catalog"], domain["schema"], "metric_views",
+                                                  token=resolve_token(domain.get("token_env")))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("domain guard: could not list metric views of %s.%s (%s); allowing through",
+                           views_catalog, want_schema, e)
+            return None
     ctes = {c.alias_or_name.casefold() for c in statement.find_all(exp.CTE)}
     kind = "metric view" if domain["objects"] == "metric_views" else "table"
+    if views_catalog:
+        kind = "table or metric view"
     for tbl in statement.find_all(exp.Table):
         name = tbl.name.casefold()
         schema = tbl.text("db").casefold()
@@ -181,12 +202,15 @@ def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]
             continue
         if schema == "information_schema":
             continue
+        if views_catalog and catalog == views_catalog and schema == want_schema and name in views:
+            continue
         if (catalog and catalog != want_catalog) or (schema and schema != want_schema) or name not in allowed:
             found = ".".join(p for p in (tbl.text("catalog"), tbl.text("db"), tbl.name) if p)
             return (
                 f'Query rejected: it references "{found}", which is not a {kind} of this task\'s '
-                f'schema "{domain.get("catalog")}"."{domain.get("schema")}". Query only the '
-                f"{kind}s of that schema, by their exact names."
+                f'schema "{domain.get("catalog")}"."{domain.get("schema")}"'
+                + (f' or "{domain.get("views_catalog")}"."{domain.get("schema")}"' if views_catalog else "")
+                + f". Query only the {kind}s of {'those schemas' if views_catalog else 'that schema'}, by their exact names."
             )
     return None
 
@@ -205,8 +229,11 @@ def objects_read(query: str, domain: Dict[str, str]) -> Optional[Dict[str, List[
         return None
     if statement is None:
         return None
+    views_catalog = (domain.get("views_catalog") or "").casefold()
     try:
         views = databricks_sql.schema_objects(domain["catalog"], domain["schema"], "metric_views")
+        side_views = (databricks_sql.schema_objects(domain["views_catalog"], domain["schema"], "metric_views")
+                      if views_catalog else set())
     except Exception as e:  # noqa: BLE001
         logger.warning("objects_read: could not list metric views of %s.%s (%s)", domain.get("catalog"), domain.get("schema"), e)
         return None
@@ -217,6 +244,14 @@ def objects_read(query: str, domain: Dict[str, str]) -> Optional[Dict[str, List[
     for tbl in statement.find_all(exp.Table):
         name, schema, catalog = tbl.name.casefold(), tbl.text("db").casefold(), tbl.text("catalog").casefold()
         if (not schema and name in ctes) or schema == "information_schema":
+            continue
+        if views_catalog and catalog == views_catalog and schema == want_schema and name in side_views:
+            out["metric_views"].add(name)      # scenario 5: a metric view of <views_catalog>.<schema>
+            continue
+        if views_catalog and name in views and catalog != views_catalog:
+            # scenario 5: a metric view of <catalog>.<schema> (the AtScale-derived ones) is not this
+            # domain's; the principal cannot read them, so this only records an attempt.
+            out["elsewhere"].add(".".join(p for p in (catalog or domain["catalog"].casefold(), schema or want_schema, name)))
             continue
         if (schema and schema != want_schema) or (catalog and catalog != want_catalog):
             # Another database or catalog: Genie One sees the whole workspace (scenario 3).

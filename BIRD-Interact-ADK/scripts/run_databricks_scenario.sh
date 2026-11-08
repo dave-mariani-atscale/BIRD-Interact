@@ -7,6 +7,8 @@
 #   2 | genie-space        : Metric Views + Genie Agent        (backend dbx_genie_space, one Genie space per database)
 #   4 | genie-ontology-no-views : Genie Ontology without Metric Views (backend dbx_genie_ontology_no_mv, Genie One
 #                                 as the benchmark principal, which can read the base tables and no metric view)
+#   5 | genie-ontology-genie-views : Genie Ontology over Genie-authored Metric Views (backend dbx_genie_ontology_genie_mv,
+#                                   Genie One as bird-benchmark-genie-mv: base tables + the 121 views of bird_genie_mv)
 #   3 | genie-ontology     : Metric Views + Genie Ontology     (backend dbx_genie_ontology, Genie One as the owner;
 #                                                              the ontology picks metric views, base tables or anything else)
 #
@@ -29,7 +31,7 @@ export PYTHONPATH="$PWD"
 unset LEADERBOARD_MODE LEADERBOARD_AGENT_MODEL LEADERBOARD_TRACK LLM_ROUTING_FILE BIRD_LLM_DUMP_DIR SYSTEM_AGENT_MAX_TOKENS DISABLE_AGGREGATES
 export ENVIRONMENT_BACKENDS_FILE=config/environment_backends.dbx_vs_0910.yaml
 PY=.venv-adk/bin/python
-SCEN="${1:?usage: run_databricks_scenario.sh <1|2|3|4|metric-views-agent|genie-space|genie-ontology|genie-ontology-no-views>}"
+SCEN="${1:?usage: run_databricks_scenario.sh <1|2|3|4|5|metric-views-agent|genie-space|genie-ontology|genie-ontology-no-views|genie-ontology-genie-views>}"
 BACKEND=$($PY -c "from shared.environment_backends import resolve_databricks_scenario as r; print(r('$SCEN'))") || exit 2
 LABEL=$($PY -c "from shared.environment_backends import DATABRICKS_SCENARIO_LABELS as L; print(L['$BACKEND'])")
 OUT=results/${BACKEND}_vs_0910; LOGD=logs/${BACKEND}_vs_0910; mkdir -p "$OUT" "$LOGD"
@@ -111,6 +113,45 @@ if b == "dbx_genie_ontology_no_mv":
     leak = sp.execute("SELECT 1 FROM bird.solar_panel.solar_panel_plants LIMIT 1")
     assert leak.error, "REFUSING: the principal can read a metric view (bird.solar_panel.solar_panel_plants)"
     print("  metric view read refused:", str(leak.error)[:90])
+    async def tools():
+        async with httpx.AsyncClient(headers={"Authorization": f"Bearer {tok}"}, timeout=60, trust_env=False) as h:
+            async with streamable_http_client(settings.databricks_host.rstrip("/") + GENIE_ONE_MCP_PATH, http_client=h) as st:
+                async with ClientSession(st[0], st[1]) as s:
+                    await s.initialize()
+                    return [t.name for t in (await s.list_tools()).tools]
+    names = asyncio.run(tools())
+    print("  Genie One MCP tools (as the principal):", names)
+    assert "genie_ask" in names and "genie_poll_response" in names
+if b == "dbx_genie_ontology_genie_mv":
+    # Genie One must see the base tables and ITS OWN metric views, and none of the AtScale-derived
+    # ones nor the authoring inputs: everything below runs AS THE RUN PRINCIPAL.
+    import httpx
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+    from system_agent.tools_genie_one import GENIE_ONE_MCP_PATH
+    d0 = get_domain_config(b, sorted(doms)[0])
+    te, vc = d0.get("token_env"), d0.get("views_catalog")
+    assert te and vc and all(get_domain_config(b, d)["objects"] == "tables" and get_domain_config(b, d).get("views_catalog") == vc
+                             for d in doms), "scenario 5 domains must be objects: tables with token_env and views_catalog"
+    tok = resolve_token(te)
+    sp = DatabricksSQL(token=tok)
+    me = sp.execute("SELECT current_user()").rows[0][0]
+    owner = DatabricksSQL().execute("SELECT current_user()").rows[0][0]
+    assert me != owner, f"scenario 5 must not run as the owner ({owner})"
+    assert te not in ("DATABRICKS_TOKEN_ONTOLOGY", "DATABRICKS_TOKEN_GENIE_MV_AUTHOR"), "scenario 5 needs its own identity (Genie One memory)"
+    vis = {(c, t): n for c, t, n in sp.execute(
+        "SELECT table_catalog, table_type, COUNT(*) FROM system.information_schema.tables "
+        f"WHERE table_catalog IN ('bird', '{vc}') AND table_schema <> 'information_schema' GROUP BY ALL").rows}
+    print("  as", me, "- visible:", vis)
+    assert vis.get(("bird", "METRIC_VIEW"), 0) == 0, "REFUSING: the principal can see AtScale-derived metric views in bird"
+    assert vis.get(("bird", "MANAGED"), 0) == 244, "REFUSING: the principal does not see the 244 base tables"
+    assert vis.get((vc, "METRIC_VIEW"), 0) == 121, f"REFUSING: expected the 121 Genie-authored views in {vc}"
+    assert not vis.get((vc, "MANAGED")), f"REFUSING: the principal can see the authoring inputs in {vc}.build_inputs"
+    leak = sp.execute("SELECT 1 FROM bird.solar_panel.solar_panel_plants LIMIT 1")
+    assert leak.error, "REFUSING: the principal can read an AtScale-derived metric view"
+    ok = sp.execute(f"SELECT MEASURE(system_unavailability) FROM {vc}.solar_panel.solar_snapshot_performance")
+    assert not ok.error, ok.error
+    print("  AtScale view refused; Genie view queried:", ok.rows[0][0])
     async def tools():
         async with httpx.AsyncClient(headers={"Authorization": f"Bearer {tok}"}, timeout=60, trust_env=False) as h:
             async with streamable_http_client(settings.databricks_host.rstrip("/") + GENIE_ONE_MCP_PATH, http_client=h) as st:
