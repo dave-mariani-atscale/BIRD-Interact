@@ -30,8 +30,7 @@ The third arm of the benchmark: the same LLM agent, the same user simulator and 
 grader as the `atscale` arm, with the semantic layer replaced by a schema of Unity Catalog
 **metric views** on Databricks. It was "scenario 1" of the Databricks comparison until 2026-11-08: a
 one-for-one analog of the AtScale arm in which the agent writes SQL against a curated
-semantic model. Scenario 2 (Genie One and the Genie Ontology over the base tables, no
-metric views) is the backend `dbx_genie_ontology`, described at the end of this page.
+semantic model. The Genie One backends (the three current scenarios) are described after it.
 
 ## What the agent sees
 
