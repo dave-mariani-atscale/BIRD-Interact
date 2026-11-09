@@ -12,6 +12,12 @@
      paragraph and the BEHAVIOUR PROFILE rows A32-A40 styled from an existing Leaderboard tab; inserted after the last
      Leaderboard tab; every other tab verified cell-for-cell unchanged; the Drive file overwritten in place after a hash check.
 
+--memory-off (2026-11-09, BIRD asked for runs with feedback memory OFF): run labels, the memory section, the store
+attestation, the provenance text and the file/zip names describe a memory-off sweep; --provenance gives the models/engine/
+MCP sentence; --memon-base names the memory-ON sweep of the same model to compare against; the results zip still goes to
+Results-Submission, the submission zip to --submission-dest, and the tab is written to a scratch workbook and extracted as
+a single-sheet <sweep_dir>/<tab>.xlsx for import into the Consolidated Google Sheet (the old xlsx workbook is not touched).
+
 Every sentence written to the tab or RESULTS.md is computed from the run files - no model-specific prose. Pass --dry-run to
 write the workbook and zips to a scratch directory instead of Drive (used to prove the script reproduces the Kimi tab).
 
@@ -164,6 +170,26 @@ def reset_attestation(base):
     return f"zeroed at {z.group(1) if z else '?'} and read {s.group(2) if s else '?'} at {s.group(1) if s else '?'} when run 1 started ({p})"
 
 
+RUN_LABELS = {False: ("01 (cold)", "02 (warm)", "03 (warm)"), True: ("01 (memory off)", "02 (memory off)", "03 (memory off)")}
+RUN_NAMES = {False: {1: "1_cold", 2: "2_warm", 3: "3_warm"}, True: {1: "1", 2: "2", 3: "3"}}
+
+
+def memoff_attestation(sweep):
+    p = Path(sweep) / "memoff_attestation.txt"
+    return open(p).read().strip() if p.exists() else "memoff_attestation.txt not found"
+
+
+def memon_rows(memon_base):
+    return [row_stats(f"memory on r{r}", f"results/{memon_base}_rep{r}_board.json") for r in (1, 2, 3)]
+
+
+def memoff_compare_md(a, T):
+    on = memon_rows(a.memon_base)
+    rows = "\n".join(f"| {i+1} | {T[i]['qp1']:.2f} | {on[i]['qp1']:.2f} | {T[i]['qp2']:.2f} | {on[i]['qp2']:.2f} | {T[i]['sr']:.2f} | {on[i]['sr']:.2f} | {T[i]['rw']:.2f} | {on[i]['rw']:.2f} |" for i in range(3))
+    return ("| Run | Query P1 off | on | Query P2 off | on | Success Rate off | on | Reward off | on |\n"
+            "|---|---|---|---|---|---|---|---|---|\n" + rows)
+
+
 def model_crash_text(by, tasks):
     if not by: return "No task errored in any run."
     label = {"model": "model-caused crash", "infra": "unrecovered infrastructure error", "infra?": "unclassified error (treated as infrastructure)", "unclassified": "unclassified error"}
@@ -192,15 +218,37 @@ def results_md(a, T, B, errs, dis, prev_note, raw_note, track_note, harness):
     err_txt = (f"Only true infrastructure errors are re-run (an outage, provider 5xx, credit/budget refusal); a crash the model causes is scored as "
                f"a fail, as upstream's harness scores it. {'No infrastructure error went unrecovered.' if infra_n == 0 else f'{infra_n} infrastructure error(s) remain scored 0 (see error_classes.tsv).'} "
                f"{'No model-caused crash occurred.' if model_n == 0 else f'{model_n} model-caused crash(es) across the three runs ({per_run[0]} / {per_run[1]} / {per_run[2]}), all scored 0: ' + ', '.join(tasks['model'])}.")
-    return f"""# BIRD-Interact-Full - {a.model}, n=3 atscale (COLD) + raw baseline, leaderboard protocol ({a.date[:4]}-{a.date[4:6]}-{a.date[6:]})
+    mo = getattr(a, "memory_off", False); lab = RUN_LABELS[mo]; names = RUN_NAMES[mo]
+    if mo:
+        intro = (f"This sweep re-runs the {a.model} leaderboard scenario with **feedback memory OFF** (`FEEDBACK_MEMORY=false` in the harness, "
+                 f"`ATSCALE_MCP_FEEDBACK_MEMORY=false` on the MCP server), as the BIRD team asked: no verdict from one task reaches another, and "
+                 f"the three runs are independent samples. The submitted run is the best of the three by Success Rate (ties by Reward).")
+        prov = a.provenance
+        mem_section = ("## Memory off: three independent runs, against the memory-ON sweep\n\n"
+                       f"Query P1 r1 / r2 / r3: {q[0]:.2f} / {q[1]:.2f} / {q[2]:.2f} (spread {max(q)-min(q):.2f}); Query P2 {r1['qp2']:.2f} / {r2['qp2']:.2f} / {r3['qp2']:.2f}.\n"
+                       f"Management - raw Postgres on both arms, never the semantic layer - {mp[0]:.2f} / {mp[1]:.2f} / {mp[2]:.2f}. With memory off nothing carries\n"
+                       "between runs, so the spread is run-to-run noise (binomial SE ~2.4 points on 410 Query tasks).\n\n"
+                       f"Memory-ON comparison: the `{a.memon_base}` sweep of the same model (same protocol; memory on, store emptied before run 1).\n\n"
+                       + memoff_compare_md(a, T))
+        store_section = ("## Feedback memory: off\n\nAttestation written by the launcher (the row counts of the three feedback tables must not change "
+                         "across any invocation):\n\n```\n" + memoff_attestation(a.sweep_dir) + "\n```")
+    else:
+        intro = (('This is the first ' + a.model + ' leaderboard sweep; it runs on the clean models like every no-gold-930 re-run.') if a.first_sweep
+                 else ('This sweep is the no-gold-930 re-run of the ' + a.model + ' leaderboard scenario: every leaderboard scenario is being re-run on the clean models.'))
+        prov = ("**Semantic models: the clean `no-gold-930` catalog** (`bird-atscale-models` branch `no-gold-930-logic` @ `e89bb6dc`,\n"
+                "catalog `bird_models_no_gold_930`): every finding of the 2026-09-23 cheat list removed." + ('' if a.first_sweep else ' The earlier sweep ran on `main`.') +
+                "\nEngine `ghcr.io/atscaleinc/engine:pr10556`, MCP `ghcr.io/atscaleinc/mcp:bird-develop-rebase`.")
+        mem_section = ("## Memory lift\n\n"
+                       f"Query P1 r1 -> r2 -> r3: {q[0]:.2f} -> {q[1]:.2f} -> {q[2]:.2f} ({q[2]-q[0]:+.2f}); Query P2 {r1['qp2']:.2f} -> {r2['qp2']:.2f} -> {r3['qp2']:.2f}.\n"
+                       f"Management - raw Postgres on both arms, never the semantic layer - {mp[0]:.2f} / {mp[1]:.2f} / {mp[2]:.2f}. {mem}")
+        store_section = f"## Store state at run 1\n\nAttested cold: the three-table feedback store was {reset_attestation(a.base)}."
+    return f"""# BIRD-Interact-Full - {a.model}, n=3 atscale ({'MEMORY OFF' if mo else 'COLD'}) + raw baseline, leaderboard protocol ({a.date[:4]}-{a.date[4:6]}-{a.date[6:]})
 
 Agent `{r1['agent']}`, user simulator `{r1['sim']}` on the upstream prompts{track_note}, upstream grading (none of this
 harness's corrections), Universal Cost Scheme, all 600 tasks (410 Query on the semantic layer, 190 Management on raw Postgres,
-routed per task), every `run_query` with the aggregate bypass, **concurrency 10**. {('This is the first ' + a.model + ' leaderboard sweep; it runs on the clean models like every no-gold-930 re-run.') if a.first_sweep else ('This sweep is the no-gold-930 re-run of the ' + a.model + ' leaderboard scenario: every leaderboard scenario is being re-run on the clean models.')}
+routed per task), every `run_query` with the aggregate bypass, **concurrency 10**. {intro}
 
-**Semantic models: the clean `no-gold-930` catalog** (`bird-atscale-models` branch `no-gold-930-logic` @ `e89bb6dc`,
-catalog `bird_models_no_gold_930`): every finding of the 2026-09-23 cheat list removed.{'' if a.first_sweep else ' The earlier sweep ran on `main`.'}
-Engine `ghcr.io/atscaleinc/engine:pr10556`, MCP `ghcr.io/atscaleinc/mcp:bird-develop-rebase`. Harness `{harness}`, which
+{prov} Harness `{harness}`, which
 includes the "do not round in the submitted query" instruction (`f12ac55`), as the Sonnet, Kimi and GPT-5 re-runs.
 
 ## Query tasks only - the semantic layer answers these and nothing else
@@ -210,9 +258,9 @@ upstream rules, which is what the board computes. {live}
 
 | Run | Query P1 | Query P2 | Mgmt P1 | Mgmt P2 | Success Rate | Reward | Errors | Hours | USD |
 |---|---|---|---|---|---|---|---|---|---|
-{row(r1, "01 (cold)")}
-{row(r2, "02 (warm)")}
-{row(r3, "03 (warm)")}
+{row(r1, lab[0])}
+{row(r2, lab[1])}
+{row(r3, lab[2])}
 {row(raw, "raw n=1 (" + a.raw_short + ")")}
 
 Best run r{B['best_run']} (by Success Rate, ties by Reward): **Query P1 {best['qp1']:.2f}, Query P2 {best['qp2']:.2f}** (Success Rate {best['sr']:.2f}, Reward {best['rw']:.2f}).
@@ -223,10 +271,7 @@ The raw arm is n=1; its sampling error alone puts the Query P1 lift between {B['
 
 {prev_note}
 
-## Memory lift
-
-Query P1 r1 -> r2 -> r3: {q[0]:.2f} -> {q[1]:.2f} -> {q[2]:.2f} ({q[2]-q[0]:+.2f}); Query P2 {r1['qp2']:.2f} -> {r2['qp2']:.2f} -> {r3['qp2']:.2f}.
-Management - raw Postgres on both arms, never the semantic layer - {mp[0]:.2f} / {mp[1]:.2f} / {mp[2]:.2f}. {mem}
+{mem_section}
 
 ## Errors and infrastructure
 
@@ -242,13 +287,11 @@ AtScale: {b['calls']:.1f} tool calls, {b['tests']:.2f} test executions, {b['asks
 Raw: {rw['calls']:.1f} tool calls, {rw['tests']:.2f} test executions, {rw['asks']:.2f} asks, {rw['subs']:.2f} submits; {rw['used']:.2f} bird-coins used; {rw['nosub']} without a submit.
 Management control: AtScale 3-run mean {B['mp1_mean']:.2f}% vs raw {rw['mp1']:.2f}% = AtScale {mg:+.2f} points ({'within run-to-run noise' if abs(mg) < 3.6 else 'outside one binomial SE of 190 tasks'}).
 
-## Store state at run 1
-
-Attested cold: the three-table feedback store was {reset_attestation(a.base)}.
+{store_section}
 
 ## Files
 
-- `{a.tag}_run{{1_cold,2_warm,3_warm}}.json` - the three runs (board-graded; `live_phase*_passed` keeps the live verdicts), `{a.tag}_raw_n1.json` the re-graded raw run
+- `{a.tag}_run{{{names[1]},{names[2]},{names[3]}}}.json` - the three runs (board-graded; `live_phase*_passed` keeps the live verdicts), `{a.tag}_raw_n1.json` the re-graded raw run
 - `{a.base}_rep{{1,2,3}}_merged.jsonl` + `.summary.json` - the submission files and their validation reports
 - `error_classes.tsv` - every errored task, the agent's underlying exception and its model/infra class
 """
@@ -261,7 +304,7 @@ def bundle_and_zip(a, sweep, md, dest):
     (C / "RESULTS.md").write_text(md)
     for src, dst in ((sweep / "error_classes.tsv", "error_classes.tsv"), (sweep / "run.sh", "launcher_run.sh")):
         if src.exists(): shutil.copy(src, C / dst)
-    names = {1: "1_cold", 2: "2_warm", 3: "3_warm"}
+    mo = getattr(a, "memory_off", False); names = RUN_NAMES[mo]
     for r in (1, 2, 3):
         shutil.copy(f"results/{a.base}_rep{r}_board.json", C / f"{a.tag}_run{names[r]}.json")
         shutil.copy(f"submissions/{a.base}_rep{r}_merged.jsonl", C); shutil.copy(f"submissions/{a.base}_rep{r}_merged.summary.json", C)
@@ -270,14 +313,18 @@ def bundle_and_zip(a, sweep, md, dest):
         d = json.load(open(f))
         if a.agent not in (d.get("agent_model") or ""): raise SystemExit(f"{f.name} agent_model {d.get('agent_model')!r} is not {a.agent!r} - refusing to bundle")
     date = f"{a.date[:4]}-{a.date[4:6]}-{a.date[6:]}"
-    R = B / f"BIRD Results - {date} - atscale COLD + raw (leaderboard) - n=3+1 - concurrency = 10 - no-gold-930 - {a.zip_model}.zip"
-    Z = B / f"BIRD_leaderboard_submission_AtScale_{a.zip_model}_results_{a.date}.zip"
+    if mo:
+        shutil.copy(Path(a.sweep_dir) / "memoff_attestation.txt", C / "memoff_attestation.txt")
+    mode_txt = "MEMORY OFF" if mo else "COLD"; models_txt = "models main" if mo else "no-gold-930"
+    R = B / f"BIRD Results - {date} - atscale {mode_txt} + raw (leaderboard) - n=3+1 - concurrency = 10 - {models_txt} - {a.zip_model}.zip"
+    Z = B / f"BIRD_leaderboard_submission_AtScale_{a.zip_model}{'_memoff' if mo else ''}_results_{a.date}.zip"
     with zipfile.ZipFile(R, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(C.iterdir()): z.write(f, f"colleagues/{f.name}")
     with zipfile.ZipFile(Z, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(C.iterdir()):
-            if f.name == "RESULTS.md" or f.name == "error_classes.tsv" or f.name.startswith(a.base) or f.name.startswith(a.tag + "_"): z.write(f, f"colleagues/{f.name}")
-    for src, folder in ((R, dest), (Z, dest / "Submission")):
+            if f.name in ("RESULTS.md", "error_classes.tsv", "memoff_attestation.txt") or f.name.startswith(a.base) or f.name.startswith(a.tag + "_"): z.write(f, f"colleagues/{f.name}")
+    sub_dest = Path(a.submission_dest) if (mo and getattr(a, "submission_dest", None)) else dest / "Submission"
+    for src, folder in ((R, dest), (Z, sub_dest)):
         folder.mkdir(parents=True, exist_ok=True); shutil.copy(src, folder / src.name)
         if sha(src) != sha(folder / src.name): raise SystemExit(f"copy mismatch for {src.name}")
         log(f"  {src.name} -> {folder}")
@@ -330,9 +377,15 @@ def workbook_tab(a, T, B, errs, dis, prev_note, track_note, regrade, scratch, de
     n.row_dimensions[29].height = d.row_dimensions[29].height
     total_err, by, tasks, per_run = errs
     live = ("" if not dis else " (" + str(len(dis)) + " verdict(s) differ from live: " + "; ".join(f"{t} r{rr} live {l} -> board {v}" for rr, t, l, v in dis) + ")")
-    n["A2"].value += (f" SWEEP-SPECIFIC ({a.date[:4]}-{a.date[4:6]}-{a.date[6:]}): semantic models are the CLEAN no-gold-930 catalog (bird-atscale-models no-gold-930-logic @ e89bb6dc, "
-                      f"catalog bird_models_no_gold_930), with every 2026-09-23 cheat-list finding removed{'' if a.first_sweep else ' - the earlier ' + a.model + ' leaderboard tab ran on main'}.{track_note} "
-                      f"Engine ghcr.io/atscaleinc/engine:pr10556, MCP bird-develop-rebase. Concurrency 10{'' if a.first_sweep else ' (the earlier sweep ran at 5; concurrency changes no task' + chr(39) + 's behaviour)'}. "
+    mo = getattr(a, "memory_off", False)
+    if mo:
+        a2_prefix = (f" SWEEP-SPECIFIC ({a.date[:4]}-{a.date[4:6]}-{a.date[6:]}): FEEDBACK MEMORY OFF (FEEDBACK_MEMORY=false, ATSCALE_MCP_FEEDBACK_MEMORY=false), at the BIRD team's request - "
+                     f"every task independent, the three runs independent samples, the best one submitted. {a.provenance}{track_note} Concurrency 10. ")
+    else:
+        a2_prefix = (f" SWEEP-SPECIFIC ({a.date[:4]}-{a.date[4:6]}-{a.date[6:]}): semantic models are the CLEAN no-gold-930 catalog (bird-atscale-models no-gold-930-logic @ e89bb6dc, "
+                     f"catalog bird_models_no_gold_930), with every 2026-09-23 cheat-list finding removed{'' if a.first_sweep else ' - the earlier ' + a.model + ' leaderboard tab ran on main'}.{track_note} "
+                     f"Engine ghcr.io/atscaleinc/engine:pr10556, MCP bird-develop-rebase. Concurrency 10{'' if a.first_sweep else ' (the earlier sweep ran at 5; concurrency changes no task' + chr(39) + 's behaviour)'}. ")
+    n["A2"].value += (a2_prefix +
                       f"Every figure is the BIRD evaluator's: each run's submission was re-graded on fresh template databases under the upstream rules and those verdicts are the ones on this tab{live}. "
                       f"Raw arm: {a.raw_note}. Agent instruction at harness {a.harness}, WITH the 'do not round in the submitted query' rule (f12ac55), as the Sonnet and Kimi re-runs. "
                       f"Only true infrastructure errors are re-run; errors remaining in the figures, all scored 0: {model_crash_text(by, tasks)}.")
@@ -344,6 +397,13 @@ def workbook_tab(a, T, B, errs, dis, prev_note, track_note, regrade, scratch, de
                     else f" The largest completion counts are {b['max_completion']:,} tokens on AtScale and {r['max_completion']:,} raw; a count above 16,384 means this model's usage includes its thinking tokens, so these figures cannot show whether the 16,384-token output cap (applied identically to both arms) was reached." if max(b["max_completion"], r["max_completion"]) > 16384
                     else f" Calls reached the 16,384-token completion ceiling (largest {b['max_completion']:,} tokens on AtScale, {r['max_completion']:,} raw) - a harness limit applied identically to both arms."))
     mg = B["mp1_mean"] - r["mp1"]
+    if mo:
+        on = memon_rows(a.memon_base)
+        memoff_runs_txt = (f"Query P1 r1 / r2 / r3: {q[0]:.2f} / {q[1]:.2f} / {q[2]:.2f}; Query P2 {q2[0]:.2f} / {q2[1]:.2f} / {q2[2]:.2f}; Management P1 {mp[0]:.2f} / {mp[1]:.2f} / {mp[2]:.2f}. "
+                           f"Memory-ON sweep of the same model ({a.memon_base}), Query P1 r1 / r2 / r3: " + " / ".join(f"{x['qp1']:.2f}" for x in on) +
+                           "; Query P2 " + " / ".join(f"{x['qp2']:.2f}" for x in on) + ".")
+        memoff_store_txt = ("OFF on both switches; the feedback store row counts were unchanged across every invocation. " +
+                            " | ".join(l for l in memoff_attestation(a.sweep_dir).splitlines() if not l.startswith("#")))
     rows = [
         (f"BEHAVIOUR PROFILE - best AtScale run (r{br}) vs raw arm (n=1, {a.raw_short}), Query tasks only. Computed {a.date[:4]}-{a.date[4:6]}-{a.date[6:]} from the run files named in A2; tool counts from each task's tool_trajectory, truncation from the per-call usage ledger.", None),
         ("What is distinctive", f"Tests-per-submit ratio {b['tests']/max(b['subs'],0.01):.2f} on AtScale ({b['tests']:.2f} test executions per {b['subs']:.2f} submits) vs {r['tests']/max(r['subs'],0.01):.2f} raw; {b['asks']:.2f} asks per task. The layer changes its tool calls by {100*(b['calls']/r['calls']-1):+.0f}% and its spend by {b['used']-r['used']:+.2f} coins per task while moving Query P1 from {r['qp1']:.2f}% to {b['qp1']:.2f}%. Management control {'within noise' if abs(mg) < 3.6 else 'outside one SE'} ({mg:+.2f} points). {model_crash_text(by, tasks).rstrip('.')}."),
@@ -352,10 +412,14 @@ def workbook_tab(a, T, B, errs, dis, prev_note, track_note, regrade, scratch, de
         ("Budget", f"Bird-coins used {b['used']:.2f} of ~17.86 on AtScale ({b['left']:.2f} left unspent) vs {r['used']:.2f} raw ({r['left']:.2f} left). The semantic layer changed this model's spend by {b['used']-r['used']:+.2f} coins per task."),
         ("Unsubmitted tasks / truncation", nosub_txt),
         ("Management control", f"Management routes to raw PostgreSQL on both arms and never touches the semantic layer. AtScale 3-run mean {B['mp1_mean']:.2f}% vs raw {r['mp1']:.2f}% (n=1) = AtScale {mg:+.2f} points; {'within run-to-run noise (binomial SE on 190 tasks ~3.6 points)' if abs(mg) < 3.6 else 'outside one binomial SE of 190 tasks (~3.6 points)'}."),
+    ] + ([
+        ("Runs 1-3, memory OFF (independent)", memoff_runs_txt),
+        ("Feedback memory", memoff_store_txt),
+    ] if mo else [
         ("Memory across the 3 AtScale runs", f"Query P1 r1 -> r2 -> r3: {q[0]:.2f} -> {q[1]:.2f} -> {q[2]:.2f} ({q[2]-q[0]:+.2f}); Query P2 {q2[0]:.2f} -> {q2[1]:.2f} -> {q2[2]:.2f} ({q2[2]-q2[0]:+.2f}); Management P1 {mp[0]:.2f} -> {mp[1]:.2f} -> {mp[2]:.2f} (swing {swing:.2f}). "
          + ("Management stays flat while Query climbs, which is the pattern a memory effect must show; read the Query rise as memory." if swing < 2.5 and (q[2]-q[0]) > 1.5*swing else "Management moved as well, so part of any run-to-run rise is noise; the Query climb is read with that caveat.")),
         ("Store state at run 1", f"Attested cold: the three-table feedback store was {reset_attestation(a.base)}."),
-    ]
+    ])
     for i, (h, body) in enumerate(rows):
         R = 32 + i
         for col in ("A", "B"): cp(d[f"{col}{R}"], n[f"{col}{R}"])
@@ -397,6 +461,10 @@ def main():
     ap.add_argument("--prev-note", default=""); ap.add_argument("--first-sweep", action="store_true", help="no earlier leaderboard sweep of this model exists"); ap.add_argument("--raw-fresh", action="store_true", help="the raw arm was run in this sweep, not reused"); ap.add_argument("--track-note", default=""); ap.add_argument("--agent", required=True)
     ap.add_argument("--date", default=datetime.now().strftime("%Y%m%d")); ap.add_argument("--harness", default=None)
     ap.add_argument("--dry-run", default=None, help="write the workbook and zips under this directory instead of Drive")
+    ap.add_argument("--memory-off", action="store_true", help="a FEEDBACK_MEMORY=false sweep (see the docstring)")
+    ap.add_argument("--provenance", default="", help="memory-off: the models / engine / MCP sentence for RESULTS.md and the tab")
+    ap.add_argument("--memon-base", default="", help="memory-off: the memory-ON sweep of the same model to compare against")
+    ap.add_argument("--submission-dest", default=None, help="memory-off: Drive directory for the submission zip")
     a = ap.parse_args()
     a.harness = a.harness or sh(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
     sweep = Path(a.sweep_dir); scratch = Path(a.dry_run) if a.dry_run else sweep / "pkg_scratch"
@@ -407,7 +475,8 @@ def main():
     log("1. board-graded copies"); reps, cls = board_copies(sweep, a.base)
     log("2. corrected-regime regrade"); regrade = corrected_regrade(sweep, a.base)
     log("3. table + behaviour")
-    T = [row_stats(l, p) for l, p in (("01 (cold)", reps[0]), ("02 (warm)", reps[1]), ("03 (warm)", reps[2]), ("raw", a.raw_board))]
+    lab = RUN_LABELS[a.memory_off]
+    T = [row_stats(l, p) for l, p in ((lab[0], reps[0]), (lab[1], reps[1]), (lab[2], reps[2]), ("raw", a.raw_board))]
     json.dump(T, open(sweep / "table.json", "w"), indent=1)
     B = behaviour(a.raw_board, reps); json.dump(B, open(sweep / "behaviour.json", "w"), indent=1)
     errs = error_summary(cls, reps); dis = disagreements(a.base)
@@ -416,7 +485,17 @@ def main():
     (sweep / "RESULTS.md").write_text(md)
     dest = Path(a.dry_run) / "drive" if a.dry_run else DRIVE
     log("4. bundle + zips"); bundle_and_zip(a, sweep, md, dest)
-    log("5. workbook tab"); workbook_tab(a, T, B, errs, dis, a.prev_note, a.track_note, regrade, scratch, (Path(a.dry_run) / "drive" / WORKBOOK.name) if a.dry_run else WORKBOOK)
+    if a.memory_off:
+        out = scratch / "workbook_with_tab.xlsx"
+        log("5. workbook tab (scratch copy; the old xlsx workbook is not touched)")
+        workbook_tab(a, T, B, errs, dis, a.prev_note, a.track_note, regrade, scratch, out)
+        import openpyxl
+        wb = openpyxl.load_workbook(out); tab = f"Leaderboard {a.tab_label}"
+        for nm in list(wb.sheetnames):
+            if nm != tab: del wb[nm]
+        single = sweep / f"{tab}.xlsx"; wb.save(single); log(f"  single-sheet tab for the Consolidated Google Sheet: {single}")
+    else:
+        log("5. workbook tab"); workbook_tab(a, T, B, errs, dis, a.prev_note, a.track_note, regrade, scratch, (Path(a.dry_run) / "drive" / WORKBOOK.name) if a.dry_run else WORKBOOK)
     log("DONE")
 
 
