@@ -1,8 +1,9 @@
 # BIRD-INTERACT-1.0-full, a-Interact — AtScale Semantic Layer
 
-Submission from AtScale. Everything below is stated so the result can be checked or
-contested without taking anything on trust. This submission replaces the one we
-prepared in September, which is withdrawn; §9 says why.
+Submission from AtScale, re-run with **feedback memory off** as the BIRD team asked on
+2026-11-08. Everything below is stated so the result can be checked or contested
+without taking anything on trust. This submission replaces the one we sent on
+2026-10-12, which offered two memory-on figures (§9).
 
 | | |
 |---|---|
@@ -10,63 +11,58 @@ prepared in September, which is withdrawn; §9 says why.
 | Agent models | four, listed below |
 | User simulator | `claude-haiku-4-5-20251001` (three models) and `gpt-4o` (GPT-5), **your prompts and token limits, unmodified** |
 | Efficiency (budget) | 17.86 average, matching the value listed for every Full a-Interact entry |
-| Runs | 3 per model, all 600 tasks, all included; concurrency 10 |
-| Harness | public fork: github.com/dave-mariani-atscale/BIRD-Interact, branch `feature/atscale-mcp-semantic-layer`, commit `d5d269c` (Sonnet 5: `cc08e8f`, one commit earlier) |
-| Semantic models | `bird-atscale-models` at tag `deployed-n3` (`e89bb6dc`), supplied as a zip of the repository |
-| Semantic engine / MCP server | AtScale engine `pr10556` (image `sha256:fb4a36a0…`), MCP server `930149b` (image `sha256:b7169ae1…`) |
-| Dates | 2026-10-03 to 2026-10-06 |
+| Feedback memory | **off**: `FEEDBACK_MEMORY=false` in the harness, `ATSCALE_MCP_FEEDBACK_MEMORY=false` on the MCP server, for every run (§4) |
+| Runs | 3 per model, all 600 tasks, all included, independent of each other; concurrency 10 |
+| Harness | public fork: github.com/dave-mariani-atscale/BIRD-Interact, branch `feature/bird-memoff-reruns`, commit `669dcf1` (Opus 4.6: `74b3358`, one commit earlier; `669dcf1` adds only an offline packaging script) |
+| Semantic models | `bird-atscale-models` at tag `deployed-memoff` (`3967b1a9`), supplied as a zip of the repository |
+| Semantic engine / MCP server | AtScale engine develop `42.0.0-2665` (image `sha256:4391ea45…`), MCP server `22c9afa0` (image `sha256:e2185a40…`) |
+| Dates | 2026-11-09 to 2026-11-11 |
 | Contact | dave@atscale.com |
 
 ## Results
 
 Success Rate is the blended phase-1 rate over all 600 tasks; Reward is
-(0.7·P1 + 0.3·P2)·100. We give two figures for each model and ask you to publish
-whichever you consider right for the board.
+(0.7·P1 + 0.3·P2)·100. With memory off the three runs of each model are independent
+samples, so all three are reported. By the board's convention the figure to publish is
+the **best of the three**, chosen by Success Rate with ties broken by Reward; it is
+marked **best**. Your Submission Guidelines address run count in §V, Validation
+Submission Mode, which recommends at least three runs and says "we will report the
+best result among them" without naming the metric, so we state ours.
 
-- **Option 1, cold run**: each model's run 1 of 3, started from an empty memory store
-  (§4), so nothing carries over between tasks or runs. This is the figure with no
-  advantage from having seen the task set before.
-- **Option 2, with memory**: each model's best single run of three, chosen by Success
-  Rate with ties broken by Reward; in every case that is run 3. Your Submission
-  Guidelines address run count only in §V, Validation Submission Mode, which recommends
-  at least three runs and says "we will report the best result among them" without
-  naming the metric, so we state ours. Runs 2 and 3 start from what run 1 learned (§4),
-  so Option 2 shows what the memory adds.
+**Success Rate and Reward are our own replay of the submitted SQL under your grading
+(§3)**: the figures we expect your evaluator to reproduce. **Live** is what our harness
+scored during the run; the two agree to the row except where §3 says. The GPT-5 rows
+are on the GPT-4o simulator track, a separate board entry, and are not comparable to
+the Claude-Haiku-4-5 rows.
 
-In both tables **Success Rate and Reward are our own replay of the submitted SQL under
-your grading (§3)**: the figures we expect your evaluator to reproduce. **Live** is what
-our harness scored during the run; the two agree to the row except where §3 says. The
-GPT-5 row is on the GPT-4o simulator track, a separate board entry, and is not
-comparable to the Claude-Haiku-4-5 rows.
-
-**Option 1: cold run, no memory (run 1 of 3)**
-
-| Model | User simulator | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins / query task |
-|---|---|---|---|---|---|---|---|---|---|
-| Claude-Sonnet-5 | Claude-Haiku-4-5 | **48.17** | **42.72** | 48.17 | 42.72 | 50.24 | 33.66 | 43.68 | 16.19 |
-| Claude-Opus-4.6 | Claude-Haiku-4-5 | **44.17** | **38.87** | 44.17 | 38.87 | 45.37 | 29.02 | 41.58 | 16.22 |
-| Kimi-2.5 | Claude-Haiku-4-5 | **40.83** | **34.78** | 40.83 | 34.78 | 41.71 | 23.90 | 38.95 | 17.22 |
-| GPT-5 | GPT-4o | **43.00** | **36.85** | 43.00 | 36.85 | 44.63 | 22.68 | 39.47 | 15.70 |
-
-**Option 2: with memory (best of 3 sequential runs; run 3 in every case)**
-
-| Model | User simulator | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins / query task | 3-run mean |
+| Model | User simulator | Run | Success Rate | Reward | Live success | Live reward | Query P1 | Query P2 | Mgmt P1 | Coins / query task |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Claude-Sonnet-5 | Claude-Haiku-4-5 | **53.83** | **48.63** | 53.83 | 48.58 | 56.59 | 42.68 | 47.89 | 14.58 | 51.17 ± 2.84 |
-| Claude-Opus-4.6 | Claude-Haiku-4-5 | **49.50** | **44.75** | 49.50 | 44.75 | 53.66 | 40.24 | 40.53 | 14.11 | 47.17 ± 2.73 |
-| Kimi-2.5 | Claude-Haiku-4-5 | **46.17** | **40.12** | 46.17 | 40.07 | 49.27 | 30.49 | 39.47 | 16.05 | 43.44 ± 2.67 |
-| GPT-5 | GPT-4o | **47.67** | **43.07** | 47.67 | 43.07 | 50.49 | 36.34 | 41.58 | 13.85 | 45.95 ± 2.56 |
+| Claude-Opus-4.6 | Claude-Haiku-4-5 | 1 | 46.33 | 40.93 | 46.00 | 40.65 | 48.54 | 30.98 | 41.58 | 16.20 |
+| | | **2 (best)** | **47.50** | **42.10** | 47.17 | 41.87 | 50.24 | 32.93 | 41.58 | 16.03 |
+| | | 3 | 45.83 | 40.48 | 45.83 | 40.43 | 48.78 | 31.71 | 39.47 | 16.10 |
+| Gemini-3.1-Pro | Claude-Haiku-4-5 | **1 (best)** | **54.00** | **46.45** | 54.17 | 46.62 | 55.85 | 32.93 | 50.00 | 17.18 |
+| | | 2 | 53.33 | 45.83 | 53.50 | 46.00 | 55.85 | 32.68 | 47.89 | 17.26 |
+| | | 3 | 52.83 | 45.23 | 52.67 | 45.07 | 54.88 | 30.73 | 48.42 | 17.23 |
+| Kimi-2.5 | Claude-Haiku-4-5 | **1 (best)** | **42.33** | **36.08** | 42.33 | 36.08 | 43.41 | 23.66 | 40.00 | 17.11 |
+| | | 2 | 40.33 | 34.23 | 40.33 | 34.23 | 40.49 | 22.44 | 40.00 | 17.08 |
+| | | 3 | 41.83 | 35.68 | 41.50 | 35.45 | 42.44 | 24.63 | 40.53 | 17.01 |
+| GPT-5 | GPT-4o | 1 | 43.33 | 37.93 | 43.33 | 37.93 | 44.63 | 26.34 | 40.53 | 15.75 |
+| | | 2 | 44.17 | 38.87 | 44.17 | 38.87 | 46.59 | 27.56 | 38.95 | 15.89 |
+| | | **3 (best)** | **44.33** | **38.78** | 44.17 | 38.67 | 45.37 | 27.07 | 42.11 | 15.83 |
 
-The **3-run mean** (± sd) is the Success Rate over all three runs. Query P1/P2 and
-Mgmt P1 are the phase rates on the 410 Query and 190 Management tasks; coins are the
-mean budget spent per Query task out of 17.86.
+3-run mean Success Rate (± sd): Opus 4.6 46.56 ± 0.86, Gemini 3.1 Pro 53.39 ± 0.59,
+Kimi 2.5 41.50 ± 1.04, GPT-5 43.94 ± 0.54. The spread is within the binomial standard
+error of a 600-task rate (about 2 points), as independent samples should be.
 
-Three further sweeps on the same protocol, models and stack — Grok 4.3, Nemotron 3
-Ultra and Gemini 3.1 Pro — are not part of this submission. They are in our results
-workbook, `AtScale_BIRD_Results_Workbook_2026-10.xlsx` in the shared folder, which has
-one tab per sweep (the four submitted ones included: per-database rates for each run,
-the best-of-3 row and the behaviour profile), a `Method` tab saying how every number
-was derived, and the modified-harness head-to-head scenario the white paper describes.
+Query P1/P2 and Mgmt P1 are the phase rates on the 410 Query and 190 Management tasks;
+coins are the mean budget spent per Query task out of 17.86. For GPT-5, run 3 has the
+highest Success Rate but run 2 the highest Query P1 (46.59 against 45.37); we mark run
+3 by the rule above, and all three runs are in the bundle if you apply another.
+
+Gemini 3.1 Pro has no board entry of its own; the other three do. Per-database rates for
+every run, and the same runs set against our earlier memory-on sweeps of the same
+models, are in the results workbook, `AtScale_BIRD_Results_Workbook_2026-11_memory_off.xlsx`
+in the shared folder: one tab per model plus a `README` tab.
 
 ## What the system is
 
@@ -93,59 +89,72 @@ database.
 A **set operation** is not dispatched as one engine query: the engine runs it branch
 by branch and applies the statement's `ORDER BY` to the concatenated result. The
 export combines the branches with `UNION ALL` and reapplies the statement's own
-`ORDER BY`/`LIMIT` around them. All twelve runs were exported with that in place, so
-no row needed repairing afterwards.
+`ORDER BY`/`LIMIT` around them.
 
 Where the engine returned an error instead of executing, no outbound SQL exists; those
-rows (5 to 12 per run) fall back to the logical SQL, are flagged in `notes`, and will
-not execute on your evaluator. They score 0, which is what we recorded.
+rows fall back to the logical SQL, are flagged in `notes`, and will not execute on your
+evaluator. They score 0, which is what we recorded.
 
 **2. Management-category tasks run on raw PostgreSQL.** A semantic layer is read-only,
 so all 190 Management (WRITE) tasks route per task to the standard raw tools and the
 standard raw grading path inside the same run, with the same instruction the raw arm
 uses; only the 410 Query (READ) tasks use the semantic layer. Each row's `category`
 and `backend` say which path it took. This is also the control: Management P1 on the
-semantic-layer arm (3-run mean) against the same model's raw arm is Sonnet 45.44 vs
-44.74, Opus 40.88 vs 40.00, Kimi 38.42 vs 37.89, GPT-5 40.70 vs 41.05 — all within
-run-to-run noise on 190 tasks (binomial SE ≈ 3.6 points) — while Query P1 is 2.1 to
-2.4 times the raw arm's.
+semantic-layer arm (3-run mean) against the same model's raw arm is Opus 40.88 vs
+40.00, Gemini 48.77 vs 49.47, Kimi 40.18 vs 37.89, GPT-5 40.53 vs 41.05 — all within
+run-to-run noise on 190 tasks (binomial SE ≈ 3.6 points) — while Query P1 is 1.5 to
+2.2 times the raw arm's.
 
 **3. We re-graded our own submission and are quoting that number.** Every exported
 Query SQL was re-executed against a clone of each task's template database and
-re-graded under **upstream** rules; the Success Rate and Reward figures in both tables
-above are the result. Since 2026-10-01 (harness `8c39060`) our leaderboard-mode grader cleans
-`DISTINCT` exactly as `evaluation/src/eval_bird_interact.py` does — equal to your
-`remove_distinct` on all 1,288 gold statements in the dataset — so live and replayed
-verdicts now agree except for three rows across the twelve runs:
+re-graded under **upstream** rules; the Success Rate and Reward figures above are the
+result. Our leaderboard-mode grader cleans `DISTINCT` exactly as
+`evaluation/src/eval_bird_interact.py` does — equal to your `remove_distinct` on all
+1,288 gold statements in the dataset — so live and replayed verdicts agree except for
+15 of 7,200 rows across the twelve runs, each counted the way the replay scores it:
 
-- `cross_border_7` (Sonnet run 2): live pass, replay fail on both phases. The query
+- `crypto_exchange_9` (6 runs) and `sports_events_19` (3 runs): live fail, replay pass
+  on phase 1. `labor_certification_applications_3` (2 runs) and `virtual_idol_20`
+  (1 run): live fail, replay pass on phase 2. The exported SQL run on PostgreSQL
+  matches gold where the live comparison of engine-returned rows did not. Your
+  evaluator scores the SQL, so they count.
+- `cross_border_7` (2 runs): live pass, replay fail on both phases, and
+  `exchange_traded_funds_11` (1 run): live pass, replay fail on phase 1. The query
   takes a LIMIT over rows tied on its sort key, and the tie broke differently on a
-  fresh template. Counted as a fail.
-- `exchange_traded_funds_14` (Sonnet run 3, phase 2) and
-  `labor_certification_applications_3` (Kimi run 3, phase 2): live fail, replay pass.
-  The exported SQL run on PostgreSQL matches gold where the live comparison of
-  engine-returned rows did not. Your evaluator scores the SQL, so they count.
-- `museum_artifact_1` (Opus run 2, phase 2): live pass, replay fail — an export defect,
-  no outbound SQL was recorded for that phase. Counted as a fail.
+  fresh template. Counted as fails.
 
-Tasks that are order-sensitive on gold whose `ORDER BY` does not totally order its own
-result (57 of 410 Query tasks are marked `order=true` on such gold) can flip between
-executions for reasons unrelated to the submission; the first row above is one. We
-treat any deviation under 0.5 points as that instability rather than a finding.
+Each run's `*.summary.json` lists its own. Tasks that are order-sensitive on gold
+whose `ORDER BY` does not totally order its own result (57 of 410 Query tasks are
+marked `order=true` on such gold) can flip between executions for reasons unrelated to
+the submission. We treat any deviation under 0.5 points as that instability rather
+than a finding.
 
-**4. The three runs are sequential and not independent, and the memory learns from
-your grader.** Our MCP server carries state across tasks within a sweep: each
-submission is graded by the harness's copy of your evaluator against the task's gold
-SQL, and that pass or fail is recorded as the user's verdict on the query; one
-"correct" verdict certifies the query's shape, and certified shapes are shown to the
-agent on later tasks. So the memory learns from gold-graded outcomes — in run 1 from
-earlier tasks of the same sweep, and in runs 2 and 3 also from run 1's answers to the
-same 600 questions, which is why runs 2 and 3 score 3 to 6 points higher. The agent
-never sees gold SQL, results or test cases, only which of its own earlier queries were
-accepted. The store was emptied before run 1 of every sweep and the reset is logged
-beside the results (`*_feedback_reset.txt`: zeroed at 2026-10-04T05:55:51Z for Sonnet,
-10-04T17:01:53Z Kimi, 10-05T22:07:05Z GPT-5, 10-06T11:48:40Z Opus, and read empty again
-at launch). Option 1 (the cold run) is the figure with no carry-over.
+**4. Feedback memory was off, on both sides, in every run.** Our MCP server has a
+feedback memory: when it is on, the harness records each graded submission's pass or
+fail as the user's verdict and the server shows certified query shapes to the agent on
+later tasks. That is what you asked us to remove, and every run here has it off:
+
+- **The harness** ran with `FEEDBACK_MEMORY=false`, so it sends no verdicts. Each
+  results file records `feedback_memory: false` in its `deviations` block, and the
+  launcher checked every results file for it before accepting the run.
+- **The MCP server** ran with `ATSCALE_MCP_FEEDBACK_MEMORY=false`, which its
+  `/configz` endpoint reports and the launcher checked before every run. With it off
+  the server does not open the feedback store at all: it records nothing and serves no
+  certified shape or column track record.
+- **The store did not change.** We did not empty it first: it held rows from our
+  earlier work, and leaving them in place made the test stricter, since any write
+  would have changed the counts. The launcher read the row counts of all three store
+  tables (`exchange`, `feedback`, `certified_query`) before the first run and after
+  every invocation, and they never changed; during the Opus sweep the database's own
+  statistics also showed no reads of those tables. Each bundle's
+  `memoff_attestation.txt` carries the counts with timestamps.
+
+With nothing carried between tasks or runs, the three runs of each model are
+independent samples, and their spread is ordinary run-to-run noise. The agent never
+sees gold SQL, results or test cases. The MCP server's version string reads
+`3.0-bird-model-memory-22c9afa0`; "model memory" there is a different feature, which
+serves business context a semantic model declares in `ai_context` blocks. None of the
+22 models declares any, so it has nothing to serve.
 
 **5. The models were built against this public dataset, then cleaned of anything
 traceable to its gold.** Our 22 semantic models were generated from each database's
@@ -155,12 +164,15 @@ ambiguity terms), and tuned between 2026-08-18 and 09-09 against results on thes
 tasks, during which gold SQL was read to diagnose failures. On 2026-09-23 we audited
 every model for content that traced back to gold — answer values, verdict-shaped
 descriptions, masked cut-offs, logic present only in gold — and removed it; the models
-in this submission are that cleaned tree (`deployed-n3`), further revised to 10-02 on
-knowledge-base and trajectory evidence only. Nothing in your guidelines prohibits
-developing against Full, but it is a real difference from work that develops on Lite,
-and you should weigh it. The agent instruction is in the public fork at
-`BIRD-Interact-ADK/config/environment_backends.no_gold_930.yaml`; it includes one line
-added on 2026-10-02 telling the agent not to round in its submitted query.
+in this submission are that cleaned tree (tag `deployed-n3`, which the October runs
+used) plus one corrected description of a calculation (`deployed-memoff`, nothing that
+changes a query). Nothing in your guidelines prohibits developing against Full, but it
+is a real difference from work that develops on Lite, and you should weigh it. The
+agent instruction is in the public fork at
+`BIRD-Interact-ADK/config/environment_backends.no_gold_930.yaml`, the backend file every
+run selected; it includes one line telling the agent not to round in its submitted
+query. The branch also carries two unrelated backends (Databricks) added for other
+work; neither is selected in these runs.
 
 **6. Grading is yours, unmodified.** Our harness carries six optional comparison
 corrections we use for internal A/B work (case-insensitive text, column-order
@@ -177,57 +189,61 @@ the 600 tasks — the same value your board lists.
 
 **8. Failures we are not hiding.** A task the model crashed is scored as a **failure**,
 not excluded, so the rates above already carry them. Only genuine infrastructure
-errors — a provider outage or 5xx, a timed-out service call, a warehouse crash — were
-re-run, never a task the model itself failed; `error_classes.tsv` in each bundle lists
-every errored task, its underlying exception and which class it fell in. Model-caused
-crashes, all scored 0:
+errors — a provider outage or 5xx, a timed-out service call — were re-run, never a
+task the model itself failed; `error_classes.tsv` in each bundle lists every errored
+task, its underlying exception and which class it fell in. Model-caused crashes, all
+scored 0:
 
 | Model | Crashes / 1,800 | Cause |
 |---|---|---|
-| Claude-Sonnet-5 | 1 | called a tool that does not exist (`households_8`, run 3) |
-| Claude-Opus-4.6 | 3 | called tools that do not exist (`reverse_logistics_3`, `solar_panel_12`, `cross_border_18`) |
-| Kimi-2.5 | 17 | 12 tool calls whose arguments were not valid JSON; 5 conversations past the 262k-token context window |
-| GPT-5 | 3 | conversations past the 272k-token input limit |
+| Claude-Opus-4.6 | 0 | — |
+| Gemini-3.1-Pro | 0 | — |
+| Kimi-2.5 | 19 | 16 tool calls whose arguments were not valid JSON; 3 conversations past the 262k-token context window |
+| GPT-5 | 5 | conversations past the 272k-token input limit |
+
+Infrastructure re-runs: Opus 1 task and Gemini 6 tasks whose call to the agent service
+timed out, and one Kimi task with no model failure in the agent log.
 
 One task, `museum_artifact_2`, asks for a measure whose engine SQL grows to about
-12 GB on the warehouse; during the Opus sweep it got the warehouse's Postgres backend
-killed, which dropped every concurrent connection. The tasks it took down were re-run
-as infrastructure failures; `museum_artifact_2` itself is scored as a fail in every
-run of every model, and from the Opus sweep's run 3 on a watchdog cancelled any engine
-query on the warehouse running longer than 60 seconds so a runaway query errors
-instead of crashing the warehouse. The verification package ships the same watchdog.
+12 GB on the warehouse, enough to get the warehouse's Postgres backend killed. Every
+run ran with a watchdog that cancels any engine query on the warehouse running longer
+than 60 seconds, so that task errors instead of crashing the warehouse; it is scored
+as a fail in every run. The verification package ships the same watchdog.
 
 The raw-arm control runs the lifts in the bundles are measured against were not re-run;
-each model's existing raw run (2026-09-15 to 09-18) was re-graded under the current
-rules.
+each model's existing raw run (2026-09-15 to 09-18; Gemini 3.1 Pro 10-07) was re-graded
+under the current rules.
 
-**9. Why this replaces the September submission.** The runs we prepared in September
-were produced on models that still carried gold-traceable content (§5) and graded with
-a `DISTINCT` cleaning that was 1.2 to 2.0 Success Rate points more generous to the
-semantic-layer arm than yours (§3). Both are fixed here, and every scenario was re-run
-from a cold store on the cleaned models under the exact upstream grader. For the
-record, the September runs re-graded under the current rules read Query P1 Sonnet 52.93,
-Opus 50.73, Kimi 51.22, GPT-5 49.02; the runs submitted here read 56.59, 53.66, 49.27
-and 50.49.
+**9. Why this replaces the October submission.** On 2026-11-08 you told us neither
+October option could be listed: the memory reused gold-graded verdicts across tasks
+(Option 1, even within run 1) and across runs (Option 2). Every scenario here was re-run
+from scratch with the memory off on both sides (§4). We also dropped Claude Sonnet 5
+from the submission and added Gemini 3.1 Pro, and moved to the current engine and MCP
+builds; the models changed by one description. For the record, the October runs read
+Success Rate 44.17 / 47.83 / 49.50 for Opus 4.6, 40.83 / 43.33 / 46.17 for Kimi 2.5 and
+43.00 / 47.17 / 47.67 for GPT-5, rising run over run as the memory learned; the memory-off
+runs above are flat.
 
 ## Files
 
-One bundle per model, `BIRD_leaderboard_submission_AtScale_<Model>_results_<date>.zip`:
+One bundle per model, `BIRD_leaderboard_submission_AtScale_<Model>_memoff_results_<date>.zip`:
 
 | File | Contents |
 |---|---|
-| `leaderboard_<model>_<date>_nogold930_rep{1,2,3}_merged.jsonl` | **The submission.** 600 rows per run: `instance_id`, both predicted SQL fields, `prompt_flow` (every prompt, response, action, `action_cost`, `remaining_budget`, per-turn token counts), plus `category`, `backend`, `local_verdict` (live), `validated_verdict` (our replay) and any `notes` |
+| `leaderboard_<model>_<date>_memoff_rep{1,2,3}_merged.jsonl` | **The submission.** 600 rows per run: `instance_id`, both predicted SQL fields, `prompt_flow` (every prompt, response, action, `action_cost`, `remaining_budget`, per-turn token counts), plus `category`, `backend`, `local_verdict` (live), `validated_verdict` (our replay) and any `notes` |
 | `*.summary.json` | Per-run totals, category split, the replay (`validated`) block |
-| `<model>_run{1_cold,2_warm,3_warm}.json`, `<model>_raw_n1.json` | The harness's full run records, and the re-graded raw-arm control |
-| `RESULTS.md` | The per-run table, lift, memory, errors and every disclosure specific to that sweep |
+| `<model>_run{1,2,3}.json`, `<model>_raw_n1.json` | The harness's full run records, and the re-graded raw-arm control |
+| `memoff_attestation.txt` | The memory-off checks: images, `/configz`, harness setting, store row counts after every invocation |
+| `RESULTS.md` | The per-run table, lift, the memory-on comparison, errors and every disclosure specific to that sweep |
 | `error_classes.tsv` | Every errored task with its exception and class |
 
-Beside the bundles in the shared folder: this file, `VERIFY.md` and the Tier 1
-verification assets (Reproducing, below), the models repository zip, and the white
-paper `AtScale_BIRD_Semantic_Layer_Benchmark_WhitePaper_2026-10.pdf` (draft v0.1), the
-full study behind this submission. The paper also covers three further models and a
-modified-harness scenario that are not part of it:
-https://drive.google.com/file/d/1Q-9T7V18bhKyjbZzRA-ozPfdpynsB_tv/view
+`merged` means a run's task set was assembled from one base pass plus re-runs of tasks
+that hit infrastructure errors, never of tasks the model itself failed.
+
+Beside the bundles in the shared folder: this file, `VERIFY.md`, the Tier 1
+verification assets (Reproducing, below), the models repository zip, and the results
+workbook. The white paper we shared in October describes the earlier memory-on runs and
+is not part of this submission.
 
 Where your evaluator disagrees with either verdict, yours is correct and we would like
 to know.
@@ -235,10 +251,12 @@ to know.
 ## Reproducing
 
 The harness is the public fork above, run with `LEADERBOARD_MODE=true`, the single
-switch that disables every deviation described here. The models repository, supplied
-as a zip, carries a fully self-hosted offline verification package (`verification/`,
-`VERIFY.md`): one command, everything runs on your machine, nothing contacts AtScale.
-It has two tiers — a deterministic replay that re-executes our submitted SQL on your
-warehouse and re-grades upstream (no API key needed), and an optional full re-run of
-the pipeline against a band declared in advance. The Tier 1 assets are in the shared
-folder; the Tier 2 image bundle (~3 GB) is supplied on request.
+switch that disables every grading deviation described here, and `FEEDBACK_MEMORY=false`.
+The models repository, supplied as a zip, carries a fully self-hosted offline
+verification package (`verification/`, `VERIFY.md`, tag `verify-2026-11-memoff`): one
+command, everything runs on your machine, nothing contacts AtScale. It has two tiers —
+a deterministic replay that re-executes our submitted SQL on your warehouse and
+re-grades upstream (no API key needed), and an optional full re-run of the pipeline,
+with memory off on both sides and asserted so before and after, against a band
+declared in advance. The Tier 1 assets are in the shared folder; the Tier 2 image
+bundle (~3 GB) is supplied on request.
