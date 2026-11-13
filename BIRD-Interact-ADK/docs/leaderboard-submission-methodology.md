@@ -3,20 +3,21 @@
 Submission from AtScale, re-run with **feedback memory off** as the BIRD team asked on
 2026-11-08. Everything below is stated so the result can be checked or contested
 without taking anything on trust. This submission replaces the one we sent on
-2026-10-12, which offered two memory-on figures (§9).
+2026-10-12, which offered two memory-on figures (§9). A fifth model, Claude Sonnet 5, was run the same way on
+2026-11-12 and added on 2026-11-13.
 
 | | |
 |---|---|
 | Split / mode | BIRD-Interact-Full, 600 tasks, a-Interact, stress mode (budget-constrained, Universal Cost Scheme) |
-| Agent models | four, listed below |
-| User simulator | `claude-haiku-4-5-20251001` (three models) and `gpt-4o` (GPT-5), **your prompts and token limits, unmodified** |
+| Agent models | five, listed below |
+| User simulator | `claude-haiku-4-5-20251001` (four models) and `gpt-4o` (GPT-5), **your prompts and token limits, unmodified** |
 | Efficiency (budget) | 17.86 average, matching the value listed for every Full a-Interact entry |
 | Feedback memory | **off**: `FEEDBACK_MEMORY=false` in the harness, `ATSCALE_MCP_FEEDBACK_MEMORY=false` on the MCP server, for every run (§4) |
 | Runs | 3 per model, all 600 tasks, all included, independent of each other; concurrency 10 |
-| Harness | public fork: github.com/dave-mariani-atscale/BIRD-Interact, branch `feature/bird-memoff-reruns`, commit `669dcf1` (Opus 4.6: `74b3358`, one commit earlier; `669dcf1` adds only an offline packaging script) |
+| Harness | public fork: github.com/dave-mariani-atscale/BIRD-Interact, branch `feature/bird-memoff-reruns`, commit `669dcf1` (Opus 4.6: `74b3358`, one commit earlier; `669dcf1` adds only an offline packaging script. Sonnet 5: `d1d954f`, which adds only this document) |
 | Semantic models | `bird-atscale-models` at tag `deployed-memoff` (`3967b1a9`), supplied as a zip of the repository |
 | Semantic engine / MCP server | AtScale engine develop `42.0.0-2665` (image `sha256:4391ea45…`), MCP server `22c9afa0` (image `sha256:e2185a40…`) |
-| Dates | 2026-11-09 to 2026-11-11 |
+| Dates | 2026-11-09 to 2026-11-12 |
 | Contact | dave@atscale.com |
 
 ## Results
@@ -43,6 +44,9 @@ the Claude-Haiku-4-5 rows.
 | Gemini-3.1-Pro | Claude-Haiku-4-5 | **1 (best)** | **54.00** | **46.45** | 54.17 | 46.62 | 55.85 | 32.93 | 50.00 | 17.18 |
 | | | 2 | 53.33 | 45.83 | 53.50 | 46.00 | 55.85 | 32.68 | 47.89 | 17.26 |
 | | | 3 | 52.83 | 45.23 | 52.67 | 45.07 | 54.88 | 30.73 | 48.42 | 17.23 |
+| Claude-Sonnet-5 | Claude-Haiku-4-5 | 1 | 47.83 | 42.63 | 47.83 | 42.53 | 48.29 | 32.44 | 46.84 | 16.29 |
+| | | 2 | 46.83 | 41.83 | 46.83 | 41.88 | 48.78 | 32.93 | 42.63 | 16.20 |
+| | | **3 (best)** | **49.00** | **43.45** | 48.83 | 43.33 | 50.98 | 33.66 | 44.74 | 16.19 |
 | Kimi-2.5 | Claude-Haiku-4-5 | **1 (best)** | **42.33** | **36.08** | 42.33 | 36.08 | 43.41 | 23.66 | 40.00 | 17.11 |
 | | | 2 | 40.33 | 34.23 | 40.33 | 34.23 | 40.49 | 22.44 | 40.00 | 17.08 |
 | | | 3 | 41.83 | 35.68 | 41.50 | 35.45 | 42.44 | 24.63 | 40.53 | 17.01 |
@@ -51,7 +55,7 @@ the Claude-Haiku-4-5 rows.
 | | | **3 (best)** | **44.33** | **38.78** | 44.17 | 38.67 | 45.37 | 27.07 | 42.11 | 15.83 |
 
 3-run mean Success Rate (± sd): Opus 4.6 46.56 ± 0.86, Gemini 3.1 Pro 53.39 ± 0.59,
-Kimi 2.5 41.50 ± 1.04, GPT-5 43.94 ± 0.54. The spread is within the binomial standard
+Kimi 2.5 41.50 ± 1.04, GPT-5 43.94 ± 0.54, Sonnet 5 47.89 ± 1.08. The spread is within the binomial standard
 error of a 600-task rate (about 2 points), as independent samples should be.
 
 Query P1/P2 and Mgmt P1 are the phase rates on the 410 Query and 190 Management tasks;
@@ -59,7 +63,7 @@ coins are the mean budget spent per Query task out of 17.86. For GPT-5, run 3 ha
 highest Success Rate but run 2 the highest Query P1 (46.59 against 45.37); we mark run
 3 by the rule above, and all three runs are in the bundle if you apply another.
 
-Gemini 3.1 Pro has no board entry of its own; the other three do. Per-database rates for
+Gemini 3.1 Pro and Claude Sonnet 5 have no board entry of their own; the other three do. Per-database rates for
 every run, and the same runs set against our earlier memory-on sweeps of the same
 models, are in the results workbook, `AtScale_BIRD_Results_Workbook_2026-11_memory_off.xlsx`
 in the shared folder: one tab per model plus a `README` tab.
@@ -95,13 +99,23 @@ Where the engine returned an error instead of executing, no outbound SQL exists;
 rows fall back to the logical SQL, are flagged in `notes`, and will not execute on your
 evaluator. They score 0, which is what we recorded.
 
+**Capture repair, Claude Sonnet 5 only.** The outbound SQL is fetched from the engine at
+grading time, keyed by the engine's id for the graded execution. In the Sonnet 5 sweep four
+of those fetches timed out (three within the first minute of run 1, when the engine was
+cold after a restart, and one in run 2), leaving `solar_panel_7`, `_8` and `_10` (run 1)
+and `museum_artifact_13` (run 2) with logical SQL in the export. After the sweep we repeated
+the same fetch for the same ids, recorded what the engine returned, and re-exported and
+re-replayed runs 1 and 2. No verdict, agent action or agent SQL changed; the replay of
+run 1 rose from 47.50 to 47.83, its live figure. Run 3, the best run, needed no repair.
+The recovered steps carry `outbound_sql_backfilled: true` in the run records.
+
 **2. Management-category tasks run on raw PostgreSQL.** A semantic layer is read-only,
 so all 190 Management (WRITE) tasks route per task to the standard raw tools and the
 standard raw grading path inside the same run, with the same instruction the raw arm
 uses; only the 410 Query (READ) tasks use the semantic layer. Each row's `category`
 and `backend` say which path it took. This is also the control: Management P1 on the
 semantic-layer arm (3-run mean) against the same model's raw arm is Opus 40.88 vs
-40.00, Gemini 48.77 vs 49.47, Kimi 40.18 vs 37.89, GPT-5 40.53 vs 41.05 — all within
+40.00, Gemini 48.77 vs 49.47, Kimi 40.18 vs 37.89, GPT-5 40.53 vs 41.05, Sonnet 44.74 vs 44.74 — all within
 run-to-run noise on 190 tasks (binomial SE ≈ 3.6 points) — while Query P1 is 1.5 to
 2.2 times the raw arm's.
 
@@ -111,14 +125,17 @@ re-graded under **upstream** rules; the Success Rate and Reward figures above ar
 result. Our leaderboard-mode grader cleans `DISTINCT` exactly as
 `evaluation/src/eval_bird_interact.py` does — equal to your `remove_distinct` on all
 1,288 gold statements in the dataset — so live and replayed verdicts agree except for
-15 of 7,200 rows across the twelve runs, each counted the way the replay scores it:
+20 of 9,000 rows across the fifteen runs, each counted the way the replay scores it:
 
-- `crypto_exchange_9` (6 runs) and `sports_events_19` (3 runs): live fail, replay pass
-  on phase 1. `labor_certification_applications_3` (2 runs) and `virtual_idol_20`
+- `crypto_exchange_9` (6 runs) and `sports_events_19` (5 runs): live fail, replay pass
+  on phase 1. `labor_certification_applications_3` (3 runs) and `virtual_idol_20`
   (1 run): live fail, replay pass on phase 2. The exported SQL run on PostgreSQL
   matches gold where the live comparison of engine-returned rows did not. Your
   evaluator scores the SQL, so they count.
-- `cross_border_7` (2 runs): live pass, replay fail on both phases, and
+- `sports_events_11` (Sonnet 5 run 1): live fail, replay pass on phase 2. The agent
+  answered both phases with constant-only SQL (`SELECT 0.35 * 0.25 * 100 ...`), so the
+  engine dispatched nothing and the export carries that SQL, which runs on PostgreSQL.
+- `cross_border_7` (3 runs): live pass, replay fail on both phases, and
   `exchange_traded_funds_11` (1 run): live pass, replay fail on phase 1. The query
   takes a LIMIT over rows tied on its sort key, and the tie broke differently on a
   fresh template. Counted as fails.
@@ -200,15 +217,18 @@ scored 0:
 | Gemini-3.1-Pro | 0 | — |
 | Kimi-2.5 | 19 | 16 tool calls whose arguments were not valid JSON; 3 conversations past the 262k-token context window |
 | GPT-5 | 5 | conversations past the 272k-token input limit |
+| Claude-Sonnet-5 | 2 | calls to tools that do not exist (`execate_sql`, `get_knowledge_defination`) |
 
 Infrastructure re-runs: Opus 1 task and Gemini 6 tasks whose call to the agent service
-timed out, and one Kimi task with no model failure in the agent log.
+timed out, one Kimi task with no model failure in the agent log, and three Sonnet 5
+museum_artifact tasks in run 2 whose tool calls failed while the warehouse was overloaded.
 
 One task, `museum_artifact_2`, asks for a measure whose engine SQL grows to about
 12 GB on the warehouse, enough to get the warehouse's Postgres backend killed. Every
 run ran with a watchdog that cancels any engine query on the warehouse running longer
 than 60 seconds, so that task errors instead of crashing the warehouse; it is scored
-as a fail in every run. The verification package ships the same watchdog.
+as a fail in every run and is never re-run (one omission: the Opus 4.6 sweep re-ran it once
+in run 2, where it failed again). The verification package ships the same watchdog.
 
 The raw-arm control runs the lifts in the bundles are measured against were not re-run;
 each model's existing raw run (2026-09-15 to 09-18; Gemini 3.1 Pro 10-07) was re-graded
@@ -217,10 +237,10 @@ under the current rules.
 **9. Why this replaces the October submission.** On 2026-11-08 you told us neither
 October option could be listed: the memory reused gold-graded verdicts across tasks
 (Option 1, even within run 1) and across runs (Option 2). Every scenario here was re-run
-from scratch with the memory off on both sides (§4). We also dropped Claude Sonnet 5
-from the submission and added Gemini 3.1 Pro, and moved to the current engine and MCP
+from scratch with the memory off on both sides (§4). We also added Gemini 3.1 Pro, re-ran
+Claude Sonnet 5 memory-off on 2026-11-12 (we had left it out of the 2026-11-11 reply), and moved to the current engine and MCP
 builds; the models changed by one description. For the record, the October runs read
-Success Rate 44.17 / 47.83 / 49.50 for Opus 4.6, 40.83 / 43.33 / 46.17 for Kimi 2.5 and
+Success Rate 48.17 / 51.50 / 53.83 for Sonnet 5, 44.17 / 47.83 / 49.50 for Opus 4.6, 40.83 / 43.33 / 46.17 for Kimi 2.5 and
 43.00 / 47.17 / 47.67 for GPT-5, rising run over run as the memory learned; the memory-off
 runs above are flat.
 
@@ -242,8 +262,9 @@ that hit infrastructure errors, never of tasks the model itself failed.
 
 Beside the bundles in the shared folder: this file, `VERIFY.md`, the Tier 1
 verification assets (Reproducing, below), the models repository zip, and the results
-workbook. The white paper we shared in October describes the earlier memory-on runs and
-is not part of this submission.
+workbook. The white paper (`AtScale_BIRD_Semantic_Layer_Benchmark_WhitePaper_2026-11.pdf`)
+is background: its analysis is built on memory-on runs, and the memory-off runs submitted
+here appear in its own tables.
 
 Where your evaluator disagrees with either verdict, yours is correct and we would like
 to know.
@@ -258,5 +279,7 @@ command, everything runs on your machine, nothing contacts AtScale. It has two t
 a deterministic replay that re-executes our submitted SQL on your warehouse and
 re-grades upstream (no API key needed), and an optional full re-run of the pipeline,
 with memory off on both sides and asserted so before and after, against a band
-declared in advance. The Tier 1 assets are in the shared folder; the Tier 2 image
+declared in advance. The Tier 1 assets are in the shared folder and cover the four models
+submitted on 2026-11-11; Claude Sonnet 5 can be replayed from its bundle, and we will add it
+to the package on request; the Tier 2 image
 bundle (~3 GB) is supplied on request.
