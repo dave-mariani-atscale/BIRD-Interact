@@ -17,6 +17,9 @@ ADK_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARM="${1:?usage: deploy_models_arm.sh <srv|dg|b2> \"<model name>\"}"
 MODEL_NAME="${2:?usage: deploy_models_arm.sh <srv|dg|b2> \"<model name>\"}"
 MODELS_DIR="$HOME/go/src/github.com/diannewood/bird-models-$ARM"
+# comodel arm (plans/comodel-bird-eval in AtScaleInc/mcp) lives in an AtScaleInc worktree.
+[ "$ARM" = comodel ] && MODELS_DIR="$HOME/go/src/github.com/AtScaleInc/bird-atscale-models-comodel"
+[ "$ARM" = comodel_kb ] && MODELS_DIR="$HOME/go/src/github.com/AtScaleInc/bird-atscale-models-comodel-kb"
 V12_UTIL="$HOME/go/src/github.com/diannewood/bird-models-v12/utilities"
 CATALOG="bird_models_$ARM"
 

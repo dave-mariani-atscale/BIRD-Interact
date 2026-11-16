@@ -433,6 +433,18 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_noq
         table: Labor Certification Applications NoQ
+      fake_account:
+        catalog: atscale_catalogs
+        schema: bird_models_noq
+        table: Fake Account NoQ
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_models_noq
+        table: Museum Artifact NoQ
+      crypto_exchange:
+        catalog: atscale_catalogs
+        schema: bird_models_noq
+        table: Crypto Exchange NoQ
 
   # ng930: AtScaleInc/bird-atscale-models branch no-gold-930-logic (the no-gold tuned models re-authored
   # under the 09-30 cheating rules), deployed beside main as catalog bird_atscale_models_catalog_ng930
@@ -638,3 +650,43 @@ backends:
         catalog: atscale_catalogs
         schema: bird_models_taocm
         table: Retail Ops AOCM
+  # CoModel arm (AtScaleInc/mcp plans/comodel-bird-eval, 2026-11-05): models built by the
+  # comodel CLI + atscale-comodel plugin (canary-comodel b9633ba4), no task questions.
+  atscale_comodel:
+    <<: *atscale
+    domains:
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel
+        table: Labor Certification Applications CoModel
+      fake_account:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel
+        table: Fake Account CoModel
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel
+        table: Museum Artifact CoModel
+      crypto_exchange:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel
+        table: Crypto Exchange CoModel
+  atscale_comodel_kb:
+    <<: *atscale
+    domains:
+      labor_certification_applications:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel_kb
+        table: Labor Certification Applications CoModel KB
+      fake_account:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel_kb
+        table: Fake Account CoModel KB
+      museum_artifact:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel_kb
+        table: Museum Artifact CoModel KB
+      crypto_exchange:
+        catalog: atscale_catalogs
+        schema: bird_models_comodel_kb
+        table: Crypto Exchange CoModel KB
