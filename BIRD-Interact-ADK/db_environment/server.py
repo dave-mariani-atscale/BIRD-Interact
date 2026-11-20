@@ -250,6 +250,30 @@ def _run_query_via_databricks(query: str, domain: dict):
     return res.rows, res.statement_id, None
 
 
+def _run_query_via_snowflake(query: str, domain: dict):
+    """Execute a submitted Snowflake statement on the warehouse (backend config `executor:
+    snowflake`), with the domain's database and schema as defaults and as the role the backend
+    names (`role`, `token_env`), so a submission is graded with the grants the Cortex agent
+    had. Returns (typed rows, statement handle, error_text)."""
+    from shared.snowflake_sql import SnowflakeSQLError, client_for
+    refusal = _read_only_refusal(query, domain.get("dialect") or "snowflake")
+    if refusal:
+        return None, None, refusal
+    try:
+        res = client_for(domain).execute(query, database=domain.get("catalog"), schema=domain.get("schema"))
+    except SnowflakeSQLError as e:
+        return None, None, str(e)
+    except Exception as e:  # noqa: BLE001
+        return None, None, f"{type(e).__name__}: {e}"
+    if res.error:
+        return None, res.statement_id, res.error
+    return res.rows, res.statement_id, None
+
+
+def _run_query_via_warehouse(query: str, domain: dict, executor: str):
+    return _run_query_via_snowflake(query, domain) if executor == "snowflake" else _run_query_via_databricks(query, domain)
+
+
 def _fetch_outbound_sql(query_id: str) -> Optional[List[str]]:
     """The Postgres statements the engine dispatched for `query_id`, via the MCP
     server's get_outbound_queries, or None if they cannot be fetched. Leaderboard
@@ -363,7 +387,7 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                     logger.warning("submit rejected for task %s (wrong model): %s",
                                    req_task_id, pred_sql_text)
                     message = f"[exec_err_flg] {violation}"
-                    if get_backend_config(backend).get("executor") == "databricks":
+                    if get_backend_config(backend).get("executor") in ("databricks", "snowflake"):
                         # A routing miss (Genie One sees the whole workspace in scenario 3):
                         # audited, unexecuted, so the routing split counts it.
                         record_graded_submission(
@@ -372,12 +396,13 @@ def _submit_sql_sync(req_task_id, req_sql, td, _submit_attempts, _successful_pha
                             backend=backend, passed=False, rejected="other_database",
                             pred_sql=pred_sql_text, grading_regime=settings.grading_regime,
                             objects_read=objects_read(pred_sql_text, domain))
-                elif get_backend_config(backend).get("executor") == "databricks":
-                    # Databricks backends: the submitted statement runs on the SQL
-                    # warehouse and its typed rows are compared like the MCP path's.
-                    pred_res, graded_query_id, dbx_err = _run_query_via_databricks(pred_sql_text, domain)
+                elif get_backend_config(backend).get("executor") in ("databricks", "snowflake"):
+                    # Warehouse backends (Databricks, Snowflake): the submitted statement runs on
+                    # the vendor's warehouse and its typed rows are compared like the MCP path's.
+                    executor = get_backend_config(backend).get("executor")
+                    pred_res, graded_query_id, dbx_err = _run_query_via_warehouse(pred_sql_text, domain, executor)
                     if dbx_err:
-                        message = f"[exec_err_flg] Error executing submitted query on Databricks: {dbx_err}"
+                        message = f"[exec_err_flg] Error executing submitted query on {executor.capitalize()}: {dbx_err}"
                     else:
                         outbound_sql = [pred_sql_text]
                         try:

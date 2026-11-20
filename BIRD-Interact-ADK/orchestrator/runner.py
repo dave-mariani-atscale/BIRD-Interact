@@ -586,7 +586,19 @@ def main():
                              "(Genie One on raw data, no Metric Views), 2 / genie-one-genie-views (Genie One + "
                              "Genie-generated Metric Views), 3 / genie-one-atscale-views (Genie One + "
                              "AtScale-generated Metric Views). See shared.environment_backends.DATABRICKS_SCENARIOS.")
+    parser.add_argument("--snowflake-scenario", type=str, default=None,
+                        help="Snowflake comparison scenario, overriding --backend: 1 / cortex-sense-raw "
+                             "(Cortex Sense on raw data, no Semantic Views), 2 / cortex-sense-coco-views (Cortex "
+                             "Sense + Cortex Code-generated Semantic Views), 3 / cortex-sense-atscale-views (Cortex "
+                             "Sense + AtScale-generated Semantic Views). See shared.environment_backends.SNOWFLAKE_SCENARIOS.")
     args = parser.parse_args()
+    if args.snowflake_scenario:
+        from shared.environment_backends import SNOWFLAKE_SCENARIO_LABELS, resolve_snowflake_scenario
+        try:
+            args.backend = resolve_snowflake_scenario(args.snowflake_scenario)
+        except ValueError as e:
+            parser.error(str(e))
+        logger.info("%s -> backend %s", SNOWFLAKE_SCENARIO_LABELS[args.backend], args.backend)
     if args.databricks_scenario:
         from shared.environment_backends import DATABRICKS_SCENARIO_LABELS, resolve_databricks_scenario
         try:

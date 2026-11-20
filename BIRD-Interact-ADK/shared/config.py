@@ -192,6 +192,11 @@ class Settings(BaseSettings):
     databricks_host: str = ""
     databricks_token: str = ""
     databricks_warehouse_id: str = ""
+    # Snowflake backends (`executor: snowflake`): the account host (https://<org>-<account>.
+    # snowflakecomputing.com) and the warehouse the Cortex agent and the grader both use. Roles and
+    # tokens are per backend (`role`, `token_env` in its config block; shared/snowflake_auth.py).
+    snowflake_host: str = ""
+    snowflake_warehouse: str = ""
 
     # ── Grading corrections (unconditional, both arms) ──
     # Four corrections to upstream BIRD-Interact's comparison are applied on
