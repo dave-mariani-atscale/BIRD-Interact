@@ -137,6 +137,17 @@ def get_domain_config(backend_name: str, selected_database: str) -> Dict[str, st
     return domain
 
 
+def _table_refs(statement):
+    """The statement's table references, minus the wrapper sqlglot puts around Snowflake's
+    SEMANTIC_VIEW(<view> METRICS ... DIMENSIONS ...): an unnamed Table whose `this` is the
+    SemanticView. The view itself is the qualified Table inside it, which is still returned."""
+    sv = getattr(exp, "SemanticView", None)
+    for tbl in statement.find_all(exp.Table):
+        if sv is not None and isinstance(tbl.this, sv):
+            continue
+        yield tbl
+
+
 def _lister(domain: Dict[str, str]):
     """(objects, views_kind): `objects(catalog, schema, kind)` lists a schema's objects as the domain's
     principal on its engine; `views_kind` is that engine's name for its semantic objects."""
@@ -184,7 +195,7 @@ def query_domain_violation(query: str, domain: Dict[str, str]) -> Optional[str]:
     want_table = domain.get("table", "").casefold()
     want_catalog = domain.get("catalog", "").casefold()
 
-    for tbl in statement.find_all(exp.Table):
+    for tbl in _table_refs(statement):
         schema = tbl.text("db")
         if not schema:
             continue
@@ -239,7 +250,7 @@ def _schema_domain_violation(statement, domain: Dict[str, str]) -> Optional[str]
     kind = views_kind if domain["objects"] == "metric_views" else "table"
     if views_catalog:
         kind = f"table or {views_kind}"
-    for tbl in statement.find_all(exp.Table):
+    for tbl in _table_refs(statement):
         name = tbl.name.casefold()
         schema = tbl.text("db").casefold()
         catalog = tbl.text("catalog").casefold()
@@ -292,7 +303,7 @@ def objects_read(query: str, domain: Dict[str, str]) -> Optional[Dict[str, List[
     want_schema = domain.get("schema", "").casefold()
     want_catalog = domain.get("catalog", "").casefold()
     out: Dict[str, set] = {"metric_views": set(), "base_tables": set(), "elsewhere": set()}
-    for tbl in statement.find_all(exp.Table):
+    for tbl in _table_refs(statement):
         name, schema, catalog = tbl.name.casefold(), tbl.text("db").casefold(), tbl.text("catalog").casefold()
         if (not schema and name in ctes) or schema == "information_schema":
             continue

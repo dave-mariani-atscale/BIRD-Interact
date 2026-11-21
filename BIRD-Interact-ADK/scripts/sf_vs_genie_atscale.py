@@ -92,7 +92,10 @@ def main():
                 print("Newly complete:", ", ".join(sorted(k.split(":", 1)[1] for k in new)), f"({label})\n")
                 break
             parts = label.split()               # "repetition k of n"
-            if parts[1] == parts[-1] and "Done! Tasks" in log.read_text(errors="replace")[-3000:]:
+            text = log.read_text(errors="replace")
+            last_rep = list(REP.finditer(text))
+            tail = text[last_rep[-1].end():] if last_rep else text
+            if parts[1] == parts[-1] and "Done! Tasks" in tail:
                 print("Run finished.\n"); break
             time.sleep(60)
         a.by_db = True

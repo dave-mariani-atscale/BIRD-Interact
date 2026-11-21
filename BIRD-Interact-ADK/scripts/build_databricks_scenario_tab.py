@@ -69,6 +69,25 @@ SCENARIOS = {   # consolidated 2026-11-08: the three Genie One scenarios (retire
           "Genie wrote. Genie runs as the workspace owner, so it may fall back to base tables; that is "
           "allowed and recorded."),
 }
+SNOWFLAKE_SCENARIOS = {
+    "sf1": ("Cortex Sense on raw data (no semantic views)", "sf_cortex_sense_raw", "BIRD_S1",
+            "BIRD_SENSE.CONTEXTS.BIRD_BENCH_<DB> (the tables, comments, keys and query history of BIRD_BENCH.<DB>)",
+            "whose grants cover the 244 base tables of BIRD_BENCH and no semantic view in the BIRD databases"),
+    "sf2": ("Cortex Sense + CoCo-authored semantic views", "sf_cortex_sense_coco_views", "BIRD_S2",
+            "BIRD_SENSE.CONTEXTS.BIRD_BENCH_<DB>_COCO (the tables of BIRD_BENCH.<DB>, the semantic views of "
+            "BIRD_SENSE.COCO_<DB>, and query history on both)",
+            "whose grants cover the 244 base tables of BIRD_BENCH and the 83 semantic views Cortex Code authored in "
+            "BIRD_SENSE.COCO_<DB> from the base tables, the knowledge base and the gold-free task questions"),
+    "sf3": ("Cortex Sense + AtScale-generated semantic views", "sf_cortex_sense_atscale_views", "BIRD_S3",
+            "BIRD_SENSE.CONTEXTS.BIRD_BENCH_<DB>_ATSCALE", "whose grants cover the base tables and the AtScale-derived semantic views"),
+}
+for _k, (_label, _backend, _role, _ctx, _grants) in SNOWFLAKE_SCENARIOS.items():
+    SCENARIOS[_k] = (_label, _backend,
+        f"The BIRD agent (Sonnet 5) hands every question to a Cortex Agent (ask_cortex; orchestration model auto) whose "
+        f"one tool is Cortex Sense bound to the database's context {_ctx}, running as role {_role}, {_grants} "
+        "(verified before every run). ask_cortex 1 coin, 0.5 when Cortex runs no successful query.")
+SNOWFLAKE = tuple(v[1] for v in SNOWFLAKE_SCENARIOS.values())
+CORTEX_SECS_RE = re.compile(r"# Cortex's answer \(([0-9.]+)s\)")
 GENIE_ONE = ("dbx_genie_ontology", "dbx_genie_ontology_no_mv", "dbx_genie_ontology_genie_mv")
 #: The backend whose domains route_of classifies against (set per tab: scenario 2's views live in
 #: bird_genie_mv.<db>, which only its domains know about).
@@ -114,6 +133,9 @@ def per_db(results, backend):
             res = str(t.get("result") or "")
             if backend == "dbx_metric_views" and t.get("tool") == "run_query":
                 a["queries"] += 1
+                a["errors"] += res.lstrip().startswith("Error")
+            elif backend in SNOWFLAKE and t.get("tool") == "ask_cortex":
+                a["queries"] += len(SQL_BLOCK_RE.findall(res))
                 a["errors"] += res.lstrip().startswith("Error")
             elif backend != "dbx_metric_views" and t.get("tool") == "ask_genie":
                 m = QUERIES_RE.search(res)
@@ -174,7 +196,7 @@ def task_routes(r):
                 phase, ok = int(m.group(1) or m.group(2)), bool(m.group(2))
                 sql = (t.get("args") or {}).get("sql", "")
                 subs[phase].append((sql, ok, "Query rejected" in res and "references" in res))
-        elif t.get("tool") == "ask_genie":
+        elif t.get("tool") in ("ask_genie", "ask_cortex"):
             blocks = SQL_BLOCK_RE.findall(res)
             turns.append(route_of(blocks[-1], db) if blocks else "none")
     out = []
@@ -277,9 +299,9 @@ def add_routing_section(ws, src, runs, at_runs, max_runs=3):
             a["p1"] += float(r.get("phase1_elapsed_seconds") or 0)
             a["p2"] += float(r.get("phase2_elapsed_seconds") or 0)
             for x in r.get("tool_trajectory") or []:
-                if x.get("tool") == "ask_genie":
+                if x.get("tool") in ("ask_genie", "ask_cortex"):
                     a["calls"] += 1
-                    m = GENIE_SECS_RE.search(str(x.get("result") or ""))
+                    m = (CORTEX_SECS_RE if x.get("tool") == "ask_cortex" else GENIE_SECS_RE).search(str(x.get("result") or ""))
                     a["gsecs"] += float(m.group(1)) if m else 0.0
         return t
     go_t = [per_run_times(r) for r in runs]
@@ -424,8 +446,8 @@ def build_tab(wb, src, name, scen, results_glob, at_runs, unsolv):
     ws[f"BG{ALL}"] = f"=SUMPRODUCT(BE{FIRST}:BE{LAST},C{FIRST}:C{LAST})/SUM(S{FIRST}:S{LAST})"
     ws[f"AZ{ALL}"] = f"=SUMPRODUCT(AZ{FIRST}:AZ{LAST},$C${FIRST}:$C${LAST})/SUM($C${FIRST}:$C${LAST})"
     global ROUTE_BACKEND
-    ROUTE_BACKEND = backend if backend in GENIE_ONE else "dbx_genie_ontology"
-    routing_note = add_routing_section(ws, src, runs, at_runs) if backend in GENIE_ONE else None
+    ROUTE_BACKEND = backend if backend in GENIE_ONE + SNOWFLAKE else "dbx_genie_ontology"
+    routing_note = add_routing_section(ws, src, runs, at_runs) if backend in GENIE_ONE + SNOWFLAKE else None
 
     # Title, provenance, notes.
     ws["A1"] = f"BIRD-Interact head-to-head, all 22 databases: AtScale vs Databricks scenario {scen} ({label})"
@@ -492,7 +514,41 @@ def build_tab(wb, src, name, scen, results_glob, at_runs, unsolv):
     for r in list(ws.row_dimensions):
         if r > last:
             del ws.row_dimensions[r]
+    if backend in SNOWFLAKE:
+        snowflake_labels(ws, scen, label, describe, paths, metas, n_runs, p1, p2, rw, secs)
     return ws
+
+
+SF_WORDS = [("Genie Ontology", "Cortex Sense"), ("GENIE ONTOLOGY", "CORTEX SENSE"), ("Genie One", "Cortex"),
+            ("GENIE ONE", "CORTEX"), ("ask_genie", "ask_cortex"), ("Genie", "Cortex"), ("GENIE", "CORTEX"),
+            ("Databricks SQL warehouse", "Snowflake warehouse"), ("Databricks", "Snowflake"), ("DATABRICKS", "SNOWFLAKE"),
+            ('" / dbx "', '" / sf "'), ("metric views", "semantic views"), ("METRIC VIEWS", "SEMANTIC VIEWS"),
+            ("metric view", "semantic view"), ("schema or catalog", "schema or database")]
+
+
+def snowflake_labels(ws, scen, label, describe, paths, metas, n_runs, p1, p2, rw, secs):
+    """Relabel a tab built for a Snowflake scenario: the baseline arm is Snowflake Cortex Sense."""
+    for row in ws.iter_rows():
+        for c in row:
+            if isinstance(c.value, str):
+                v = c.value
+                for a, b in SF_WORDS:
+                    v = v.replace(a, b)
+                c.value = v
+    n = scen[2:]
+    ws["A1"] = f"BIRD-Interact head-to-head, all 22 databases: AtScale vs Snowflake scenario {n} ({label})"
+    ws["A2"] = (
+        f"SNOWFLAKE ARM n={n_runs}, scenario {n}: {label}. {fmt_ts(metas[0]['run_started'])} -> "
+        f"{fmt_ts(metas[-1]['run_finished'])}: all 22 databases, 410 query tasks x {n_runs} sequential runs, "
+        f"concurrency {metas[0].get('concurrency')}. {describe} Same agent and user simulator (Sonnet 5), a-interact mode, "
+        "the 2026-09-10 AtScale instruction with only the tool lines rewritten, and the same six grading corrections "
+        "applied live. Snowflake account UGBNILI-NG29656, warehouse BIRD_SENSE_WH, database BIRD_BENCH (the 22 BIRD "
+        "databases with their column comments and keys; AtScaleInc/bird-snowflake-models). Submitted SQL is graded by "
+        "re-executing it read-only on the warehouse. "
+        f"Files: {', '.join(Path(p).name for p in paths)}. Task-mean P1 {p1:.1%} / P2 {p2:.1%} / reward {rw:.4f}, "
+        f"wall-clock {secs:.0f}s per question. ATSCALE ARM IS THE 2026-09-10 RUN, UNCHANGED from the 'Modified Harness "
+        "09-10  Sonnet' tab (n=3, files full0910_atscale_run01-03), except the census-based columns described in the "
+        f"notes. The Snowflake arm fills the columns that tab gives to the raw arm, r1 to r{n_runs} in run order.")
 
 
 def main():
@@ -500,7 +556,7 @@ def main():
     ap.add_argument("--source", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--tab", nargs=3, action="append", metavar=("NAME", "SCENARIO", "RESULTS_GLOB"), required=True,
-                    help="tab name, scenario 1/2/3 (or retired-1/retired-2), and a quoted glob of the scenario's 1 to 3 run files")
+                    help="tab name, scenario 1/2/3, sf1/sf2/sf3 (Snowflake) (or retired-1/retired-2), and a quoted glob of the scenario's 1 to 3 run files")
     ap.add_argument("--atscale", default=ATSCALE_GLOB)
     ap.add_argument("--keep-source-tabs", action="store_true",
                     help="keep every tab of the source workbook; the new tabs go right after the 09-10 tab")
