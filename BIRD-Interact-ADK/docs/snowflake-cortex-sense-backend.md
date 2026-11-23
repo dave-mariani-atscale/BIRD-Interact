@@ -8,8 +8,8 @@ Sense context and submits the SQL that agent ran. Data, roles, semantic views an
 | # | Backend | Role | What the role reads | State |
 |---|---|---|---|---|
 | 1 | `sf_cortex_sense_raw` | `BIRD_S1` | the 244 base tables of `BIRD_BENCH` | needs the role's token |
-| 2 | `sf_cortex_sense_coco_views` | `BIRD_S2` | base tables + 83 semantic views in `BIRD_SENSE.COCO_<DB>` | contexts `BIRD_BENCH_<DB>_COCO` not built; `SEMANTIC_VIEW()` not parsed by the guard yet |
-| 3 | `sf_cortex_sense_atscale_views` | `BIRD_S3` | base tables + views generated from the AtScale SML models | views and contexts not built |
+| 2 | `sf_cortex_sense_coco_views` | `BIRD_S2` | base tables + 114 semantic views in `BIRD_SENSE.COCO_<DB>` | run 2026-11-22/23, n=3; contexts `BIRD_BENCH_<DB>_COCO_V3` (no query history) |
+| 3 | `sf_cortex_sense_atscale_views` | `BIRD_S3` | base tables + 119 semantic views generated from the AtScale SML models in `BIRD_SENSE.ATSCALE_<DB>` | views and contexts `BIRD_BENCH_<DB>_ATSCALE` built 2026-11-23 |
 | - | `sf_cortex_sense_smoke` | `BIRD_SENSE_PILOT` | everything the build role reads | wiring tests only, never scored |
 
 ## Pieces

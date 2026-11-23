@@ -6,7 +6,7 @@
 #   1 | cortex-sense-raw           : Cortex Sense on raw data, no Semantic Views   (backend sf_cortex_sense_raw,
 #                                    role BIRD_S1: the 244 base tables of BIRD_BENCH)
 #   2 | cortex-sense-coco-views    : Cortex Sense + Cortex Code-generated Semantic Views (sf_cortex_sense_coco_views,
-#                                    role BIRD_S2: base tables + the 83 views in BIRD_SENSE.COCO_<DB>)
+#                                    role BIRD_S2: base tables + the 114 views in BIRD_SENSE.COCO_<DB>)
 #   3 | cortex-sense-atscale-views : Cortex Sense + AtScale-generated Semantic Views (sf_cortex_sense_atscale_views,
 #                                    role BIRD_S3)
 #

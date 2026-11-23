@@ -76,7 +76,7 @@ SNOWFLAKE_SCENARIOS = {
     "sf2": ("Cortex Sense + CoCo-authored semantic views", "sf_cortex_sense_coco_views", "BIRD_S2",
             "BIRD_SENSE.CONTEXTS.BIRD_BENCH_<DB>_COCO (the tables of BIRD_BENCH.<DB>, the semantic views of "
             "BIRD_SENSE.COCO_<DB>, and query history on both)",
-            "whose grants cover the 244 base tables of BIRD_BENCH and the 83 semantic views Cortex Code authored in "
+            "whose grants cover the 244 base tables of BIRD_BENCH and the 114 semantic views Cortex Code authored in "
             "BIRD_SENSE.COCO_<DB> from the base tables, the knowledge base and the gold-free task questions"),
     "sf3": ("Cortex Sense + AtScale-generated semantic views", "sf_cortex_sense_atscale_views", "BIRD_S3",
             "BIRD_SENSE.CONTEXTS.BIRD_BENCH_<DB>_ATSCALE", "whose grants cover the base tables and the AtScale-derived semantic views"),

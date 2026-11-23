@@ -74,7 +74,7 @@ blocks = [
   # Scenario 1: Cortex Sense on raw data, no Semantic Views. Role BIRD_S1: the 244 base tables of BIRD_BENCH.""",
             "BIRD_S1", "SNOWFLAKE_TOKEN_S1"),
     backend("sf_cortex_sense_coco_views", """
-  # Scenario 2: Cortex Sense + the 83 Semantic Views Cortex Code authored (BIRD_SENSE.COCO_<DB>,
+  # Scenario 2: Cortex Sense + the 114 Semantic Views Cortex Code authored (BIRD_SENSE.COCO_<DB>,
   # bird-snowflake-models/coco_semantic_views). Role BIRD_S2: the base tables and those views. Its contexts
   # (BIRD_BENCH_<DB>_COCO_V3) index the base tables and the views, with NO query history. The question prefix
   # names the views' schema, as in Genie One scenario 2. 2026-11-22: views rebuilt (v3 prompts: knowledge-base
@@ -82,8 +82,10 @@ blocks = [
   # history; the runs on the v2 views and the history-on _COCO contexts are archived.""",
             "BIRD_S2", "SNOWFLAKE_TOKEN_S2", views="COCO", context_suffix="_COCO_V3"),
     backend("sf_cortex_sense_atscale_views", """
-  # Scenario 3: Cortex Sense + Semantic Views generated from the AtScale SML models (BIRD_SENSE.ATSCALE_<DB>).
-  # Role BIRD_S3. Neither the views nor the contexts (BIRD_BENCH_<DB>_ATSCALE) are built yet.""",
+  # Scenario 3: Cortex Sense + the 119 Semantic Views generated from the AtScale SML models
+  # (BIRD_SENSE.ATSCALE_<DB>, bird-snowflake-models/atscale_semantic_views: a one-for-one port of the Databricks
+  # scenario 3 metric views, built 2026-11-23). Role BIRD_S3: the base tables and those views. Its contexts
+  # (BIRD_BENCH_<DB>_ATSCALE) index the base tables and the views, with NO query history.""",
             "BIRD_S3", "SNOWFLAKE_TOKEN_S3", views="ATSCALE", context_suffix="_ATSCALE"),
     backend("sf_cortex_sense_smoke", """
   # WIRING TESTS ONLY, never a scored run: scenario 1's setup run as the build role BIRD_SENSE_PILOT, which
