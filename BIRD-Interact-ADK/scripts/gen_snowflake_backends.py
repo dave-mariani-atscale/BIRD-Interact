@@ -35,6 +35,20 @@ for old, new in (
 assert not re.search(r"genie|databricks|ontology|bird\.", instruction, re.I), "a Genie-specific phrase survived"
 
 
+RAW_PREFIX = '"In the BIRD_BENCH.<DATABASE> database: <the user\'s question>"'
+
+
+def instruction_for(views):
+    """Scenarios with semantic views name the views' schema in the question prefix, as Genie One scenario 2 did
+    ("In the bird.<database> database, whose metric views are in bird_genie_mv.<database>: ..."): the views sit
+    in BIRD_SENSE, not in the task schema. Nothing else in the instruction changes."""
+    if not views:
+        return instruction
+    assert RAW_PREFIX in instruction
+    return instruction.replace(RAW_PREFIX, f'"In the BIRD_BENCH.<DATABASE> database, whose semantic views are in '
+                                           f'BIRD_SENSE.{views}_<DATABASE>: <the user\'s question>"')
+
+
 def backend(name, comment, role, token_env, views=None, context_suffix=""):
     out = [comment.rstrip(), f"  {name}:",
            "    tools_module: system_agent.tools_cortex_sense",
@@ -42,7 +56,7 @@ def backend(name, comment, role, token_env, views=None, context_suffix=""):
            "    executor: snowflake", f"    role: {role}", f"    token_env: {token_env}",
            "    dialect: snowflake", "    agent_model: auto", "    error_hints: []",
            "    tool_costs:", "      ask_cortex: 1.0", "    small_action_costs:", "      ask_cortex: 0.5",
-           "    leaderboard_tool_costs: {}", instruction.rstrip(), "    domains:"]
+           "    leaderboard_tool_costs: {}", instruction_for(views).rstrip(), "    domains:"]
     for db in dbs:
         D = db.upper()
         out += [f"      {db}:", "        catalog: BIRD_BENCH", f"        schema: {D}", "        objects: tables",
@@ -62,8 +76,11 @@ blocks = [
     backend("sf_cortex_sense_coco_views", """
   # Scenario 2: Cortex Sense + the 83 Semantic Views Cortex Code authored (BIRD_SENSE.COCO_<DB>,
   # bird-snowflake-models/coco_semantic_views). Role BIRD_S2: the base tables and those views. Its contexts
-  # (BIRD_BENCH_<DB>_COCO, which index the views too) are NOT BUILT YET.""",
-            "BIRD_S2", "SNOWFLAKE_TOKEN_S2", views="COCO", context_suffix="_COCO"),
+  # (BIRD_BENCH_<DB>_COCO_V3) index the base tables and the views, with NO query history. The question prefix
+  # names the views' schema, as in Genie One scenario 2. 2026-11-22: views rebuilt (v3 prompts: knowledge-base
+  # terms verbatim, open points recorded not defaulted, one grain per view) and contexts rebuilt without query
+  # history; the runs on the v2 views and the history-on _COCO contexts are archived.""",
+            "BIRD_S2", "SNOWFLAKE_TOKEN_S2", views="COCO", context_suffix="_COCO_V3"),
     backend("sf_cortex_sense_atscale_views", """
   # Scenario 3: Cortex Sense + Semantic Views generated from the AtScale SML models (BIRD_SENSE.ATSCALE_<DB>).
   # Role BIRD_S3. Neither the views nor the contexts (BIRD_BENCH_<DB>_ATSCALE) are built yet.""",

@@ -63,6 +63,41 @@ def score(run, tasks):
     return n, p1, p2, rw
 
 
+def view_usage(backend, label):
+    """Per database: how the agent's SQL read the database, for the repetition in progress. Each graded answer
+    (the passing submission of a phase, else its last one) and each SQL statement Cortex wrote is classed as
+    semantic views only / views + base tables / base tables only / other (outside the database, unparsed).
+    Returns None for a backend without semantic views."""
+    import sys
+    sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "scripts"))
+    from shared.environment_backends import get_backend_config
+    if "views" not in backend or not get_backend_config(backend).get("domains"):
+        return None
+    import build_databricks_scenario_tab as b
+    b.ROUTE_BACKEND = backend
+    rep = re.search(r"repetition (\d+)", label)
+    files = sorted(glob.glob(str(ROOT / f"results/{backend}_vs_0910/{backend}_run{int(rep.group(1)) if rep else 1:02d}_*.json")))
+    if not files:
+        return None
+    per = defaultdict(lambda: defaultdict(int))
+    for r in json.load(open(files[-1])).get("results") or []:
+        r.setdefault("database", r.get("task_id", "").rsplit("_", 1)[0])   # an errored task may lack it
+        (r1, _), (r2, _), turns = b.task_routes(r)
+        c = per[r["database"]]
+        for kind, route in [("ans", r1), ("ans", r2)] + [("sql", t) for t in turns]:
+            if route and route != "none":
+                c[f"{kind}_{route}"] += 1
+    return per
+
+
+def usage_cells(c, kind):
+    n = sum(v for k, v in c.items() if k.startswith(kind + "_"))
+    if not n:
+        return f"{'-':>5} {'':>6} {'':>6} {'':>6}"
+    v, m, t = (c[f"{kind}_{x}"] for x in ("metric_views", "mixed", "base_tables"))
+    return f"{n:>5} {v / n:>6.0%} {m / n:>6.0%} {t / n:>6.0%}"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--backend", default="sf_cortex_sense_raw")
@@ -140,6 +175,19 @@ def main():
                 s = score(runs[best], common)
                 cells.append(f"{s[1]:>7.0%} /{s[2]:>6.0%}  " if s else f"{'-':>17}")
             print(f"{db:34} {len(ts):>3} " + " ".join(cells))
+        per = view_usage(a.backend, label)
+        if per:
+            tot = defaultdict(int)
+            for c in per.values():
+                for k, v in c.items():
+                    tot[k] += v
+            hdr = f"{'n':>5} {'views':>6} {'both':>6} {'tables':>6}"
+            print("\nSemantic views vs raw tables (views = semantic views only, both = views joined with base tables,"
+                  "\ntables = base tables only; the rest read outside the database or did not parse)")
+            print(f"{'':34}   graded answers (P1 + P2)    SQL written by Cortex\n{'database':34} {hdr}   {hdr}")
+            for db in sorted(per):
+                print(f"{db:34} {usage_cells(per[db], 'ans')}   {usage_cells(per[db], 'sql')}")
+            print(f"{'all':34} {usage_cells(tot, 'ans')}   {usage_cells(tot, 'sql')}")
 
 
 if __name__ == "__main__":
