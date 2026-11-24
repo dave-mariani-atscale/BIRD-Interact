@@ -79,7 +79,7 @@ SNOWFLAKE_SCENARIOS = {
             "whose grants cover the 244 base tables of BIRD_BENCH and the 114 semantic views Cortex Code authored in "
             "BIRD_SENSE.COCO_<DB> from the base tables, the knowledge base and the gold-free task questions"),
     "sf3": ("Cortex Sense + AtScale-generated semantic views", "sf_cortex_sense_atscale_views", "BIRD_S3",
-            "BIRD_SENSE.CONTEXTS.BIRD_BENCH_<DB>_ATSCALE", "whose grants cover the base tables and the AtScale-derived semantic views"),
+            "BIRD_SENSE.CONTEXTS.BIRD_BENCH_<DB>_ATSCALE_V2", "whose grants cover the base tables and the AtScale-derived semantic views"),
 }
 for _k, (_label, _backend, _role, _ctx, _grants) in SNOWFLAKE_SCENARIOS.items():
     SCENARIOS[_k] = (_label, _backend,

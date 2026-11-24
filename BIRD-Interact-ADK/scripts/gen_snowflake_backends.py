@@ -82,11 +82,12 @@ blocks = [
   # history; the runs on the v2 views and the history-on _COCO contexts are archived.""",
             "BIRD_S2", "SNOWFLAKE_TOKEN_S2", views="COCO", context_suffix="_COCO_V3"),
     backend("sf_cortex_sense_atscale_views", """
-  # Scenario 3: Cortex Sense + the 119 Semantic Views generated from the AtScale SML models
-  # (BIRD_SENSE.ATSCALE_<DB>, bird-snowflake-models/atscale_semantic_views: a one-for-one port of the Databricks
-  # scenario 3 metric views, built 2026-11-23). Role BIRD_S3: the base tables and those views. Its contexts
-  # (BIRD_BENCH_<DB>_ATSCALE) index the base tables and the views, with NO query history.""",
-            "BIRD_S3", "SNOWFLAKE_TOKEN_S3", views="ATSCALE", context_suffix="_ATSCALE"),
+  # Scenario 3: Cortex Sense + the 22 Semantic Views built from the AtScale SML models, one per model, directly
+  # on the BIRD_BENCH base tables (BIRD_SENSE.ATSCALE_<DB>.<DB>, bird-snowflake-models/atscale_semantic_views,
+  # rebuilt 2026-11-23: a first build that put 119 views on _SRC helper views was replaced because Cortex read
+  # the helper views instead). Role BIRD_S3 reads the base tables and those views; its contexts
+  # (BIRD_BENCH_<DB>_ATSCALE_V2) index the base tables and the views, with NO query history.""",
+            "BIRD_S3", "SNOWFLAKE_TOKEN_S3", views="ATSCALE", context_suffix="_ATSCALE_V2"),
     backend("sf_cortex_sense_smoke", """
   # WIRING TESTS ONLY, never a scored run: scenario 1's setup run as the build role BIRD_SENSE_PILOT, which
   # can also read the semantic views and the build inputs.""",

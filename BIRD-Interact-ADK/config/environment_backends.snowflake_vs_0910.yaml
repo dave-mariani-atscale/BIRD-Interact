@@ -1520,10 +1520,11 @@ backends:
         views_catalog: BIRD_SENSE
         views_schema: COCO_VIRTUAL_IDOL
 
-  # Scenario 3: Cortex Sense + the 119 Semantic Views generated from the AtScale SML models
-  # (BIRD_SENSE.ATSCALE_<DB>, bird-snowflake-models/atscale_semantic_views: a one-for-one port of the Databricks
-  # scenario 3 metric views, built 2026-11-23). Role BIRD_S3: the base tables and those views. Its contexts
-  # (BIRD_BENCH_<DB>_ATSCALE) index the base tables and the views, with NO query history.
+  # Scenario 3: Cortex Sense + the 22 Semantic Views built from the AtScale SML models, one per model, directly
+  # on the BIRD_BENCH base tables (BIRD_SENSE.ATSCALE_<DB>.<DB>, bird-snowflake-models/atscale_semantic_views,
+  # rebuilt 2026-11-23: a first build that put 119 views on _SRC helper views was replaced because Cortex read
+  # the helper views instead). Role BIRD_S3 reads the base tables and those views; its contexts
+  # (BIRD_BENCH_<DB>_ATSCALE_V2) index the base tables and the views, with NO query history.
   sf_cortex_sense_atscale_views:
     tools_module: system_agent.tools_cortex_sense
     tools_factory: get_ainteract_tools_cortex_sense
@@ -1588,154 +1589,154 @@ backends:
         catalog: BIRD_BENCH
         schema: ARCHEOLOGY_SCAN
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_ARCHEOLOGY_SCAN_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_ARCHEOLOGY_SCAN_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_ARCHEOLOGY_SCAN
       cold_chain_pharma_compliance:
         catalog: BIRD_BENCH
         schema: COLD_CHAIN_PHARMA_COMPLIANCE
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_COLD_CHAIN_PHARMA_COMPLIANCE_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_COLD_CHAIN_PHARMA_COMPLIANCE_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_COLD_CHAIN_PHARMA_COMPLIANCE
       cross_border:
         catalog: BIRD_BENCH
         schema: CROSS_BORDER
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_CROSS_BORDER_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_CROSS_BORDER_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_CROSS_BORDER
       crypto_exchange:
         catalog: BIRD_BENCH
         schema: CRYPTO_EXCHANGE
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_CRYPTO_EXCHANGE_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_CRYPTO_EXCHANGE_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_CRYPTO_EXCHANGE
       cybermarket_pattern:
         catalog: BIRD_BENCH
         schema: CYBERMARKET_PATTERN
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_CYBERMARKET_PATTERN_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_CYBERMARKET_PATTERN_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_CYBERMARKET_PATTERN
       disaster_relief:
         catalog: BIRD_BENCH
         schema: DISASTER_RELIEF
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_DISASTER_RELIEF_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_DISASTER_RELIEF_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_DISASTER_RELIEF
       exchange_traded_funds:
         catalog: BIRD_BENCH
         schema: EXCHANGE_TRADED_FUNDS
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_EXCHANGE_TRADED_FUNDS_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_EXCHANGE_TRADED_FUNDS_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_EXCHANGE_TRADED_FUNDS
       fake_account:
         catalog: BIRD_BENCH
         schema: FAKE_ACCOUNT
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_FAKE_ACCOUNT_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_FAKE_ACCOUNT_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_FAKE_ACCOUNT
       households:
         catalog: BIRD_BENCH
         schema: HOUSEHOLDS
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_HOUSEHOLDS_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_HOUSEHOLDS_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_HOUSEHOLDS
       hulushows:
         catalog: BIRD_BENCH
         schema: HULUSHOWS
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_HULUSHOWS_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_HULUSHOWS_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_HULUSHOWS
       insider_trading:
         catalog: BIRD_BENCH
         schema: INSIDER_TRADING
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_INSIDER_TRADING_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_INSIDER_TRADING_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_INSIDER_TRADING
       labor_certification_applications:
         catalog: BIRD_BENCH
         schema: LABOR_CERTIFICATION_APPLICATIONS
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_LABOR_CERTIFICATION_APPLICATIONS_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_LABOR_CERTIFICATION_APPLICATIONS_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_LABOR_CERTIFICATION_APPLICATIONS
       mental_health:
         catalog: BIRD_BENCH
         schema: MENTAL_HEALTH
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_MENTAL_HEALTH_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_MENTAL_HEALTH_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_MENTAL_HEALTH
       museum_artifact:
         catalog: BIRD_BENCH
         schema: MUSEUM_ARTIFACT
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_MUSEUM_ARTIFACT_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_MUSEUM_ARTIFACT_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_MUSEUM_ARTIFACT
       organ_transplant:
         catalog: BIRD_BENCH
         schema: ORGAN_TRANSPLANT
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_ORGAN_TRANSPLANT_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_ORGAN_TRANSPLANT_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_ORGAN_TRANSPLANT
       planets_data:
         catalog: BIRD_BENCH
         schema: PLANETS_DATA
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_PLANETS_DATA_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_PLANETS_DATA_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_PLANETS_DATA
       polar_equipment:
         catalog: BIRD_BENCH
         schema: POLAR_EQUIPMENT
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_POLAR_EQUIPMENT_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_POLAR_EQUIPMENT_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_POLAR_EQUIPMENT
       reverse_logistics:
         catalog: BIRD_BENCH
         schema: REVERSE_LOGISTICS
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_REVERSE_LOGISTICS_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_REVERSE_LOGISTICS_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_REVERSE_LOGISTICS
       robot_fault_prediction:
         catalog: BIRD_BENCH
         schema: ROBOT_FAULT_PREDICTION
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_ROBOT_FAULT_PREDICTION_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_ROBOT_FAULT_PREDICTION_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_ROBOT_FAULT_PREDICTION
       solar_panel:
         catalog: BIRD_BENCH
         schema: SOLAR_PANEL
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_SOLAR_PANEL_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_SOLAR_PANEL_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_SOLAR_PANEL
       sports_events:
         catalog: BIRD_BENCH
         schema: SPORTS_EVENTS
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_SPORTS_EVENTS_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_SPORTS_EVENTS_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_SPORTS_EVENTS
       virtual_idol:
         catalog: BIRD_BENCH
         schema: VIRTUAL_IDOL
         objects: tables
-        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_VIRTUAL_IDOL_ATSCALE
+        context: BIRD_SENSE.CONTEXTS.BIRD_BENCH_VIRTUAL_IDOL_ATSCALE_V2
         views_catalog: BIRD_SENSE
         views_schema: ATSCALE_VIRTUAL_IDOL
 

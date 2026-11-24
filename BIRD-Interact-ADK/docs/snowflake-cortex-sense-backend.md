@@ -9,7 +9,7 @@ Sense context and submits the SQL that agent ran. Data, roles, semantic views an
 |---|---|---|---|---|
 | 1 | `sf_cortex_sense_raw` | `BIRD_S1` | the 244 base tables of `BIRD_BENCH` | needs the role's token |
 | 2 | `sf_cortex_sense_coco_views` | `BIRD_S2` | base tables + 114 semantic views in `BIRD_SENSE.COCO_<DB>` | run 2026-11-22/23, n=3; contexts `BIRD_BENCH_<DB>_COCO_V3` (no query history) |
-| 3 | `sf_cortex_sense_atscale_views` | `BIRD_S3` | base tables + 119 semantic views generated from the AtScale SML models in `BIRD_SENSE.ATSCALE_<DB>` | views and contexts `BIRD_BENCH_<DB>_ATSCALE` built 2026-11-23 |
+| 3 | `sf_cortex_sense_atscale_views` | `BIRD_S3` | base tables + 22 semantic views (one per AtScale SML model, directly on the base tables) in `BIRD_SENSE.ATSCALE_<DB>` | views and contexts `BIRD_BENCH_<DB>_ATSCALE_V2` rebuilt 2026-11-23 |
 | - | `sf_cortex_sense_smoke` | `BIRD_SENSE_PILOT` | everything the build role reads | wiring tests only, never scored |
 
 ## Pieces
